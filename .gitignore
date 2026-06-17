@@ -1,0 +1,28 @@
+# dependencies
+node_modules
+
+# next
+.next
+out
+
+# production
+build
+dist
+
+# misc
+.DS_Store
+*.pem
+
+# env
+.env
+.env*.local
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+
+# codex workspace artifacts
+outputs
+work
