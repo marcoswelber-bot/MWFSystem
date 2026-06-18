@@ -1,51 +1,67 @@
-import { Plus, Search, UsersRound } from "lucide-react";
-import { ModuleCard } from "@/components/module-card";
 import { PageHeader } from "@/components/page-header";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PatientsManager } from "@/components/patients/patients-manager";
+import { createClient } from "@/lib/supabase/server";
+import { getErrorMessage } from "@/lib/supabase/env";
+import type { Database } from "@/types/database";
 
-export default function PacientesPage() {
+type Patient = Database["public"]["Tables"]["patients"]["Row"];
+
+type PacientesPageProps = {
+  searchParams: Promise<{
+    q?: string;
+  }>;
+};
+
+function escapeSearchTerm(value: string) {
+  return value.replaceAll("%", "\\%").replaceAll(",", " ");
+}
+
+export default async function PacientesPage({
+  searchParams
+}: PacientesPageProps) {
+  const params = await searchParams;
+  const search = params.q?.trim() ?? "";
+  let patients: Patient[] = [];
+  let loadError: string | undefined;
+
+  try {
+    const supabase = await createClient();
+    let query = supabase
+      .from("patients")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (search) {
+      const term = escapeSearchTerm(search);
+      query = query.or(
+        `full_name.ilike.%${term}%,cpf.ilike.%${term}%,phone.ilike.%${term}%`
+      );
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      loadError = getErrorMessage(error);
+    } else {
+      patients = data ?? [];
+    }
+  } catch (error) {
+    loadError = getErrorMessage(error);
+  }
+
   return (
     <div>
-      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
-        <PageHeader
-          eyebrow="Cadastro clínico"
-          title="Pacientes"
-          description="Base inicial para cadastro, busca, histórico, vínculos por clínica e acompanhamento de jornada do paciente."
-        />
-        <Button>
-          <Plus className="h-4 w-4" />
-          Novo paciente
-        </Button>
-      </div>
+      <PageHeader
+        eyebrow="Cadastro clinico"
+        title="Pacientes"
+        description="Cadastre, edite, busque e inative pacientes usando dados reais do Supabase."
+      />
 
-      <div className="mb-6 flex max-w-xl items-center gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input className="pl-9" placeholder="Buscar por nome, CPF ou telefone" />
-        </div>
-      </div>
-
-      <section className="grid gap-4 md:grid-cols-3">
-        <ModuleCard
-          title="Pacientes ativos"
-          description="Cadastro consolidado"
-          icon={UsersRound}
-          value="1.284"
-        />
-        <ModuleCard
-          title="Novos no mês"
-          description="Entradas recentes"
-          icon={Plus}
-          value="76"
-        />
-        <ModuleCard
-          title="Em acompanhamento"
-          description="Planos e retornos"
-          icon={Search}
-          value="312"
-        />
-      </section>
+      <PatientsManager
+        patients={patients}
+        initialSearch={search}
+        loadError={loadError}
+      />
     </div>
   );
 }

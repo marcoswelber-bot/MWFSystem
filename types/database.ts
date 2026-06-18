@@ -59,6 +59,51 @@ export type Database = {
         };
         Relationships: [];
       };
+      patients: {
+        Row: {
+          id: string;
+          clinic_id: string | null;
+          full_name: string;
+          cpf: string | null;
+          birth_date: string | null;
+          phone: string | null;
+          email: string | null;
+          address: string | null;
+          notes: string | null;
+          status: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          clinic_id?: string | null;
+          full_name: string;
+          cpf?: string | null;
+          birth_date?: string | null;
+          phone?: string | null;
+          email?: string | null;
+          address?: string | null;
+          notes?: string | null;
+          status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          clinic_id?: string | null;
+          full_name?: string;
+          cpf?: string | null;
+          birth_date?: string | null;
+          phone?: string | null;
+          email?: string | null;
+          address?: string | null;
+          notes?: string | null;
+          status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {};
     Functions: {};

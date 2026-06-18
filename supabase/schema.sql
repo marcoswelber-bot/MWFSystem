@@ -78,3 +78,23 @@ using (
 
 create index if not exists profiles_clinic_id_idx on public.profiles(clinic_id);
 create index if not exists profiles_role_idx on public.profiles(role);
+
+create table if not exists public.patients (
+  id uuid primary key default gen_random_uuid(),
+  clinic_id uuid null references public.clinics(id) on delete set null,
+  full_name text not null,
+  cpf text null,
+  birth_date date null,
+  phone text null,
+  email text null,
+  address text null,
+  notes text null,
+  status text not null default 'active',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.patients enable row level security;
+
+create index if not exists patients_clinic_id_idx on public.patients(clinic_id);
+create index if not exists patients_status_idx on public.patients(status);
