@@ -3,6 +3,7 @@
 import type { Route } from "next";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getErrorMessage } from "@/lib/supabase/env";
 
 const protectedRoutes = [
   "/dashboard",
@@ -34,15 +35,24 @@ export async function signInWithPassword(formData: FormData) {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
   const redirectedFrom = normalizeRedirectRoute(formData.get("redirectedFrom"));
+  let errorMessage: string | null = null;
 
-  const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword({
-    email,
-    password
-  });
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
 
-  if (error) {
-    redirect(`/login?error=${encodeURIComponent(error.message)}` as Route);
+    if (error) {
+      errorMessage = getErrorMessage(error);
+    }
+  } catch (error) {
+    errorMessage = getErrorMessage(error);
+  }
+
+  if (errorMessage) {
+    redirect(`/login?error=${encodeURIComponent(errorMessage)}` as Route);
   }
 
   redirect(redirectedFrom);

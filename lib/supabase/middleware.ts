@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
+import { getErrorMessage, getSupabaseConfig } from "@/lib/supabase/env";
 
 const protectedRoutes = [
   "/dashboard",
@@ -17,10 +18,28 @@ export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({
     request
   });
+  const isProtected = protectedRoutes.some((route) =>
+    request.nextUrl.pathname.startsWith(route)
+  );
+
+  let supabaseConfig: ReturnType<typeof getSupabaseConfig>;
+
+  try {
+    supabaseConfig = getSupabaseConfig();
+  } catch (error) {
+    if (isProtected) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      url.searchParams.set("error", getErrorMessage(error));
+      return NextResponse.redirect(url);
+    }
+
+    return response;
+  }
 
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseConfig.url,
+    supabaseConfig.anonKey,
     {
       cookies: {
         getAll() {
@@ -41,13 +60,24 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  let user: Awaited<ReturnType<typeof supabase.auth.getUser>>["data"]["user"] =
+    null;
 
-  const isProtected = protectedRoutes.some((route) =>
-    request.nextUrl.pathname.startsWith(route)
-  );
+  try {
+    const {
+      data: { user: currentUser }
+    } = await supabase.auth.getUser();
+    user = currentUser;
+  } catch (error) {
+    if (isProtected) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      url.searchParams.set("error", getErrorMessage(error));
+      return NextResponse.redirect(url);
+    }
+
+    return response;
+  }
 
   if (!user && isProtected) {
     const url = request.nextUrl.clone();
