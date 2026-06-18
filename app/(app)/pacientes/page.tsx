@@ -8,7 +8,6 @@ type Patient = Database["public"]["Tables"]["patients"]["Row"];
 
 type PacientesPageProps = {
   searchParams: Promise<{
-    new?: string;
     q?: string;
   }>;
 };
@@ -60,7 +59,6 @@ export default async function PacientesPage({
 
       <PatientsManager
         patients={patients}
-        initialFormOpen={params.new === "1"}
         initialSearch={search}
         loadError={loadError}
       />

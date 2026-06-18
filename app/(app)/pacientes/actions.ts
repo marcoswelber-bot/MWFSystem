@@ -48,41 +48,12 @@ function getPatientPayload(input: PatientFormInput): PatientInsert {
   };
 }
 
-async function getCurrentClinicId() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error: userError
-  } = await supabase.auth.getUser();
-
-  if (userError) {
-    throw userError;
-  }
-
-  if (!user) {
-    throw new Error("Usuario autenticado nao encontrado.");
-  }
-
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("clinic_id")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  return data?.clinic_id ?? null;
-}
-
 export async function createPatient(
   input: PatientFormInput
 ): Promise<PatientActionResult> {
   try {
     const supabase = await createClient();
     const payload = getPatientPayload(input);
-    payload.clinic_id = await getCurrentClinicId();
     const { error } = await supabase.from("patients").insert(payload);
 
     if (error) {

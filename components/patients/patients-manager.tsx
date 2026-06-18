@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Edit, Loader2, Plus, Search, Trash2, X } from "lucide-react";
 import {
@@ -27,7 +26,6 @@ type Patient = Database["public"]["Tables"]["patients"]["Row"];
 
 type PatientsManagerProps = {
   patients: Patient[];
-  initialFormOpen: boolean;
   initialSearch: string;
   loadError?: string;
 };
@@ -58,14 +56,13 @@ function patientToForm(patient: Patient): PatientFormInput {
 
 export function PatientsManager({
   patients,
-  initialFormOpen,
   initialSearch,
   loadError
 }: PatientsManagerProps) {
   const router = useRouter();
   const [isPending, startTransition] = React.useTransition();
   const [search, setSearch] = React.useState(initialSearch);
-  const [formOpen, setFormOpen] = React.useState(initialFormOpen);
+  const [formOpen, setFormOpen] = React.useState(false);
   const [editingPatient, setEditingPatient] = React.useState<Patient | null>(null);
   const [form, setForm] = React.useState<PatientFormInput>(emptyForm);
   const [message, setMessage] = React.useState<PatientActionResult | null>(
@@ -94,11 +91,6 @@ export function PatientsManager({
     setEditingPatient(null);
     setForm(emptyForm);
     setFormOpen(false);
-    if (initialFormOpen) {
-      router.replace(
-        initialSearch ? `/pacientes?q=${encodeURIComponent(initialSearch)}` : "/pacientes"
-      );
-    }
   }
 
   function refreshPatients() {
@@ -175,11 +167,14 @@ export function PatientsManager({
           </Button>
         </form>
 
-        <Button type="button" asChild onClick={openCreateForm}>
-          <Link href="/pacientes?new=1">
-            <Plus className="h-4 w-4" />
-            Novo paciente
-          </Link>
+        <Button
+          type="button"
+          aria-expanded={formOpen}
+          aria-controls="patient-form"
+          onClick={openCreateForm}
+        >
+          <Plus className="h-4 w-4" />
+          Novo paciente
         </Button>
       </div>
 
@@ -217,7 +212,7 @@ export function PatientsManager({
       </section>
 
       {formOpen ? (
-        <Card>
+        <Card id="patient-form">
           <CardHeader className="flex flex-row items-start justify-between space-y-0">
             <div>
               <CardTitle>
