@@ -4,9 +4,9 @@ import { createClient } from "@/lib/supabase/server";
 import { getErrorMessage } from "@/lib/supabase/env";
 import type { Database } from "@/types/database";
 
-type Employee = Database["public"]["Tables"]["employees"]["Row"];
+type Clinic = Database["public"]["Tables"]["clinics"]["Row"];
 
-type FuncionariosPageProps = {
+type ClinicasPageProps = {
   searchParams: Promise<{
     q?: string;
   }>;
@@ -16,42 +16,38 @@ function escapeSearchTerm(value: string) {
   return value.replaceAll("%", "\\%").replaceAll(",", " ");
 }
 
-function toEntityRecord(employee: Employee): EntityRecord {
+function toEntityRecord(clinic: Clinic): EntityRecord {
   return {
-    id: employee.id,
-    clinic_id: employee.clinic_id,
-    name: employee.name,
-    phone: employee.phone,
-    whatsapp: employee.whatsapp,
-    email: employee.email,
-    role: employee.role,
-    commission_type: employee.commission_type,
-    commission_value: employee.commission_value,
-    status: employee.status,
-    created_at: employee.created_at,
-    updated_at: employee.updated_at
+    id: clinic.id,
+    name: clinic.name,
+    phone: clinic.phone,
+    whatsapp: clinic.whatsapp,
+    email: clinic.email,
+    cnpj: clinic.cnpj,
+    address: clinic.address,
+    status: clinic.status,
+    created_at: clinic.created_at,
+    updated_at: clinic.updated_at
   };
 }
 
-export default async function FuncionariosPage({
-  searchParams
-}: FuncionariosPageProps) {
+export default async function ClinicasPage({ searchParams }: ClinicasPageProps) {
   const params = await searchParams;
   const search = params.q?.trim() ?? "";
-  let employees: Employee[] = [];
+  let clinics: Clinic[] = [];
   let loadError: string | undefined;
 
   try {
     const supabase = await createClient();
     let query = supabase
-      .from("employees")
+      .from("clinics")
       .select("*")
       .order("created_at", { ascending: false });
 
     if (search) {
       const term = escapeSearchTerm(search);
       query = query.or(
-        `name.ilike.%${term}%,phone.ilike.%${term}%,email.ilike.%${term}%,role.ilike.%${term}%`
+        `name.ilike.%${term}%,cnpj.ilike.%${term}%,phone.ilike.%${term}%,email.ilike.%${term}%`
       );
     }
 
@@ -60,7 +56,7 @@ export default async function FuncionariosPage({
     if (error) {
       loadError = getErrorMessage(error);
     } else {
-      employees = data ?? [];
+      clinics = data ?? [];
     }
   } catch (error) {
     loadError = getErrorMessage(error);
@@ -69,33 +65,32 @@ export default async function FuncionariosPage({
   return (
     <div>
       <PageHeader
-        eyebrow="Equipe"
-        title="Funcionarios"
-        description="Gerencie profissionais, funcoes, comissoes e contatos usando dados reais do Supabase."
+        eyebrow="Multiclinica"
+        title="Clinicas"
+        description="Cadastre unidades, contatos e dados operacionais usando registros reais do Supabase."
       />
 
       <EntityCrudManager
-        table="employees"
-        basePath="/funcionarios"
-        entityLabel="funcionario"
-        entityLabelPlural="Funcionarios"
-        newButtonLabel="Novo funcionario"
-        searchPlaceholder="Buscar por nome, telefone, email ou funcao"
-        records={employees.map(toEntityRecord)}
+        table="clinics"
+        basePath="/clinicas"
+        entityLabel="clinica"
+        entityLabelPlural="Clinicas"
+        newButtonLabel="Nova clinica"
+        searchPlaceholder="Buscar por nome, CNPJ, telefone ou email"
+        records={clinics.map(toEntityRecord)}
         initialSearch={search}
         loadError={loadError}
         fields={[
           { name: "name", label: "Nome", required: true },
+          { name: "cnpj", label: "CNPJ" },
           { name: "phone", label: "Telefone" },
           { name: "whatsapp", label: "WhatsApp" },
           { name: "email", label: "Email", type: "email" },
-          { name: "role", label: "Funcao" },
-          { name: "commission_type", label: "Tipo de comissao" },
-          { name: "commission_value", label: "Valor da comissao", type: "number" }
+          { name: "address", label: "Endereco", type: "textarea" }
         ]}
         columns={[
           { key: "name", label: "Nome" },
-          { key: "role", label: "Funcao" },
+          { key: "cnpj", label: "CNPJ" },
           { key: "phone", label: "Telefone" },
           { key: "email", label: "Email" },
           {

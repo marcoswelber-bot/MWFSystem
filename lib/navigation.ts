@@ -1,6 +1,7 @@
 import {
   BarChart3,
   BriefcaseMedical,
+  Building2,
   CalendarDays,
   ClipboardList,
   CreditCard,
@@ -21,6 +22,11 @@ export const appNavigation = [
     title: "Pacientes",
     href: "/pacientes",
     icon: UsersRound
+  },
+  {
+    title: "ClÃ­nicas",
+    href: "/clinicas",
+    icon: Building2
   },
   {
     title: "Agenda",
