@@ -108,3 +108,38 @@ export async function deactivatePatient(id: string): Promise<PatientActionResult
     return { ok: false, message: getErrorMessage(error) };
   }
 }
+
+export async function activatePatient(id: string): Promise<PatientActionResult> {
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase
+      .from("patients")
+      .update({ status: "active" })
+      .eq("id", id);
+
+    if (error) {
+      return { ok: false, message: getErrorMessage(error) };
+    }
+
+    revalidatePath("/pacientes");
+    return { ok: true, message: "Paciente ativado com sucesso." };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
+}
+
+export async function deletePatient(id: string): Promise<PatientActionResult> {
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.from("patients").delete().eq("id", id);
+
+    if (error) {
+      return { ok: false, message: getErrorMessage(error) };
+    }
+
+    revalidatePath("/pacientes");
+    return { ok: true, message: "Paciente excluido definitivamente." };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
+}
