@@ -1,4 +1,4 @@
-import { EntityCrudManager, type EntityRecord } from "@/components/entity-crud-manager";
+import { EmployeesManager } from "@/components/employees/employees-manager";
 import { PageHeader } from "@/components/page-header";
 import { createClient } from "@/lib/supabase/server";
 import { getErrorMessage } from "@/lib/supabase/env";
@@ -14,23 +14,6 @@ type FuncionariosPageProps = {
 
 function escapeSearchTerm(value: string) {
   return value.replaceAll("%", "\\%").replaceAll(",", " ");
-}
-
-function toEntityRecord(employee: Employee): EntityRecord {
-  return {
-    id: employee.id,
-    clinic_id: employee.clinic_id,
-    name: employee.name,
-    phone: employee.phone,
-    whatsapp: employee.whatsapp,
-    email: employee.email,
-    role: employee.role,
-    commission_type: employee.commission_type,
-    commission_value: employee.commission_value,
-    status: employee.status,
-    created_at: employee.created_at,
-    updated_at: employee.updated_at
-  };
 }
 
 export default async function FuncionariosPage({
@@ -71,39 +54,13 @@ export default async function FuncionariosPage({
       <PageHeader
         eyebrow="Equipe"
         title="Funcionarios"
-        description="Gerencie profissionais, funcoes, comissoes e contatos usando dados reais do Supabase."
+        description="Cadastre, edite, busque, ative e inative funcionarios usando dados reais do Supabase."
       />
 
-      <EntityCrudManager
-        table="employees"
-        basePath="/funcionarios"
-        entityLabel="funcionario"
-        entityLabelPlural="Funcionarios"
-        newButtonLabel="Novo funcionario"
-        searchPlaceholder="Buscar por nome, telefone, email ou funcao"
-        records={employees.map(toEntityRecord)}
+      <EmployeesManager
+        employees={employees}
         initialSearch={search}
         loadError={loadError}
-        fields={[
-          { name: "name", label: "Nome", required: true },
-          { name: "phone", label: "Telefone" },
-          { name: "whatsapp", label: "WhatsApp" },
-          { name: "email", label: "Email", type: "email" },
-          { name: "role", label: "Funcao" },
-          { name: "commission_type", label: "Tipo de comissao" },
-          { name: "commission_value", label: "Valor da comissao", type: "number" }
-        ]}
-        columns={[
-          { key: "name", label: "Nome" },
-          { key: "role", label: "Funcao" },
-          { key: "phone", label: "Telefone" },
-          { key: "email", label: "Email" },
-          {
-            key: "status",
-            label: "Status",
-            render: (record) => (record.status === "active" ? "Ativo" : "Inativo")
-          }
-        ]}
       />
     </div>
   );
