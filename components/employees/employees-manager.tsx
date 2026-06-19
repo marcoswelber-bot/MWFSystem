@@ -53,15 +53,15 @@ const emptyForm: EmployeeFormInput = {
 };
 
 const emptyCommissionForm: ProfessionalCommissionFormInput = {
-  employee_id: "",
+  professional_id: "",
   service_id: "",
   attendance_type: "presencial",
-  service_mode: "individual",
-  group_commission_basis: "per_patient",
+  modality: "individual",
+  group_calculation_mode: "por_paciente",
   base_price: "",
-  commission_type: "percent",
+  commission_type: "percentual",
   commission_value: "",
-  status: "active",
+  active: true,
   notes: "",
   change_reason: ""
 };
@@ -83,15 +83,15 @@ function employeeToForm(employee: Employee): EmployeeFormInput {
 function commissionToForm(rule: CommissionRule): ProfessionalCommissionFormInput {
   return {
     id: rule.id,
-    employee_id: rule.employee_id,
+    professional_id: rule.professional_id,
     service_id: rule.service_id,
     attendance_type: rule.attendance_type,
-    service_mode: rule.service_mode,
-    group_commission_basis: rule.group_commission_basis,
+    modality: rule.modality,
+    group_calculation_mode: rule.group_calculation_mode,
     base_price: rule.base_price === null ? "" : String(rule.base_price),
     commission_type: rule.commission_type,
     commission_value: String(rule.commission_value),
-    status: rule.status,
+    active: rule.active,
     notes: rule.notes ?? "",
     change_reason: ""
   };
@@ -116,7 +116,7 @@ function estimateCommission(basePrice?: string, type?: string, value?: string) {
     return 0;
   }
 
-  if (type === "fixed") {
+  if (type === "valor_fixo") {
     return commission;
   }
 
@@ -171,7 +171,7 @@ export function EmployeesManager({
       return true;
     }
 
-    return rule.status === statusFilter;
+    return statusFilter === "active" ? rule.active : !rule.active;
   });
 
   const estimatedCommission = estimateCommission(
@@ -197,7 +197,7 @@ export function EmployeesManager({
       service?.default_price ?? service?.price ?? service?.promotional_price ?? null;
     const groupPrice = service?.promotional_price ?? individualPrice;
     const nextBasePrice =
-      commissionForm.service_mode === "group" ? groupPrice : individualPrice;
+      commissionForm.modality === "grupo" ? groupPrice : individualPrice;
 
     setCommissionForm((currentForm) => ({
       ...currentForm,
@@ -215,7 +215,7 @@ export function EmployeesManager({
 
     setCommissionForm((currentForm) => ({
       ...currentForm,
-      service_mode: serviceMode,
+      modality: serviceMode,
       base_price: nextBasePrice === null ? "" : String(nextBasePrice)
     }));
   }
@@ -331,7 +331,7 @@ export function EmployeesManager({
     event.preventDefault();
     setMessage(null);
 
-    if (!commissionForm.employee_id || !commissionForm.service_id) {
+    if (!commissionForm.professional_id || !commissionForm.service_id) {
       setMessage({
         ok: false,
         message: "Selecione profissional e servico."
@@ -363,7 +363,7 @@ export function EmployeesManager({
     startTransition(async () => {
       const result = await setProfessionalCommissionStatus(
         rule.id,
-        rule.status === "active" ? "inactive" : "active",
+        !rule.active,
         reason
       );
       setMessage(result);
@@ -781,9 +781,9 @@ export function EmployeesManager({
             <label>
               Profissional
               <select
-                value={commissionForm.employee_id}
+                value={commissionForm.professional_id}
                 onChange={(event) =>
-                  updateCommissionForm("employee_id", event.target.value)
+                  updateCommissionForm("professional_id", event.target.value)
                 }
                 style={inputStyle}
               >
@@ -827,26 +827,26 @@ export function EmployeesManager({
             <label>
               Modalidade
               <select
-                value={commissionForm.service_mode}
+                value={commissionForm.modality}
                 onChange={(event) => updateCommissionMode(event.target.value)}
                 style={inputStyle}
               >
                 <option value="individual">Individual</option>
-                <option value="group">Grupo</option>
+                <option value="grupo">Grupo</option>
               </select>
             </label>
             <label>
               Grupo: calcular por
               <select
-                value={commissionForm.group_commission_basis}
+                value={commissionForm.group_calculation_mode}
                 onChange={(event) =>
-                  updateCommissionForm("group_commission_basis", event.target.value)
+                  updateCommissionForm("group_calculation_mode", event.target.value)
                 }
-                disabled={commissionForm.service_mode !== "group"}
+                disabled={commissionForm.modality !== "grupo"}
                 style={inputStyle}
               >
-                <option value="per_patient">Por paciente</option>
-                <option value="per_group">Por turma</option>
+                <option value="por_paciente">Por paciente</option>
+                <option value="por_turma">Por turma</option>
               </select>
             </label>
             <label>
@@ -869,8 +869,8 @@ export function EmployeesManager({
                 }
                 style={inputStyle}
               >
-                <option value="percent">Percentual</option>
-                <option value="fixed">Valor fixo</option>
+                <option value="percentual">Percentual</option>
+                <option value="valor_fixo">Valor fixo</option>
               </select>
             </label>
             <label>
@@ -986,8 +986,8 @@ export function EmployeesManager({
                         {rule.attendance_type}
                       </td>
                       <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
-                        {rule.service_mode === "group"
-                          ? rule.group_commission_basis === "per_group"
+                        {rule.modality === "grupo"
+                          ? rule.group_calculation_mode === "por_turma"
                             ? "Grupo por turma"
                             : "Grupo por paciente"
                           : "Individual"}
@@ -996,7 +996,7 @@ export function EmployeesManager({
                         {money(rule.base_price)}
                       </td>
                       <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
-                        {rule.commission_type === "fixed"
+                        {rule.commission_type === "valor_fixo"
                           ? money(rule.commission_value)
                           : `${rule.commission_value}%`}
                       </td>
@@ -1004,7 +1004,7 @@ export function EmployeesManager({
                         {money(rule.estimated_amount)}
                       </td>
                       <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
-                        {rule.status === "active" ? "Ativa" : "Inativa"}
+                        {rule.active ? "Ativa" : "Inativa"}
                       </td>
                       <td
                         style={{
@@ -1027,7 +1027,7 @@ export function EmployeesManager({
                             onClick={() => toggleCommissionStatus(rule)}
                             style={buttonStyle}
                           >
-                            {rule.status === "active" ? "Inativar" : "Ativar"}
+                            {rule.active ? "Inativar" : "Ativar"}
                           </button>
                           <button
                             type="button"
@@ -1063,7 +1063,7 @@ export function EmployeesManager({
             <table style={{ borderCollapse: "collapse", width: "100%" }}>
               <thead>
                 <tr>
-                  {["Profissional", "Servico", "Acao", "Antes", "Depois", "Motivo", "Data"].map(
+                  {["Profissional", "Servico", "Registro", "Antes", "Depois", "Motivo", "Data"].map(
                     (heading) => (
                       <th
                         key={heading}
@@ -1090,20 +1090,24 @@ export function EmployeesManager({
                         {item.service_name}
                       </td>
                       <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
-                        {item.action}
+                        {item.old_value === null
+                          ? "Criacao"
+                          : item.new_value === null
+                            ? "Exclusao"
+                            : "Alteracao"}
                       </td>
                       <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
-                        {item.old_commission_value === null
+                        {item.old_value === null
                           ? "-"
-                          : `${item.old_commission_value} (${money(item.old_estimated_amount)})`}
+                          : String(item.old_value)}
                       </td>
                       <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
-                        {item.new_commission_value === null
+                        {item.new_value === null
                           ? "-"
-                          : `${item.new_commission_value} (${money(item.new_estimated_amount)})`}
+                          : String(item.new_value)}
                       </td>
                       <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
-                        {item.change_reason ?? "-"}
+                        {item.reason ?? "-"}
                       </td>
                       <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
                         {new Date(item.created_at).toLocaleString("pt-BR")}

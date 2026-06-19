@@ -30,15 +30,15 @@ export type EmployeeActionResult = {
 
 export type ProfessionalCommissionFormInput = {
   id?: string;
-  employee_id: string;
+  professional_id: string;
   service_id: string;
   attendance_type: string;
-  service_mode: string;
-  group_commission_basis?: string;
+  modality: string;
+  group_calculation_mode?: string;
   base_price?: string;
   commission_type: string;
   commission_value: string;
-  status?: string;
+  active?: boolean;
   notes?: string;
   change_reason?: string;
 };
@@ -88,7 +88,7 @@ function getEstimatedCommission(
   commissionType: string,
   commissionValue: number
 ) {
-  if (commissionType === "fixed") {
+  if (commissionType === "valor_fixo") {
     return commissionValue;
   }
 
@@ -98,7 +98,7 @@ function getEstimatedCommission(
 function getCommissionPayload(
   input: ProfessionalCommissionFormInput
 ): ProfessionalCommissionInsert {
-  if (!input.employee_id) {
+  if (!input.professional_id) {
     throw new Error("Selecione um profissional.");
   }
 
@@ -113,17 +113,17 @@ function getCommissionPayload(
     throw new Error("Informe o valor da comissao.");
   }
 
-  const commissionType = input.commission_type || "percent";
+  const commissionType = input.commission_type || "percentual";
 
   return {
-    employee_id: input.employee_id,
+    professional_id: input.professional_id,
     service_id: input.service_id,
     attendance_type: input.attendance_type || "presencial",
-    service_mode: input.service_mode || "individual",
-    group_commission_basis:
-      input.service_mode === "group"
-        ? input.group_commission_basis || "per_patient"
-        : "per_patient",
+    modality: input.modality || "individual",
+    group_calculation_mode:
+      input.modality === "grupo"
+        ? input.group_calculation_mode || "por_paciente"
+        : "por_paciente",
     base_price: basePrice,
     commission_type: commissionType,
     commission_value: commissionValue,
@@ -132,7 +132,7 @@ function getCommissionPayload(
       commissionType,
       commissionValue
     ),
-    status: input.status ?? "active",
+    active: input.active ?? true,
     notes: cleanOptionalValue(input.notes)
   };
 }
@@ -153,20 +153,13 @@ async function writeCommissionHistory(
   const changedBy = await getCurrentUserId();
 
   await supabase.from("professional_service_commission_history").insert({
-    commission_rule_id: rule.id ?? null,
-    employee_id: rule.employee_id,
+    commission_id: rule.id ?? null,
+    professional_id: rule.professional_id,
     service_id: rule.service_id,
-    action,
-    old_commission_type: previousRule?.commission_type ?? null,
-    old_commission_value: previousRule?.commission_value ?? null,
-    old_estimated_amount: previousRule?.estimated_amount ?? null,
-    old_status: previousRule?.status ?? null,
-    new_commission_type: rule.commission_type,
-    new_commission_value: rule.commission_value,
-    new_estimated_amount: rule.estimated_amount,
-    new_status: rule.status,
-    change_reason: cleanOptionalValue(reason),
-    changed_by: changedBy
+    old_value: previousRule?.commission_value ?? null,
+    new_value: rule.commission_value,
+    changed_by: changedBy,
+    reason: cleanOptionalValue(reason) ?? action
   });
 }
 
@@ -338,7 +331,7 @@ export async function saveProfessionalCommission(
 
 export async function setProfessionalCommissionStatus(
   id: string,
-  status: "active" | "inactive",
+  active: boolean,
   reason?: string
 ): Promise<EmployeeActionResult> {
   try {
@@ -356,7 +349,7 @@ export async function setProfessionalCommissionStatus(
 
     const { error } = await supabase
       .from("professional_service_commissions")
-      .update({ status, updated_by: changedBy })
+      .update({ active, updated_by: changedBy })
       .eq("id", id);
 
     if (error) {
@@ -364,8 +357,8 @@ export async function setProfessionalCommissionStatus(
     }
 
     await writeCommissionHistory(
-      status === "active" ? "activated" : "deactivated",
-      { ...previousRule, status },
+      active ? "activated" : "deactivated",
+      { ...previousRule, active },
       previousRule,
       reason
     );
@@ -392,6 +385,8 @@ export async function deleteProfessionalCommission(
       return { ok: false, message: getErrorMessage(loadError) };
     }
 
+    await writeCommissionHistory("deleted", previousRule, previousRule, reason);
+
     const { error } = await supabase
       .from("professional_service_commissions")
       .delete()
@@ -401,7 +396,6 @@ export async function deleteProfessionalCommission(
       return { ok: false, message: getErrorMessage(error) };
     }
 
-    await writeCommissionHistory("deleted", previousRule, previousRule, reason);
     revalidatePath("/funcionarios");
     return { ok: true, message: "Regra de comissao excluida definitivamente." };
   } catch (error) {

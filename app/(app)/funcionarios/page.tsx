@@ -126,13 +126,14 @@ export default async function FuncionariosPage({
   const servicesById = new Map(services.map((service) => [service.id, service.name]));
   const commissionRules: CommissionRule[] = rawCommissionRules.map((rule) => ({
     ...rule,
-    employee_name: employeesById.get(rule.employee_id) ?? "Profissional nao encontrado",
+    employee_name:
+      employeesById.get(rule.professional_id) ?? "Profissional nao encontrado",
     service_name: servicesById.get(rule.service_id) ?? "Servico nao encontrado"
   }));
   const commissionHistory: CommissionHistory[] = rawCommissionHistory.map((item) => ({
     ...item,
-    employee_name: item.employee_id
-      ? employeesById.get(item.employee_id) ?? "Profissional nao encontrado"
+    employee_name: item.professional_id
+      ? employeesById.get(item.professional_id) ?? "Profissional nao encontrado"
       : "-",
     service_name: item.service_id
       ? servicesById.get(item.service_id) ?? "Servico nao encontrado"
