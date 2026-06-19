@@ -2,7 +2,7 @@ import { PageHeader } from "@/components/page-header";
 import { ServicesManager } from "@/components/services/services-manager";
 import { createClient } from "@/lib/supabase/server";
 import { getErrorMessage } from "@/lib/supabase/env";
-import { getCurrentPermissionMap } from "@/lib/permissions";
+import { getCurrentPermissionMap, isCurrentUserAdmMaster } from "@/lib/permissions";
 import type { Database } from "@/types/database";
 
 type Service = Database["public"]["Tables"]["services"]["Row"];
@@ -49,17 +49,6 @@ function appendLoadError(currentError: string | undefined, nextError: unknown) {
   return currentError ? `${currentError} ${message}` : message;
 }
 
-function isAdmRole(role?: string | null) {
-  const normalizedRole = role
-    ?.normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_|_$/g, "");
-
-  return normalizedRole === "adm_master";
-}
-
 async function readSupabaseList<T>(
   label: string,
   query: PromiseLike<{ data: T[] | null; error: unknown }>
@@ -101,35 +90,12 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
   let rawResources: Database["public"]["Tables"]["service_resources"]["Row"][] = [];
   let rawNotifications: Database["public"]["Tables"]["internal_notifications"]["Row"][] = [];
   let rawAuditLogs: Database["public"]["Tables"]["service_audit_logs"]["Row"][] = [];
-  let currentUserRole: string | null = null;
   let loadError: string | undefined;
   const permissions = await getCurrentPermissionMap();
+  const isAdmMaster = await isCurrentUserAdmMaster();
 
   try {
     const supabase = await createClient();
-    const {
-      data: { user }
-    } = await supabase.auth.getUser();
-    currentUserRole =
-      typeof user?.app_metadata?.role === "string"
-        ? user.app_metadata.role
-        : typeof user?.user_metadata?.role === "string"
-          ? user.user_metadata.role
-          : null;
-
-    if (user?.email && !isAdmRole(currentUserRole)) {
-      const employeeRoleResult = await readSupabaseList<Employee>(
-        "employees",
-        supabase
-          .from("employees")
-          .select("*")
-          .eq("email", user.email)
-          .limit(1)
-      );
-
-      currentUserRole = employeeRoleResult.data[0]?.role ?? currentUserRole;
-    }
-
     let servicesQuery = supabase
       .from("services")
       .select("*")
@@ -332,7 +298,7 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
         auditLogs={auditLogs}
         initialSearch={search}
         loadError={loadError}
-        isAdmMaster={isAdmRole(currentUserRole)}
+        isAdmMaster={isAdmMaster}
         permissions={permissions}
       />
     </div>

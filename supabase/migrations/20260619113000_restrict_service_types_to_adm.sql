@@ -5,13 +5,14 @@ security definer
 set search_path = public
 as $$
   select
-    coalesce(auth.jwt() -> 'app_metadata' ->> 'role', '') = 'adm_master'
-    or coalesce(auth.jwt() -> 'user_metadata' ->> 'role', '') = 'adm_master'
+    lower(coalesce(auth.jwt() ->> 'email', '')) = 'admin@clinica.com'
+    or lower(replace(coalesce(auth.jwt() -> 'app_metadata' ->> 'role', ''), ' ', '_')) in ('adm_master', 'admin_master')
+    or lower(replace(coalesce(auth.jwt() -> 'user_metadata' ->> 'role', ''), ' ', '_')) in ('adm_master', 'admin_master')
     or exists (
       select 1
       from public.employees
       where lower(public.employees.email) = lower(auth.jwt() ->> 'email')
-        and lower(replace(public.employees.role, ' ', '_')) = 'adm_master'
+        and lower(replace(public.employees.role, ' ', '_')) in ('adm_master', 'admin_master')
     );
 $$;
 

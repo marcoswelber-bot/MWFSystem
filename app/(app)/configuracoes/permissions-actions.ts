@@ -5,10 +5,11 @@ import { createClient } from "@/lib/supabase/server";
 import { getErrorMessage } from "@/lib/supabase/env";
 import {
   permissionModules,
+  isAdmEmail,
   type PermissionModuleKey,
   type PermissionSet
 } from "@/lib/permission-modules";
-import { assertAdmMaster, isAdmRole } from "@/lib/permissions";
+import { assertAdmMaster, getCurrentEmployee, isAdmRole } from "@/lib/permissions";
 import type { Database } from "@/types/database";
 
 type EmployeeUpdate = Database["public"]["Tables"]["employees"]["Update"];
@@ -44,6 +45,10 @@ function toStoredRole(role: string) {
     return "adm_master";
   }
 
+  if (normalizedRole === "admin_master") {
+    return "adm_master";
+  }
+
   if (normalizedRole === "administrador") {
     return "Administrador";
   }
@@ -63,11 +68,11 @@ function toStoredRole(role: string) {
   throw new Error("Cargo invalido.");
 }
 
-async function getEmployeeRole(employeeId: string) {
+async function getEmployeeAccess(employeeId: string) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("employees")
-    .select("role")
+    .select("id,email,role")
     .eq("id", employeeId)
     .maybeSingle();
 
@@ -75,7 +80,24 @@ async function getEmployeeRole(employeeId: string) {
     throw error;
   }
 
-  return data?.role ?? null;
+  return data;
+}
+
+async function assertCanManageEmployeeAccess(employeeId: string) {
+  const { user, employee: currentEmployee } = await getCurrentEmployee();
+  const targetEmployee = await getEmployeeAccess(employeeId);
+
+  if (
+    targetEmployee &&
+    (isAdmRole(targetEmployee.role) ||
+      isAdmEmail(targetEmployee.email) ||
+      targetEmployee.id === currentEmployee?.id ||
+      targetEmployee.email?.toLowerCase() === user?.email?.toLowerCase())
+  ) {
+    throw new Error("Nao e permitido editar ou remover permissoes do proprio ADM Master.");
+  }
+
+  return targetEmployee;
 }
 
 export async function updateEmployeeRole(
@@ -85,11 +107,27 @@ export async function updateEmployeeRole(
   try {
     await assertAdmMaster();
 
-    const currentRole = await getEmployeeRole(employeeId);
+    const { user, employee: currentEmployee } = await getCurrentEmployee();
+    const targetEmployee = await getEmployeeAccess(employeeId);
+    const currentRole = targetEmployee?.role ?? null;
     const nextRole = toStoredRole(role);
 
-    if (isAdmRole(currentRole) && nextRole !== "adm_master") {
-      throw new Error("O ADM Master nao pode perder o proprio acesso total.");
+    if (
+      targetEmployee?.id === currentEmployee?.id ||
+      targetEmployee?.email?.toLowerCase() === user?.email?.toLowerCase()
+    ) {
+      throw new Error("Nao e permitido alterar o proprio cargo do ADM Master.");
+    }
+
+    if (
+      (isAdmRole(currentRole) || isAdmEmail(targetEmployee?.email)) &&
+      nextRole !== "adm_master"
+    ) {
+      throw new Error("O ADM Master nao pode perder o acesso total.");
+    }
+
+    if (isAdmEmail(targetEmployee?.email) && nextRole !== "adm_master") {
+      throw new Error("O usuario admin@clinica.com deve permanecer ADM Master.");
     }
 
     const payload: EmployeeUpdate = { role: nextRole };
@@ -117,11 +155,7 @@ export async function saveUserPermissions(
   try {
     await assertAdmMaster();
 
-    const currentRole = await getEmployeeRole(employeeId);
-
-    if (isAdmRole(currentRole)) {
-      throw new Error("O ADM Master sempre tem acesso total e nao deve ser limitado.");
-    }
+    await assertCanManageEmployeeAccess(employeeId);
 
     const supabase = await createClient();
     const rows = permissionModules.map((module) => {
@@ -160,11 +194,7 @@ export async function copyUserPermissions(
   try {
     await assertAdmMaster();
 
-    const targetRole = await getEmployeeRole(targetEmployeeId);
-
-    if (isAdmRole(targetRole)) {
-      throw new Error("O ADM Master sempre tem acesso total e nao deve ser limitado.");
-    }
+    await assertCanManageEmployeeAccess(targetEmployeeId);
 
     const supabase = await createClient();
     const { data, error: loadError } = await supabase

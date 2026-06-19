@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   getEmptyPermissionMap,
   getFullPermissionMap,
+  isAdmEmail,
   isAdmRole,
   type PermissionAction,
   type PermissionModuleKey,
@@ -12,7 +13,7 @@ import type { Database } from "@/types/database";
 type Employee = Database["public"]["Tables"]["employees"]["Row"];
 type UserPermission = Database["public"]["Tables"]["user_permissions"]["Row"];
 
-export { getEmptyPermissionMap, getFullPermissionMap, isAdmRole };
+export { getEmptyPermissionMap, getFullPermissionMap, isAdmEmail, isAdmRole };
 export type { PermissionMap } from "@/lib/permission-modules";
 
 function rowToPermissionSet(row: UserPermission): PermissionSet {
@@ -53,7 +54,11 @@ export async function isCurrentUserAdmMaster() {
         ? user.user_metadata.role
         : null;
 
-  return isAdmRole(metadataRole) || isAdmRole(employee?.role);
+  return (
+    isAdmEmail(user?.email) ||
+    isAdmRole(metadataRole) ||
+    isAdmRole(employee?.role)
+  );
 }
 
 export async function getCurrentPermissionMap() {

@@ -67,7 +67,11 @@ export function isAdmRole(role?: string | null) {
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_|_$/g, "");
 
-  return normalizedRole === "adm_master";
+  return normalizedRole === "adm_master" || normalizedRole === "admin_master";
+}
+
+export function isAdmEmail(email?: string | null) {
+  return email?.trim().toLowerCase() === "admin@clinica.com";
 }
 
 export type PermissionMap = Record<PermissionModuleKey, PermissionSet>;

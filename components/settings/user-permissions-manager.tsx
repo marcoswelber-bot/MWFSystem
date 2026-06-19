@@ -15,6 +15,7 @@ import {
   permissionActions,
   permissionModules,
   getEmptyPermissionMap,
+  isAdmEmail,
   isAdmRole,
   type PermissionAction,
   type PermissionMap,
@@ -65,7 +66,8 @@ export function UserPermissionsManager({
   const selectedEmployee = employees.find(
     (employee) => employee.id === selectedEmployeeId
   );
-  const selectedIsAdmMaster = isAdmRole(selectedEmployee?.role);
+  const selectedIsAdmMaster =
+    isAdmRole(selectedEmployee?.role) || isAdmEmail(selectedEmployee?.email);
 
   const inputStyle: React.CSSProperties = {
     border: "1px solid hsl(var(--input))",
