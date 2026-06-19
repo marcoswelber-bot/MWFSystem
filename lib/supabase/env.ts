@@ -54,3 +54,24 @@ export function getErrorMessage(error: unknown): string {
 
   return "Unknown Supabase error";
 }
+
+export function isMissingSupabaseTableError(
+  error: unknown,
+  tableName?: string
+) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const record = error as Record<string, unknown>;
+  const message = typeof record.message === "string" ? record.message : "";
+  const details = typeof record.details === "string" ? record.details : "";
+  const combined = `${message} ${details}`.toLowerCase();
+  const normalizedTableName = tableName?.toLowerCase();
+
+  return (
+    record.code === "PGRST205" ||
+    combined.includes("could not find the table") ||
+    (normalizedTableName ? combined.includes(normalizedTableName) : false)
+  );
+}

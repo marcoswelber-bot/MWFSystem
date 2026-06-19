@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getErrorMessage } from "@/lib/supabase/env";
+import { getErrorMessage, isMissingSupabaseTableError } from "@/lib/supabase/env";
 import {
   getEmptyPermissionMap,
   type PermissionMap
@@ -70,9 +70,14 @@ export async function loadPermissionsPageData() {
     }
 
     if (permissionsResult.error) {
-      loadError = loadError
-        ? `${loadError} ${getErrorMessage(permissionsResult.error)}`
+      const permissionsError = isMissingSupabaseTableError(
+        permissionsResult.error,
+        "user_permissions"
+      )
+        ? "A tabela public.user_permissions ainda nao existe no Supabase de producao. A pagina foi carregada com permissoes vazias ate a tabela ser criada."
         : getErrorMessage(permissionsResult.error);
+
+      loadError = loadError ? `${loadError} ${permissionsError}` : permissionsError;
     } else {
       permissionRows = Array.isArray(permissionsResult.data)
         ? permissionsResult.data

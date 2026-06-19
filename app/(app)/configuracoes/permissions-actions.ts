@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getErrorMessage } from "@/lib/supabase/env";
+import { getErrorMessage, isMissingSupabaseTableError } from "@/lib/supabase/env";
 import {
   permissionModules,
   getEmptyPermissionMap,
@@ -19,6 +19,14 @@ export type PermissionActionResult = {
   ok: boolean;
   message: string;
 };
+
+function getPermissionTableErrorMessage(error: unknown) {
+  if (isMissingSupabaseTableError(error, "user_permissions")) {
+    return "A tabela public.user_permissions nao existe no Supabase de producao. Execute a migration SQL para criar a tabela antes de salvar permissoes.";
+  }
+
+  return getErrorMessage(error);
+}
 
 function normalizeRole(role?: string | null) {
   return role
@@ -170,7 +178,7 @@ export async function saveUserPermissions(
       .upsert(rows, { onConflict: "employee_id,module_key" });
 
     if (error) {
-      return { ok: false, message: getErrorMessage(error) };
+      return { ok: false, message: getPermissionTableErrorMessage(error) };
     }
 
     revalidatePath("/configuracoes");
@@ -196,7 +204,7 @@ export async function copyUserPermissions(
       .eq("employee_id", sourceEmployeeId);
 
     if (loadError) {
-      return { ok: false, message: getErrorMessage(loadError) };
+      return { ok: false, message: getPermissionTableErrorMessage(loadError) };
     }
 
     const rows = permissionModules.map((module) => {
@@ -220,7 +228,7 @@ export async function copyUserPermissions(
       .upsert(rows, { onConflict: "employee_id,module_key" });
 
     if (error) {
-      return { ok: false, message: getErrorMessage(error) };
+      return { ok: false, message: getPermissionTableErrorMessage(error) };
     }
 
     revalidatePath("/configuracoes");
