@@ -16,60 +16,70 @@ export const appNavigation = [
   {
     title: "Dashboard",
     href: "/dashboard",
-    icon: LayoutDashboard
+    icon: LayoutDashboard,
+    moduleKey: "dashboard"
   },
   {
     title: "Pacientes",
     href: "/pacientes",
-    icon: UsersRound
+    icon: UsersRound,
+    moduleKey: "pacientes"
   },
   {
-    title: "ClÃ­nicas",
+    title: "Clinicas",
     href: "/clinicas",
-    icon: Building2
+    icon: Building2,
+    moduleKey: "clinicas"
   },
   {
     title: "Agenda",
     href: "/agenda",
-    icon: CalendarDays
+    icon: CalendarDays,
+    moduleKey: "agenda"
   },
   {
-    title: "Funcionários",
+    title: "Funcionarios",
     href: "/funcionarios",
-    icon: Stethoscope
+    icon: Stethoscope,
+    moduleKey: "funcionarios"
   },
   {
     title: "Financeiro",
     href: "/financeiro",
-    icon: WalletCards
+    icon: WalletCards,
+    moduleKey: "financeiro"
   },
   {
-    title: "Serviços",
+    title: "Servicos",
     href: "/servicos",
-    icon: BriefcaseMedical
+    icon: BriefcaseMedical,
+    moduleKey: "servicos"
   },
   {
-    title: "Prontuários",
+    title: "Prontuarios",
     href: "/prontuarios",
-    icon: ClipboardList
+    icon: ClipboardList,
+    moduleKey: "prontuarios"
   },
   {
-    title: "Relatórios",
+    title: "Relatorios",
     href: "/relatorios",
-    icon: BarChart3
+    icon: BarChart3,
+    moduleKey: "relatorios"
   },
   {
-    title: "Configurações",
+    title: "Configuracoes",
     href: "/configuracoes",
-    icon: Settings
+    icon: Settings,
+    moduleKey: "configuracoes"
   }
 ] as const;
 
 export const dashboardStats = [
   {
-    label: "Clínicas ativas",
+    label: "Clinicas ativas",
     value: "04",
-    helper: "Operação multiclínica",
+    helper: "Operacao multiclinica",
     icon: CreditCard
   },
   {
@@ -85,7 +95,7 @@ export const dashboardStats = [
     icon: CalendarDays
   },
   {
-    label: "Receita mês",
+    label: "Receita mes",
     value: "R$ 86,4k",
     helper: "Previsto no financeiro",
     icon: WalletCards

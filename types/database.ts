@@ -887,6 +887,45 @@ export type Database = {
         };
         Relationships: [];
       };
+      user_permissions: {
+        Row: {
+          id: string;
+          employee_id: string;
+          module_key: string;
+          can_view: boolean;
+          can_create: boolean;
+          can_edit: boolean;
+          can_delete: boolean;
+          can_toggle: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          employee_id: string;
+          module_key: string;
+          can_view?: boolean;
+          can_create?: boolean;
+          can_edit?: boolean;
+          can_delete?: boolean;
+          can_toggle?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          employee_id?: string;
+          module_key?: string;
+          can_view?: boolean;
+          can_create?: boolean;
+          can_edit?: boolean;
+          can_delete?: boolean;
+          can_toggle?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       medical_records: {
         Row: {
           id: string;

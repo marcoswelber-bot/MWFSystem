@@ -9,16 +9,25 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { appNavigation } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
+import type { PermissionModuleKey } from "@/lib/permission-modules";
 
 type AppShellProps = {
   children: React.ReactNode;
   userEmail?: string;
+  visibleModules?: PermissionModuleKey[];
 };
 
-export function AppShell({ children, userEmail }: AppShellProps) {
+export function AppShell({ children, userEmail, visibleModules }: AppShellProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = React.useState(false);
   const [mobileOpen, setMobileOpen] = React.useState(false);
+  const visibleModuleSet = React.useMemo(
+    () => new Set(visibleModules ?? appNavigation.map((item) => item.moduleKey)),
+    [visibleModules]
+  );
+  const visibleNavigation = appNavigation.filter((item) =>
+    visibleModuleSet.has(item.moduleKey)
+  );
 
   React.useEffect(() => {
     setMobileOpen(false);
@@ -82,7 +91,7 @@ export function AppShell({ children, userEmail }: AppShellProps) {
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-        {appNavigation.map((item) => {
+        {visibleNavigation.map((item) => {
           const Icon = item.icon;
           const active = pathname === item.href;
 

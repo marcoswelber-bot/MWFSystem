@@ -13,6 +13,7 @@ import {
   type CrudTable,
   type CrudValue
 } from "@/lib/actions/entity-crud";
+import type { PermissionSet } from "@/lib/permission-modules";
 
 export type EntityRecord = {
   id: string;
@@ -51,6 +52,7 @@ type EntityCrudManagerProps = {
   columns: EntityColumn[];
   initialSearch: string;
   loadError?: string;
+  permissions?: PermissionSet;
 };
 
 type StatusFilter = "all" | "active" | "inactive";
@@ -112,7 +114,8 @@ export function EntityCrudManager({
   fields,
   columns,
   initialSearch,
-  loadError
+  loadError,
+  permissions
 }: EntityCrudManagerProps) {
   const router = useRouter();
   const [isPending, startTransition] = React.useTransition();
@@ -124,6 +127,10 @@ export function EntityCrudManager({
   const [message, setMessage] = React.useState<CrudActionResult | null>(
     loadError ? { ok: false, message: loadError } : null
   );
+  const canCreate = permissions?.create ?? true;
+  const canEdit = permissions?.edit ?? true;
+  const canDelete = permissions?.delete ?? true;
+  const canToggle = permissions?.toggle ?? true;
 
   const activeCount = records.filter((record) => record.status === "active").length;
   const inactiveCount = records.filter(
@@ -284,17 +291,19 @@ export function EntityCrudManager({
           </button>
         </form>
 
-        <button
-          type="button"
-          onClick={openCreateForm}
-          style={{
-            ...buttonStyle,
-            background: "hsl(var(--primary))",
-            color: "hsl(var(--primary-foreground))"
-          }}
-        >
-          {newButtonLabel}
-        </button>
+        {canCreate ? (
+          <button
+            type="button"
+            onClick={openCreateForm}
+            style={{
+              ...buttonStyle,
+              background: "hsl(var(--primary))",
+              color: "hsl(var(--primary-foreground))"
+            }}
+          >
+            {newButtonLabel}
+          </button>
+        ) : null}
       </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
@@ -511,33 +520,39 @@ export function EntityCrudManager({
                     }}
                   >
                     <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "flex-end" }}>
-                      <button
-                        type="button"
-                        onClick={() => openEditForm(record)}
-                        style={buttonStyle}
-                      >
-                        Editar
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isPending}
-                        onClick={() => toggleStatus(record)}
-                        style={buttonStyle}
-                      >
-                        {record.status === "active" ? "Inativar" : "Ativar"}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isPending}
-                        onClick={() => deleteRecord(record)}
-                        style={{
-                          ...buttonStyle,
-                          borderColor: "hsl(var(--destructive))",
-                          color: "hsl(var(--destructive))"
-                        }}
-                      >
-                        Excluir definitivo
-                      </button>
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          onClick={() => openEditForm(record)}
+                          style={buttonStyle}
+                        >
+                          Editar
+                        </button>
+                      ) : null}
+                      {canToggle ? (
+                        <button
+                          type="button"
+                          disabled={isPending}
+                          onClick={() => toggleStatus(record)}
+                          style={buttonStyle}
+                        >
+                          {record.status === "active" ? "Inativar" : "Ativar"}
+                        </button>
+                      ) : null}
+                      {canDelete ? (
+                        <button
+                          type="button"
+                          disabled={isPending}
+                          onClick={() => deleteRecord(record)}
+                          style={{
+                            ...buttonStyle,
+                            borderColor: "hsl(var(--destructive))",
+                            color: "hsl(var(--destructive))"
+                          }}
+                        >
+                          Excluir definitivo
+                        </button>
+                      ) : null}
                     </div>
                   </td>
                 </tr>

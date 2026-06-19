@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import type { Database } from "@/types/database";
+import type { PermissionSet } from "@/lib/permission-modules";
 import {
   activateEmployee,
   createEmployee,
@@ -39,6 +40,8 @@ type EmployeesManagerProps = {
   commissionHistory: CommissionHistory[];
   initialSearch: string;
   loadError?: string;
+  permissions?: PermissionSet;
+  commissionPermissions?: PermissionSet;
 };
 
 const emptyForm: EmployeeFormInput = {
@@ -133,7 +136,9 @@ export function EmployeesManager({
   commissionRules,
   commissionHistory,
   initialSearch,
-  loadError
+  loadError,
+  permissions,
+  commissionPermissions
 }: EmployeesManagerProps) {
   const router = useRouter();
   const [isPending, startTransition] = React.useTransition();
@@ -150,6 +155,14 @@ export function EmployeesManager({
   const [message, setMessage] = React.useState<EmployeeActionResult | null>(
     loadError ? { ok: false, message: loadError } : null
   );
+  const canCreate = permissions?.create ?? true;
+  const canEdit = permissions?.edit ?? true;
+  const canDelete = permissions?.delete ?? true;
+  const canToggle = permissions?.toggle ?? true;
+  const canCreateCommission = commissionPermissions?.create ?? true;
+  const canEditCommission = commissionPermissions?.edit ?? true;
+  const canDeleteCommission = commissionPermissions?.delete ?? true;
+  const canToggleCommission = commissionPermissions?.toggle ?? true;
 
   const activeCount = employees.filter(
     (employee) => employee.status === "active"
@@ -436,17 +449,19 @@ export function EmployeesManager({
           </button>
         </form>
 
-        <button
-          type="button"
-          onClick={openCreateForm}
-          style={{
-            ...buttonStyle,
-            background: "hsl(var(--primary))",
-            color: "hsl(var(--primary-foreground))"
-          }}
-        >
-          Novo funcionario
-        </button>
+        {canCreate ? (
+          <button
+            type="button"
+            onClick={openCreateForm}
+            style={{
+              ...buttonStyle,
+              background: "hsl(var(--primary))",
+              color: "hsl(var(--primary-foreground))"
+            }}
+          >
+            Novo funcionario
+          </button>
+        ) : null}
       </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
@@ -701,33 +716,39 @@ export function EmployeesManager({
                         }}
                       >
                         <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "flex-end" }}>
-                          <button
-                            type="button"
-                            onClick={() => openEditForm(employee)}
-                            style={buttonStyle}
-                          >
-                            Editar
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isPending}
-                            onClick={() => toggleEmployeeStatus(employee)}
-                            style={buttonStyle}
-                          >
-                            {employee.status === "active" ? "Inativar" : "Ativar"}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isPending}
-                            onClick={() => handleDeleteEmployee(employee)}
-                            style={{
-                              ...buttonStyle,
-                              borderColor: "hsl(var(--destructive))",
-                              color: "hsl(var(--destructive))"
-                            }}
-                          >
-                            Excluir definitivo
-                          </button>
+                          {canEdit ? (
+                            <button
+                              type="button"
+                              onClick={() => openEditForm(employee)}
+                              style={buttonStyle}
+                            >
+                              Editar
+                            </button>
+                          ) : null}
+                          {canToggle ? (
+                            <button
+                              type="button"
+                              disabled={isPending}
+                              onClick={() => toggleEmployeeStatus(employee)}
+                              style={buttonStyle}
+                            >
+                              {employee.status === "active" ? "Inativar" : "Ativar"}
+                            </button>
+                          ) : null}
+                          {canDelete ? (
+                            <button
+                              type="button"
+                              disabled={isPending}
+                              onClick={() => handleDeleteEmployee(employee)}
+                              style={{
+                                ...buttonStyle,
+                                borderColor: "hsl(var(--destructive))",
+                                color: "hsl(var(--destructive))"
+                              }}
+                            >
+                              Excluir definitivo
+                            </button>
+                          ) : null}
                         </div>
                       </td>
                     </tr>
@@ -765,9 +786,11 @@ export function EmployeesManager({
                 modalidade.
               </p>
             </div>
-            <button type="button" onClick={openCreateCommission} style={buttonStyle}>
-              Nova regra
-            </button>
+            {canCreateCommission ? (
+              <button type="button" onClick={openCreateCommission} style={buttonStyle}>
+                Nova regra
+              </button>
+            ) : null}
           </div>
 
           <form
@@ -926,9 +949,14 @@ export function EmployeesManager({
                   Cancelar edicao
                 </button>
               ) : null}
-              <button
-                type="submit"
-                disabled={isPending}
+                  <button
+                    type="submit"
+                    disabled={
+                      isPending ||
+                      (editingCommission
+                        ? !canEditCommission
+                        : !canCreateCommission)
+                    }
                 style={{
                   ...buttonStyle,
                   background: "hsl(var(--primary))",
@@ -1014,33 +1042,39 @@ export function EmployeesManager({
                         }}
                       >
                         <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "flex-end" }}>
-                          <button
-                            type="button"
-                            onClick={() => openEditCommission(rule)}
-                            style={buttonStyle}
-                          >
-                            Editar
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isPending}
-                            onClick={() => toggleCommissionStatus(rule)}
-                            style={buttonStyle}
-                          >
-                            {rule.active ? "Inativar" : "Ativar"}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isPending}
-                            onClick={() => handleDeleteCommission(rule)}
-                            style={{
-                              ...buttonStyle,
-                              borderColor: "hsl(var(--destructive))",
-                              color: "hsl(var(--destructive))"
-                            }}
-                          >
-                            Excluir
-                          </button>
+                          {canEditCommission ? (
+                            <button
+                              type="button"
+                              onClick={() => openEditCommission(rule)}
+                              style={buttonStyle}
+                            >
+                              Editar
+                            </button>
+                          ) : null}
+                          {canToggleCommission ? (
+                            <button
+                              type="button"
+                              disabled={isPending}
+                              onClick={() => toggleCommissionStatus(rule)}
+                              style={buttonStyle}
+                            >
+                              {rule.active ? "Inativar" : "Ativar"}
+                            </button>
+                          ) : null}
+                          {canDeleteCommission ? (
+                            <button
+                              type="button"
+                              disabled={isPending}
+                              onClick={() => handleDeleteCommission(rule)}
+                              style={{
+                                ...buttonStyle,
+                                borderColor: "hsl(var(--destructive))",
+                                color: "hsl(var(--destructive))"
+                              }}
+                            >
+                              Excluir
+                            </button>
+                          ) : null}
                         </div>
                       </td>
                     </tr>

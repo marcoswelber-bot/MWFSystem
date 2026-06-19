@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getErrorMessage } from "@/lib/supabase/env";
+import { assertCan, isAdmRole } from "@/lib/permissions";
 import type { Database } from "@/types/database";
 
 type EmployeeInsert = Database["public"]["Tables"]["employees"]["Insert"];
@@ -167,8 +168,12 @@ export async function createEmployee(
   input: EmployeeFormInput
 ): Promise<EmployeeActionResult> {
   try {
+    await assertCan("funcionarios", "create");
     const supabase = await createClient();
     const payload = getEmployeePayload(input);
+    if (isAdmRole(payload.role)) {
+      throw new Error("Use Permissoes de Usuarios para definir ADM Master.");
+    }
     const { error } = await supabase.from("employees").insert(payload);
 
     if (error) {
@@ -187,8 +192,12 @@ export async function updateEmployee(
   input: EmployeeFormInput
 ): Promise<EmployeeActionResult> {
   try {
+    await assertCan("funcionarios", "edit");
     const supabase = await createClient();
     const payload = getEmployeePayload(input) satisfies EmployeeUpdate;
+    if (isAdmRole(payload.role)) {
+      throw new Error("Use Permissoes de Usuarios para definir ADM Master.");
+    }
     const { error } = await supabase
       .from("employees")
       .update(payload)
@@ -209,6 +218,7 @@ export async function deactivateEmployee(
   id: string
 ): Promise<EmployeeActionResult> {
   try {
+    await assertCan("funcionarios", "toggle");
     const supabase = await createClient();
     const { error } = await supabase
       .from("employees")
@@ -230,6 +240,7 @@ export async function activateEmployee(
   id: string
 ): Promise<EmployeeActionResult> {
   try {
+    await assertCan("funcionarios", "toggle");
     const supabase = await createClient();
     const { error } = await supabase
       .from("employees")
@@ -251,6 +262,7 @@ export async function deleteEmployee(
   id: string
 ): Promise<EmployeeActionResult> {
   try {
+    await assertCan("funcionarios", "delete");
     const supabase = await createClient();
     const { error } = await supabase.from("employees").delete().eq("id", id);
 
@@ -269,6 +281,7 @@ export async function saveProfessionalCommission(
   input: ProfessionalCommissionFormInput
 ): Promise<EmployeeActionResult> {
   try {
+    await assertCan("comissoes", input.id ? "edit" : "create");
     const supabase = await createClient();
     const payload = getCommissionPayload(input);
     const changedBy = await getCurrentUserId();
@@ -335,6 +348,7 @@ export async function setProfessionalCommissionStatus(
   reason?: string
 ): Promise<EmployeeActionResult> {
   try {
+    await assertCan("comissoes", "toggle");
     const supabase = await createClient();
     const changedBy = await getCurrentUserId();
     const { data: previousRule, error: loadError } = await supabase
@@ -374,6 +388,7 @@ export async function deleteProfessionalCommission(
   reason?: string
 ): Promise<EmployeeActionResult> {
   try {
+    await assertCan("comissoes", "delete");
     const supabase = await createClient();
     const { data: previousRule, error: loadError } = await supabase
       .from("professional_service_commissions")

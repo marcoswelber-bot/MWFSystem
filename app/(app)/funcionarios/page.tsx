@@ -2,6 +2,7 @@ import { EmployeesManager } from "@/components/employees/employees-manager";
 import { PageHeader } from "@/components/page-header";
 import { createClient } from "@/lib/supabase/server";
 import { getErrorMessage } from "@/lib/supabase/env";
+import { getCurrentPermissionMap } from "@/lib/permissions";
 import type { Database } from "@/types/database";
 
 type Employee = Database["public"]["Tables"]["employees"]["Row"];
@@ -57,6 +58,7 @@ export default async function FuncionariosPage({
 }: FuncionariosPageProps) {
   const params = await searchParams;
   const search = params.q?.trim() ?? "";
+  const permissions = await getCurrentPermissionMap();
   let employees: Employee[] = [];
   let services: Service[] = [];
   let rawCommissionRules: Database["public"]["Tables"]["professional_service_commissions"]["Row"][] = [];
@@ -155,6 +157,8 @@ export default async function FuncionariosPage({
         commissionHistory={commissionHistory}
         initialSearch={search}
         loadError={loadError}
+        permissions={permissions.funcionarios}
+        commissionPermissions={permissions.comissoes}
       />
     </div>
   );

@@ -3,6 +3,11 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import type { Database } from "@/types/database";
+import type {
+  PermissionAction,
+  PermissionMap,
+  PermissionModuleKey
+} from "@/lib/permission-modules";
 import {
   createCategory,
   createCommercialRule,
@@ -90,6 +95,7 @@ type ServicesManagerProps = {
   initialSearch: string;
   loadError?: string;
   isAdmMaster: boolean;
+  permissions?: PermissionMap;
 };
 
 const emptyServiceForm: ServiceFormInput = {
@@ -290,7 +296,8 @@ export function ServicesManager({
   auditLogs,
   initialSearch,
   loadError,
-  isAdmMaster
+  isAdmMaster,
+  permissions
 }: ServicesManagerProps) {
   const router = useRouter();
   const [isPending, startTransition] = React.useTransition();
@@ -559,6 +566,25 @@ export function ServicesManager({
   const activeCategories = categories.filter(
     (category) => category.status === "active"
   );
+  const can = (moduleKey: PermissionModuleKey, action: PermissionAction) =>
+    permissions?.[moduleKey]?.[action] ?? true;
+  const visibleTabs = tabs.filter(([value]) => {
+    const moduleByTab: Record<Tab, PermissionModuleKey> = {
+      basicServices: "servicos_basicos",
+      advancedServices: "servicos_avancados",
+      serviceTypes: "tipos_servico",
+      professionals: "comissoes",
+      packages: "pacotes",
+      discounts: "descontos",
+      rules: "regras",
+      protocols: "protocolos",
+      resources: "recursos",
+      notifications: "notificacoes",
+      history: "servicos"
+    };
+
+    return can(moduleByTab[value], "view");
+  });
 
   return (
     <div style={{ display: "grid", gap: "24px" }}>
@@ -586,21 +612,23 @@ export function ServicesManager({
           </button>
         </form>
 
-        <button
-          type="button"
-          onClick={openCreateService}
-          style={{
-            ...buttonStyle,
-            background: "hsl(var(--primary))",
-            color: "hsl(var(--primary-foreground))"
-          }}
-        >
-          Novo servico
-        </button>
+        {can("servicos", "create") ? (
+          <button
+            type="button"
+            onClick={openCreateService}
+            style={{
+              ...buttonStyle,
+              background: "hsl(var(--primary))",
+              color: "hsl(var(--primary-foreground))"
+            }}
+          >
+            Novo servico
+          </button>
+        ) : null}
       </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-        {tabs.map(([value, label]) => (
+        {visibleTabs.map(([value, label]) => (
           <button
             key={value}
             type="button"
@@ -971,29 +999,35 @@ export function ServicesManager({
                 : "-",
               service.status === "active" ? "Ativo" : "Inativo",
               <ActionGroup key={service.id}>
-                <button type="button" onClick={() => openEditService(service)} style={buttonStyle}>
-                  Editar
-                </button>
-                <button
-                  type="button"
-                  disabled={isPending}
-                  onClick={() => toggleServiceStatus(service)}
-                  style={buttonStyle}
-                >
-                  {service.status === "active" ? "Inativar" : "Ativar"}
-                </button>
-                <button
-                  type="button"
-                  disabled={isPending}
-                  onClick={() => removeService(service)}
-                  style={{
-                    ...buttonStyle,
-                    borderColor: "hsl(var(--destructive))",
-                    color: "hsl(var(--destructive))"
-                  }}
-                >
-                  Excluir definitivo
-                </button>
+                {can("servicos", "edit") ? (
+                  <button type="button" onClick={() => openEditService(service)} style={buttonStyle}>
+                    Editar
+                  </button>
+                ) : null}
+                {can("servicos", "toggle") ? (
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={() => toggleServiceStatus(service)}
+                    style={buttonStyle}
+                  >
+                    {service.status === "active" ? "Inativar" : "Ativar"}
+                  </button>
+                ) : null}
+                {can("servicos", "delete") ? (
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={() => removeService(service)}
+                    style={{
+                      ...buttonStyle,
+                      borderColor: "hsl(var(--destructive))",
+                      color: "hsl(var(--destructive))"
+                    }}
+                  >
+                    Excluir definitivo
+                  </button>
+                ) : null}
               </ActionGroup>
             ])}
             emptyText="Nenhum servico encontrado."

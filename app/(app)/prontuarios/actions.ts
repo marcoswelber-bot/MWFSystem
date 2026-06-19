@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getErrorMessage } from "@/lib/supabase/env";
+import { assertCan } from "@/lib/permissions";
 import type { Database } from "@/types/database";
 
 type MedicalRecordInsert =
@@ -58,6 +59,7 @@ export async function createMedicalRecord(
   input: MedicalRecordFormInput
 ): Promise<MedicalRecordActionResult> {
   try {
+    await assertCan("prontuarios", "create");
     const supabase = await createClient();
     const payload = getMedicalRecordPayload(input);
     const { error } = await supabase.from("medical_records").insert(payload);
@@ -78,6 +80,7 @@ export async function updateMedicalRecord(
   input: MedicalRecordFormInput
 ): Promise<MedicalRecordActionResult> {
   try {
+    await assertCan("prontuarios", "edit");
     const supabase = await createClient();
     const payload = getMedicalRecordPayload(input) satisfies MedicalRecordUpdate;
     const { error } = await supabase
@@ -100,6 +103,7 @@ export async function deactivateMedicalRecord(
   id: string
 ): Promise<MedicalRecordActionResult> {
   try {
+    await assertCan("prontuarios", "toggle");
     const supabase = await createClient();
     const { error } = await supabase
       .from("medical_records")
@@ -121,6 +125,7 @@ export async function activateMedicalRecord(
   id: string
 ): Promise<MedicalRecordActionResult> {
   try {
+    await assertCan("prontuarios", "toggle");
     const supabase = await createClient();
     const { error } = await supabase
       .from("medical_records")
@@ -142,6 +147,7 @@ export async function deleteMedicalRecord(
   id: string
 ): Promise<MedicalRecordActionResult> {
   try {
+    await assertCan("prontuarios", "delete");
     const supabase = await createClient();
     const { error } = await supabase
       .from("medical_records")

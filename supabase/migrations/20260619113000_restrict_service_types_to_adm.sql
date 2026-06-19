@@ -11,13 +11,7 @@ as $$
       select 1
       from public.employees
       where lower(public.employees.email) = lower(auth.jwt() ->> 'email')
-        and lower(public.employees.role) in (
-          'adm_master',
-          'admin',
-          'administrador',
-          'adm',
-          'adm master'
-        )
+        and lower(replace(public.employees.role, ' ', '_')) = 'adm_master'
     );
 $$;
 

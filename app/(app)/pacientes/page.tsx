@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/page-header";
 import { PatientsManager } from "@/components/patients/patients-manager";
 import { createClient } from "@/lib/supabase/server";
 import { getErrorMessage } from "@/lib/supabase/env";
+import { getCurrentPermissionMap } from "@/lib/permissions";
 import type { Database } from "@/types/database";
 
 type Patient = Database["public"]["Tables"]["patients"]["Row"];
@@ -21,6 +22,7 @@ export default async function PacientesPage({
 }: PacientesPageProps) {
   const params = await searchParams;
   const search = params.q?.trim() ?? "";
+  const permissions = await getCurrentPermissionMap();
   let patients: Patient[] = [];
   let loadError: string | undefined;
 
@@ -61,6 +63,7 @@ export default async function PacientesPage({
         patients={patients}
         initialSearch={search}
         loadError={loadError}
+        permissions={permissions.pacientes}
       />
     </div>
   );

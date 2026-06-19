@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import type { Database } from "@/types/database";
+import type { PermissionSet } from "@/lib/permission-modules";
 import {
   activatePatient,
   createPatient,
@@ -20,6 +21,7 @@ type PatientsManagerProps = {
   patients: Patient[];
   initialSearch: string;
   loadError?: string;
+  permissions?: PermissionSet;
 };
 
 const emptyForm: PatientFormInput = {
@@ -49,7 +51,8 @@ function patientToForm(patient: Patient): PatientFormInput {
 export function PatientsManager({
   patients,
   initialSearch,
-  loadError
+  loadError,
+  permissions
 }: PatientsManagerProps) {
   const router = useRouter();
   const [isPending, startTransition] = React.useTransition();
@@ -61,6 +64,10 @@ export function PatientsManager({
   const [message, setMessage] = React.useState<PatientActionResult | null>(
     loadError ? { ok: false, message: loadError } : null
   );
+  const canCreate = permissions?.create ?? true;
+  const canEdit = permissions?.edit ?? true;
+  const canDelete = permissions?.delete ?? true;
+  const canToggle = permissions?.toggle ?? true;
 
   const activeCount = patients.filter((patient) => patient.status === "active").length;
   const inactiveCount = patients.filter(
@@ -210,17 +217,19 @@ export function PatientsManager({
           </button>
         </form>
 
-        <button
-          type="button"
-          onClick={openCreateForm}
-          style={{
-            ...buttonStyle,
-            background: "hsl(var(--primary))",
-            color: "hsl(var(--primary-foreground))"
-          }}
-        >
-          Novo paciente
-        </button>
+        {canCreate ? (
+          <button
+            type="button"
+            onClick={openCreateForm}
+            style={{
+              ...buttonStyle,
+              background: "hsl(var(--primary))",
+              color: "hsl(var(--primary-foreground))"
+            }}
+          >
+            Novo paciente
+          </button>
+        ) : null}
       </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
@@ -445,33 +454,39 @@ export function PatientsManager({
                     }}
                   >
                     <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "flex-end" }}>
-                      <button
-                        type="button"
-                        onClick={() => openEditForm(patient)}
-                        style={buttonStyle}
-                      >
-                        Editar
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isPending}
-                        onClick={() => togglePatientStatus(patient)}
-                        style={buttonStyle}
-                      >
-                        {patient.status === "active" ? "Inativar" : "Ativar"}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isPending}
-                        onClick={() => handleDeletePatient(patient)}
-                        style={{
-                          ...buttonStyle,
-                          borderColor: "hsl(var(--destructive))",
-                          color: "hsl(var(--destructive))"
-                        }}
-                      >
-                        Excluir definitivo
-                      </button>
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          onClick={() => openEditForm(patient)}
+                          style={buttonStyle}
+                        >
+                          Editar
+                        </button>
+                      ) : null}
+                      {canToggle ? (
+                        <button
+                          type="button"
+                          disabled={isPending}
+                          onClick={() => togglePatientStatus(patient)}
+                          style={buttonStyle}
+                        >
+                          {patient.status === "active" ? "Inativar" : "Ativar"}
+                        </button>
+                      ) : null}
+                      {canDelete ? (
+                        <button
+                          type="button"
+                          disabled={isPending}
+                          onClick={() => handleDeletePatient(patient)}
+                          style={{
+                            ...buttonStyle,
+                            borderColor: "hsl(var(--destructive))",
+                            color: "hsl(var(--destructive))"
+                          }}
+                        >
+                          Excluir definitivo
+                        </button>
+                      ) : null}
                     </div>
                   </td>
                 </tr>

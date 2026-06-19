@@ -2,6 +2,7 @@ import { EntityCrudManager, type EntityRecord } from "@/components/entity-crud-m
 import { PageHeader } from "@/components/page-header";
 import { createClient } from "@/lib/supabase/server";
 import { getErrorMessage } from "@/lib/supabase/env";
+import { getCurrentPermissionMap } from "@/lib/permissions";
 import type { Database } from "@/types/database";
 
 type Clinic = Database["public"]["Tables"]["clinics"]["Row"];
@@ -34,6 +35,7 @@ function toEntityRecord(clinic: Clinic): EntityRecord {
 export default async function ClinicasPage({ searchParams }: ClinicasPageProps) {
   const params = await searchParams;
   const search = params.q?.trim() ?? "";
+  const permissions = await getCurrentPermissionMap();
   let clinics: Clinic[] = [];
   let loadError: string | undefined;
 
@@ -80,6 +82,7 @@ export default async function ClinicasPage({ searchParams }: ClinicasPageProps) 
         records={clinics.map(toEntityRecord)}
         initialSearch={search}
         loadError={loadError}
+        permissions={permissions.clinicas}
         fields={[
           { name: "name", label: "Nome", required: true },
           { name: "cnpj", label: "CNPJ" },

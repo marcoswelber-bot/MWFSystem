@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/page-header";
 import { ServicesManager } from "@/components/services/services-manager";
 import { createClient } from "@/lib/supabase/server";
 import { getErrorMessage } from "@/lib/supabase/env";
+import { getCurrentPermissionMap } from "@/lib/permissions";
 import type { Database } from "@/types/database";
 
 type Service = Database["public"]["Tables"]["services"]["Row"];
@@ -56,9 +57,7 @@ function isAdmRole(role?: string | null) {
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_|_$/g, "");
 
-  return ["adm_master", "admin", "administrador", "adm"].includes(
-    normalizedRole ?? ""
-  );
+  return normalizedRole === "adm_master";
 }
 
 async function readSupabaseList<T>(
@@ -104,6 +103,7 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
   let rawAuditLogs: Database["public"]["Tables"]["service_audit_logs"]["Row"][] = [];
   let currentUserRole: string | null = null;
   let loadError: string | undefined;
+  const permissions = await getCurrentPermissionMap();
 
   try {
     const supabase = await createClient();
@@ -333,6 +333,7 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
         initialSearch={search}
         loadError={loadError}
         isAdmMaster={isAdmRole(currentUserRole)}
+        permissions={permissions}
       />
     </div>
   );

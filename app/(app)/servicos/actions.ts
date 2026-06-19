@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getErrorMessage } from "@/lib/supabase/env";
+import { assertCan } from "@/lib/permissions";
 import type { Database } from "@/types/database";
 
 type ServiceInsert = Database["public"]["Tables"]["services"]["Insert"];
@@ -165,9 +166,7 @@ function isAdmRole(role?: string | null) {
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_|_$/g, "");
 
-  return ["adm_master", "admin", "administrador", "adm"].includes(
-    normalizedRole ?? ""
-  );
+  return normalizedRole === "adm_master";
 }
 
 async function getCurrentUserRole() {
@@ -346,6 +345,7 @@ export async function createService(
   input: ServiceFormInput
 ): Promise<ServiceActionResult> {
   try {
+    await assertCan("servicos", "create");
     const supabase = await createClient();
     const payload = getServicePayload(input);
     const { data, error } = await supabase
@@ -371,6 +371,7 @@ export async function updateService(
   input: ServiceFormInput
 ): Promise<ServiceActionResult> {
   try {
+    await assertCan("servicos", "edit");
     const supabase = await createClient();
     const payload = getServicePayload(input) satisfies ServiceUpdate;
     const { error } = await supabase.from("services").update(payload).eq("id", id);
@@ -392,6 +393,7 @@ export async function setServiceStatus(
   status: "active" | "inactive"
 ): Promise<ServiceActionResult> {
   try {
+    await assertCan("servicos", "toggle");
     const supabase = await createClient();
     const { error } = await supabase.from("services").update({ status }).eq("id", id);
 
@@ -409,6 +411,7 @@ export async function setServiceStatus(
 
 export async function deleteService(id: string): Promise<ServiceActionResult> {
   try {
+    await assertCan("servicos", "delete");
     const supabase = await createClient();
     const { error } = await supabase.from("services").delete().eq("id", id);
 
@@ -502,6 +505,7 @@ export async function deleteCategory(id: string): Promise<ServiceActionResult> {
 
 export async function createProfessionalLink(input: ProfessionalLinkFormInput) {
   try {
+    await assertCan("comissoes", "create");
     if (!input.service_id || !input.employee_id) {
       throw new Error("Selecione servico e profissional.");
     }
@@ -530,6 +534,7 @@ export async function createProfessionalLink(input: ProfessionalLinkFormInput) {
 
 export async function createPackage(input: PackageFormInput) {
   try {
+    await assertCan("pacotes", "create");
     if (!input.name.trim()) {
       throw new Error("Nome do pacote e obrigatorio.");
     }
@@ -567,6 +572,7 @@ export async function createPackage(input: PackageFormInput) {
 
 export async function createDiscount(input: DiscountFormInput) {
   try {
+    await assertCan("descontos", "create");
     if (!input.name.trim()) {
       throw new Error("Nome do desconto e obrigatorio.");
     }
@@ -597,6 +603,7 @@ export async function createDiscount(input: DiscountFormInput) {
 
 export async function createCommercialRule(input: RuleFormInput) {
   try {
+    await assertCan("regras", "create");
     if (!input.name.trim()) {
       throw new Error("Nome da regra e obrigatorio.");
     }
@@ -631,6 +638,7 @@ export async function createCommercialRule(input: RuleFormInput) {
 
 export async function createProtocol(input: ProtocolFormInput) {
   try {
+    await assertCan("protocolos", "create");
     if (!input.name.trim()) {
       throw new Error("Nome do protocolo e obrigatorio.");
     }
@@ -660,6 +668,7 @@ export async function createProtocol(input: ProtocolFormInput) {
 
 export async function createResource(input: ResourceFormInput) {
   try {
+    await assertCan("recursos", "create");
     if (!input.service_id) {
       throw new Error("Selecione um servico.");
     }
@@ -691,6 +700,7 @@ export async function createResource(input: ResourceFormInput) {
 
 export async function createInternalNotification(input: NotificationFormInput) {
   try {
+    await assertCan("notificacoes", "create");
     if (!input.title.trim() || !input.message.trim()) {
       throw new Error("Titulo e mensagem sao obrigatorios.");
     }
@@ -722,6 +732,16 @@ export async function deleteSupportRecord(
   id: string
 ): Promise<ServiceActionResult> {
   try {
+    const moduleByTable: Record<DeletableTable, Parameters<typeof assertCan>[0]> = {
+      service_professionals: "comissoes",
+      service_packages: "pacotes",
+      service_discounts: "descontos",
+      commercial_rules: "regras",
+      treatment_protocols: "protocolos",
+      service_resources: "recursos",
+      internal_notifications: "notificacoes"
+    };
+    await assertCan(moduleByTable[table], "delete");
     const supabase = await createClient();
     const { error } = await supabase.from(table).delete().eq("id", id);
 

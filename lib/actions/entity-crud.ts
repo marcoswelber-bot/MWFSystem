@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getErrorMessage } from "@/lib/supabase/env";
+import { assertCan } from "@/lib/permissions";
+import type { PermissionModuleKey } from "@/lib/permission-modules";
 
 export type CrudTable = "clinics" | "employees" | "services" | "medical_records";
 export type CrudValue = string | number | boolean | null;
@@ -19,6 +21,13 @@ const allowedTables = new Set<CrudTable>([
   "services",
   "medical_records"
 ]);
+
+const tableModules: Record<CrudTable, PermissionModuleKey> = {
+  clinics: "clinicas",
+  employees: "funcionarios",
+  services: "servicos",
+  medical_records: "prontuarios"
+};
 
 function assertAllowedTable(table: CrudTable) {
   if (!allowedTables.has(table)) {
@@ -73,6 +82,7 @@ export async function createCrudRecord(
 ): Promise<CrudActionResult> {
   try {
     assertAllowedTable(table);
+    await assertCan(tableModules[table], "create");
     const cleanData = cleanPayload(payload);
     validateRequiredFields(table, cleanData);
 
@@ -98,6 +108,7 @@ export async function updateCrudRecord(
 ): Promise<CrudActionResult> {
   try {
     assertAllowedTable(table);
+    await assertCan(tableModules[table], "edit");
     const cleanData = cleanPayload(payload);
     validateRequiredFields(table, cleanData);
 
@@ -123,6 +134,7 @@ export async function setCrudRecordStatus(
 ): Promise<CrudActionResult> {
   try {
     assertAllowedTable(table);
+    await assertCan(tableModules[table], "toggle");
     const supabase = await createClient();
     const { error } = await supabase.from(table).update({ status }).eq("id", id);
 
@@ -144,6 +156,7 @@ export async function deleteCrudRecord(
 ): Promise<CrudActionResult> {
   try {
     assertAllowedTable(table);
+    await assertCan(tableModules[table], "delete");
     const supabase = await createClient();
     const { error } = await supabase.from(table).delete().eq("id", id);
 
