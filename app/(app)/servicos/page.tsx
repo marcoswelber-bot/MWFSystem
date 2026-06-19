@@ -48,6 +48,19 @@ function appendLoadError(currentError: string | undefined, nextError: unknown) {
   return currentError ? `${currentError} ${message}` : message;
 }
 
+function isAdmRole(role?: string | null) {
+  const normalizedRole = role
+    ?.normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+
+  return ["adm_master", "admin", "administrador", "adm"].includes(
+    normalizedRole ?? ""
+  );
+}
+
 async function readSupabaseList<T>(
   label: string,
   query: PromiseLike<{ data: T[] | null; error: unknown }>
@@ -104,18 +117,17 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
           ? user.user_metadata.role
           : null;
 
-    if (user && !currentUserRole) {
-      const profileResult = await readSupabaseList<
-        Database["public"]["Tables"]["profiles"]["Row"]
-      >(
-        "profiles",
-        supabase.from("profiles").select("*").eq("id", user.id).limit(1)
+    if (user?.email && !isAdmRole(currentUserRole)) {
+      const employeeRoleResult = await readSupabaseList<Employee>(
+        "employees",
+        supabase
+          .from("employees")
+          .select("*")
+          .eq("email", user.email)
+          .limit(1)
       );
 
-      currentUserRole = profileResult.data[0]?.role ?? null;
-      if (profileResult.error) {
-        loadError = appendLoadError(loadError, profileResult.error);
-      }
+      currentUserRole = employeeRoleResult.data[0]?.role ?? currentUserRole;
     }
 
     let servicesQuery = supabase
@@ -320,7 +332,7 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
         auditLogs={auditLogs}
         initialSearch={search}
         loadError={loadError}
-        isAdmMaster={currentUserRole === "adm_master"}
+        isAdmMaster={isAdmRole(currentUserRole)}
       />
     </div>
   );

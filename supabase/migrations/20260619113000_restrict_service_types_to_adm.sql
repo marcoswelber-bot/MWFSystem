@@ -9,9 +9,15 @@ as $$
     or coalesce(auth.jwt() -> 'user_metadata' ->> 'role', '') = 'adm_master'
     or exists (
       select 1
-      from public.profiles
-      where profiles.id = auth.uid()
-        and profiles.role = 'adm_master'
+      from public.employees
+      where lower(public.employees.email) = lower(auth.jwt() ->> 'email')
+        and lower(public.employees.role) in (
+          'adm_master',
+          'admin',
+          'administrador',
+          'adm',
+          'adm master'
+        )
     );
 $$;
 

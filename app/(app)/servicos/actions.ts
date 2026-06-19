@@ -157,6 +157,19 @@ function cleanOptionalValue(value?: string) {
   return cleanValue ? cleanValue : null;
 }
 
+function isAdmRole(role?: string | null) {
+  const normalizedRole = role
+    ?.normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+
+  return ["adm_master", "admin", "administrador", "adm"].includes(
+    normalizedRole ?? ""
+  );
+}
+
 async function getCurrentUserRole() {
   const supabase = await createClient();
   const {
@@ -175,23 +188,27 @@ async function getCurrentUserRole() {
         ? user.user_metadata.role
         : null;
 
-  if (metadataRole) {
+  if (isAdmRole(metadataRole)) {
+    return metadataRole;
+  }
+
+  if (!user.email) {
     return metadataRole;
   }
 
   const { data } = await supabase
-    .from("profiles")
+    .from("employees")
     .select("role")
-    .eq("id", user.id)
+    .eq("email", user.email)
     .maybeSingle();
 
-  return data?.role ?? null;
+  return data?.role ?? metadataRole ?? null;
 }
 
 async function assertAdmMaster() {
   const role = await getCurrentUserRole();
 
-  if (role !== "adm_master") {
+  if (!isAdmRole(role)) {
     throw new Error("Apenas o ADM pode cadastrar, editar ou excluir tipos de servico.");
   }
 }
