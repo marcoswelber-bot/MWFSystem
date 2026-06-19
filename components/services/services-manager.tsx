@@ -13,10 +13,12 @@ import {
   createProtocol,
   createResource,
   createService,
+  deleteCategory,
   deleteService,
   deleteSupportRecord,
   setServiceStatus,
   updateService,
+  updateCategory,
   type CategoryFormInput,
   type DiscountFormInput,
   type NotificationFormInput,
@@ -60,8 +62,9 @@ type AuditLog = Database["public"]["Tables"]["service_audit_logs"]["Row"] & {
 
 type StatusFilter = "all" | "active" | "inactive";
 type Tab =
-  | "services"
-  | "categories"
+  | "basicServices"
+  | "advancedServices"
+  | "serviceTypes"
   | "professionals"
   | "packages"
   | "discounts"
@@ -86,6 +89,7 @@ type ServicesManagerProps = {
   auditLogs: AuditLog[];
   initialSearch: string;
   loadError?: string;
+  isAdmMaster: boolean;
 };
 
 const emptyServiceForm: ServiceFormInput = {
@@ -132,7 +136,8 @@ const emptyServiceForm: ServiceFormInput = {
 const emptyCategoryForm: CategoryFormInput = {
   name: "",
   description: "",
-  color: "#2563eb"
+  color: "#2563eb",
+  status: "active"
 };
 
 const emptyProfessionalLinkForm: ProfessionalLinkFormInput = {
@@ -210,7 +215,7 @@ function serviceToForm(service: Service): ServiceFormInput {
     name: service.name,
     internal_code: service.internal_code ?? "",
     category_id: service.category_id ?? "",
-    category: service.category ?? "",
+    category: service.category ?? service.type ?? "",
     description: service.description ?? "",
     classification: service.classification ?? service.type ?? "procedimento",
     attendance_type: service.attendance_type ?? "presencial",
@@ -284,17 +289,21 @@ export function ServicesManager({
   notifications,
   auditLogs,
   initialSearch,
-  loadError
+  loadError,
+  isAdmMaster
 }: ServicesManagerProps) {
   const router = useRouter();
   const [isPending, startTransition] = React.useTransition();
-  const [tab, setTab] = React.useState<Tab>("services");
+  const [tab, setTab] = React.useState<Tab>("basicServices");
   const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("all");
   const [search, setSearch] = React.useState(initialSearch);
   const [serviceFormOpen, setServiceFormOpen] = React.useState(false);
   const [editingService, setEditingService] = React.useState<Service | null>(null);
   const [serviceForm, setServiceForm] =
     React.useState<ServiceFormInput>(emptyServiceForm);
+  const [editingCategory, setEditingCategory] = React.useState<Category | null>(
+    null
+  );
   const [categoryForm, setCategoryForm] =
     React.useState<CategoryFormInput>(emptyCategoryForm);
   const [professionalForm, setProfessionalForm] =
@@ -373,7 +382,9 @@ export function ServicesManager({
     setServiceForm(emptyServiceForm);
     setMessage(null);
     setServiceFormOpen(true);
-    setTab("services");
+    if (!isServicesTab) {
+      setTab("basicServices");
+    }
   }
 
   function openEditService(service: Service) {
@@ -381,7 +392,6 @@ export function ServicesManager({
     setServiceForm(serviceToForm(service));
     setMessage(null);
     setServiceFormOpen(true);
-    setTab("services");
   }
 
   function closeServiceForm() {
@@ -396,6 +406,14 @@ export function ServicesManager({
 
     if (!serviceForm.name.trim()) {
       setMessage({ ok: false, message: "Nome do servico e obrigatorio." });
+      return;
+    }
+
+    if (!serviceForm.category_id) {
+      setMessage({
+        ok: false,
+        message: "Selecione um tipo de servico cadastrado pelo ADM."
+      });
       return;
     }
 
@@ -465,9 +483,68 @@ export function ServicesManager({
     });
   }
 
+  function editCategory(category: Category) {
+    if (!isAdmMaster) {
+      setMessage({
+        ok: false,
+        message: "Apenas o ADM pode editar tipos de servico."
+      });
+      return;
+    }
+
+    setEditingCategory(category);
+    setCategoryForm({
+      id: category.id,
+      name: category.name,
+      description: category.description ?? "",
+      color: category.color ?? "#2563eb",
+      status: category.status
+    });
+    setMessage(null);
+  }
+
+  function resetCategoryForm() {
+    setEditingCategory(null);
+    setCategoryForm(emptyCategoryForm);
+  }
+
+  function submitCategory(event: React.FormEvent<HTMLFormElement>) {
+    submitSupport(
+      event,
+      () =>
+        editingCategory
+          ? updateCategory(editingCategory.id, categoryForm)
+          : createCategory(categoryForm),
+      resetCategoryForm
+    );
+  }
+
+  function removeCategory(category: Category) {
+    if (!isAdmMaster) {
+      setMessage({
+        ok: false,
+        message: "Apenas o ADM pode excluir tipos de servico."
+      });
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Excluir definitivamente o tipo de servico ${category.name}?`
+      )
+    ) {
+      return;
+    }
+
+    startTransition(async () => {
+      setResult(await deleteCategory(category.id));
+    });
+  }
+
   const tabs: Array<[Tab, string]> = [
-    ["services", "Servicos"],
-    ["categories", "Categorias"],
+    ["basicServices", "Servicos Basicos"],
+    ["advancedServices", "Servicos Avancados"],
+    ["serviceTypes", "Tipos de servico"],
     ["professionals", "Profissionais"],
     ["packages", "Pacotes"],
     ["discounts", "Descontos"],
@@ -477,6 +554,11 @@ export function ServicesManager({
     ["notifications", "Notificacoes"],
     ["history", "Historico"]
   ];
+  const isServicesTab = tab === "basicServices" || tab === "advancedServices";
+  const isAdvancedServices = tab === "advancedServices";
+  const activeCategories = categories.filter(
+    (category) => category.status === "active"
+  );
 
   return (
     <div style={{ display: "grid", gap: "24px" }}>
@@ -496,7 +578,7 @@ export function ServicesManager({
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Buscar por nome, codigo, categoria ou classificacao"
+            placeholder="Buscar por nome, codigo ou tipo de servico"
             style={inputStyle}
           />
           <button type="submit" style={buttonStyle}>
@@ -593,7 +675,7 @@ export function ServicesManager({
         </div>
       </section>
 
-      {tab === "services" ? (
+      {isServicesTab ? (
         <>
           {serviceFormOpen ? (
             <section style={panelStyle}>
@@ -602,7 +684,11 @@ export function ServicesManager({
                   <h2 style={{ fontSize: "20px", fontWeight: 700 }}>
                     {editingService ? "Editar servico" : "Novo servico"}
                   </h2>
-                  <p>Base completa para agenda, financeiro, prontuarios e relatorios.</p>
+                  <p>
+                    {isAdvancedServices
+                      ? "Configuracoes completas para agenda, financeiro e comissoes."
+                      : "Cadastro rapido com os dados essenciais do servico."}
+                  </p>
                 </div>
                 <button type="button" onClick={closeServiceForm} style={buttonStyle}>
                   Fechar
@@ -632,21 +718,9 @@ export function ServicesManager({
                   />
                 </label>
                 <label>
-                  Codigo interno
-                  <input
-                    value={serviceForm.internal_code}
-                    onChange={(event) =>
-                      setServiceForm((current) => ({
-                        ...current,
-                        internal_code: event.target.value
-                      }))
-                    }
-                    style={inputStyle}
-                  />
-                </label>
-                <label>
-                  Categoria
+                  Tipo de servico
                   <select
+                    required
                     value={serviceForm.category_id}
                     onChange={(event) => {
                       const selected = categories.find(
@@ -660,91 +734,12 @@ export function ServicesManager({
                     }}
                     style={inputStyle}
                   >
-                    <option value="">Sem categoria</option>
-                    {categories.map((category) => (
+                    <option value="">Selecione um tipo cadastrado</option>
+                    {activeCategories.map((category) => (
                       <option key={category.id} value={category.id}>
                         {category.name}
                       </option>
                     ))}
-                  </select>
-                </label>
-                <label>
-                  Classificacao
-                  <select
-                    value={serviceForm.classification}
-                    onChange={(event) =>
-                      setServiceForm((current) => ({
-                        ...current,
-                        classification: event.target.value
-                      }))
-                    }
-                    style={inputStyle}
-                  >
-                    {[
-                      "consulta",
-                      "sessao",
-                      "procedimento",
-                      "avaliacao",
-                      "retorno",
-                      "grupo",
-                      "online",
-                      "domiciliar"
-                    ].map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Tipo de atendimento
-                  <select
-                    value={serviceForm.attendance_type}
-                    onChange={(event) =>
-                      setServiceForm((current) => ({
-                        ...current,
-                        attendance_type: event.target.value
-                      }))
-                    }
-                    style={inputStyle}
-                  >
-                    <option value="presencial">Presencial</option>
-                    <option value="online">Online</option>
-                    <option value="domiciliar">Domiciliar</option>
-                  </select>
-                </label>
-                <label>
-                  Prioridade
-                  <select
-                    value={serviceForm.priority}
-                    onChange={(event) =>
-                      setServiceForm((current) => ({
-                        ...current,
-                        priority: event.target.value
-                      }))
-                    }
-                    style={inputStyle}
-                  >
-                    <option value="normal">Normal</option>
-                    <option value="urgente">Urgente</option>
-                    <option value="retorno">Retorno</option>
-                  </select>
-                </label>
-                <label>
-                  Particular/Convenio
-                  <select
-                    value={serviceForm.billing_type}
-                    onChange={(event) =>
-                      setServiceForm((current) => ({
-                        ...current,
-                        billing_type: event.target.value
-                      }))
-                    }
-                    style={inputStyle}
-                  >
-                    <option value="particular">Particular</option>
-                    <option value="convenio">Convenio</option>
-                    <option value="ambos">Ambos</option>
                   </select>
                 </label>
                 <label>
@@ -756,20 +751,6 @@ export function ServicesManager({
                       setServiceForm((current) => ({
                         ...current,
                         default_duration_minutes: event.target.value
-                      }))
-                    }
-                    style={inputStyle}
-                  />
-                </label>
-                <label>
-                  Intervalo apos atendimento
-                  <input
-                    inputMode="numeric"
-                    value={serviceForm.break_minutes}
-                    onChange={(event) =>
-                      setServiceForm((current) => ({
-                        ...current,
-                        break_minutes: event.target.value
                       }))
                     }
                     style={inputStyle}
@@ -790,148 +771,167 @@ export function ServicesManager({
                   />
                 </label>
                 <label>
-                  Preco promocional
-                  <input
-                    inputMode="decimal"
-                    value={serviceForm.promotional_price}
+                  Status
+                  <select
+                    value={serviceForm.status}
                     onChange={(event) =>
                       setServiceForm((current) => ({
                         ...current,
-                        promotional_price: event.target.value
+                        status: event.target.value
                       }))
                     }
                     style={inputStyle}
-                  />
+                  >
+                    <option value="active">Ativo</option>
+                    <option value="inactive">Inativo</option>
+                  </select>
                 </label>
-                <label>
-                  Creditos necessarios
-                  <input
-                    inputMode="numeric"
-                    value={serviceForm.required_credits}
-                    onChange={(event) =>
-                      setServiceForm((current) => ({
-                        ...current,
-                        required_credits: event.target.value
-                      }))
-                    }
-                    style={inputStyle}
-                  />
-                </label>
-                <label>
-                  Cor na agenda
-                  <input
-                    type="color"
-                    value={serviceForm.color}
-                    onChange={(event) =>
-                      setServiceForm((current) => ({
-                        ...current,
-                        color: event.target.value
-                      }))
-                    }
-                    style={{ ...inputStyle, height: "42px" }}
-                  />
-                </label>
-                <label>
-                  Imagem ou icone
-                  <input
-                    value={serviceForm.image_url}
-                    onChange={(event) =>
-                      setServiceForm((current) => ({
-                        ...current,
-                        image_url: event.target.value
-                      }))
-                    }
-                    style={inputStyle}
-                  />
-                </label>
-                <label>
-                  Limite de participantes
-                  <input
-                    inputMode="numeric"
-                    value={serviceForm.participant_limit}
-                    onChange={(event) =>
-                      setServiceForm((current) => ({
-                        ...current,
-                        participant_limit: event.target.value
-                      }))
-                    }
-                    style={inputStyle}
-                  />
-                </label>
-                <label>
-                  Tipo de comissao padrao opcional
-                  <input
-                    value={serviceForm.commission_type}
-                    onChange={(event) =>
-                      setServiceForm((current) => ({
-                        ...current,
-                        commission_type: event.target.value
-                      }))
-                    }
-                    style={inputStyle}
-                  />
-                </label>
-                <label>
-                  Valor da comissao padrao opcional
-                  <input
-                    inputMode="decimal"
-                    value={serviceForm.commission_value}
-                    onChange={(event) =>
-                      setServiceForm((current) => ({
-                        ...current,
-                        commission_value: event.target.value
-                      }))
-                    }
-                    style={inputStyle}
-                  />
-                </label>
-                {[
-                  ["is_group", "Servico em grupo"],
-                  ["allows_package", "Permite pacote"],
-                  ["requires_medical_record", "Exige prontuario"],
-                  ["requires_consent_form", "Exige termo"],
-                  ["requires_authorization", "Exige autorizacao"],
-                  ["requires_photos", "Exige fotos antes/depois"],
-                  ["requires_attachment", "Exige anexo"],
-                  ["is_initial_assessment", "Avaliacao inicial"]
-                ].map(([field, label]) => (
-                  <label key={field} style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(serviceForm[field as keyof ServiceFormInput])}
-                      onChange={(event) =>
-                        setServiceForm((current) => ({
-                          ...current,
-                          [field]: event.target.checked
-                        }))
-                      }
-                    />
-                    {label}
-                  </label>
-                ))}
-                {[
-                  ["description", "Descricao"],
-                  ["pre_service_instructions", "Orientacoes antes do atendimento"],
-                  ["post_service_instructions", "Orientacoes depois do atendimento"],
-                  ["required_materials", "Materiais, equipamentos ou sala necessarios"],
-                  ["room_required", "Sala necessaria"],
-                  ["equipment_required", "Equipamento necessario"]
-                ].map(([field, label]) => (
-                  <label key={field} style={{ gridColumn: "1 / -1" }}>
-                    {label}
-                    <textarea
-                      value={String(serviceForm[field as keyof ServiceFormInput] ?? "")}
-                      onChange={(event) =>
-                        setServiceForm((current) => ({
-                          ...current,
-                          [field]: event.target.value
-                        }))
-                      }
-                      rows={3}
-                      style={inputStyle}
-                    />
-                  </label>
-                ))}
+                {isAdvancedServices ? (
+                  <>
+                    <label>
+                      Codigo interno
+                      <input
+                        value={serviceForm.internal_code}
+                        onChange={(event) =>
+                          setServiceForm((current) => ({
+                            ...current,
+                            internal_code: event.target.value
+                          }))
+                        }
+                        style={inputStyle}
+                      />
+                    </label>
+                    <label>
+                      Tipo de atendimento
+                      <select
+                        value={serviceForm.is_group ? "grupo" : "individual"}
+                        onChange={(event) =>
+                          setServiceForm((current) => ({
+                            ...current,
+                            is_group: event.target.value === "grupo",
+                            classification:
+                              event.target.value === "grupo"
+                                ? "grupo"
+                                : current.classification
+                          }))
+                        }
+                        style={inputStyle}
+                      >
+                        <option value="individual">Individual</option>
+                        <option value="grupo">Grupo</option>
+                      </select>
+                    </label>
+                    <label>
+                      Limite de participantes
+                      <input
+                        inputMode="numeric"
+                        disabled={!serviceForm.is_group}
+                        value={serviceForm.participant_limit}
+                        onChange={(event) =>
+                          setServiceForm((current) => ({
+                            ...current,
+                            participant_limit: event.target.value
+                          }))
+                        }
+                        style={inputStyle}
+                      />
+                    </label>
+                    <label>
+                      Intervalo apos atendimento
+                      <input
+                        inputMode="numeric"
+                        value={serviceForm.break_minutes}
+                        onChange={(event) =>
+                          setServiceForm((current) => ({
+                            ...current,
+                            break_minutes: event.target.value
+                          }))
+                        }
+                        style={inputStyle}
+                      />
+                    </label>
+                    <label>
+                      Preco promocional
+                      <input
+                        inputMode="decimal"
+                        value={serviceForm.promotional_price}
+                        onChange={(event) =>
+                          setServiceForm((current) => ({
+                            ...current,
+                            promotional_price: event.target.value
+                          }))
+                        }
+                        style={inputStyle}
+                      />
+                    </label>
+                    <label>
+                      Comissao padrao opcional
+                      <select
+                        value={serviceForm.commission_type}
+                        onChange={(event) =>
+                          setServiceForm((current) => ({
+                            ...current,
+                            commission_type: event.target.value
+                          }))
+                        }
+                        style={inputStyle}
+                      >
+                        <option value="">Sem padrao</option>
+                        <option value="percentual">Percentual</option>
+                        <option value="valor_fixo">Valor fixo</option>
+                      </select>
+                    </label>
+                    <label>
+                      Valor da comissao padrao
+                      <input
+                        inputMode="decimal"
+                        value={serviceForm.commission_value}
+                        onChange={(event) =>
+                          setServiceForm((current) => ({
+                            ...current,
+                            commission_value: event.target.value
+                          }))
+                        }
+                        style={inputStyle}
+                      />
+                    </label>
+                    <label style={{ gridColumn: "1 / -1" }}>
+                      Observacoes internas
+                      <textarea
+                        value={serviceForm.description ?? ""}
+                        onChange={(event) =>
+                          setServiceForm((current) => ({
+                            ...current,
+                            description: event.target.value
+                          }))
+                        }
+                        rows={3}
+                        style={inputStyle}
+                      />
+                    </label>
+                    <label style={{ gridColumn: "1 / -1" }}>
+                      Regras especiais do servico
+                      <textarea
+                        value={serviceForm.pre_service_instructions ?? ""}
+                        onChange={(event) =>
+                          setServiceForm((current) => ({
+                            ...current,
+                            pre_service_instructions: event.target.value
+                          }))
+                        }
+                        rows={3}
+                        style={inputStyle}
+                      />
+                    </label>
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <p style={{ fontWeight: 700 }}>Comissao por profissional</p>
+                      <p>
+                        Use a aba Profissionais para vincular profissionais e a aba
+                        Servicos e Comissoes em Funcionarios para regras por modalidade.
+                      </p>
+                    </div>
+                  </>
+                ) : null}
                 <div
                   style={{
                     display: "flex",
@@ -960,7 +960,7 @@ export function ServicesManager({
           ) : null}
 
           <DataTable
-            headers={["Nome", "Codigo", "Categoria", "Valor", "Duracao", "Status", "Acoes"]}
+            headers={["Nome", "Codigo", "Tipo", "Valor", "Duracao", "Status", "Acoes"]}
             rows={filteredServices.map((service) => [
               service.name,
               service.internal_code ?? "-",
@@ -1001,25 +1001,36 @@ export function ServicesManager({
         </>
       ) : null}
 
-      {tab === "categories" ? (
+      {tab === "serviceTypes" ? (
         <SupportSection
-          title="Categorias"
+          title="Tipos de servico"
           form={
-            <form
-              onSubmit={(event) =>
-                submitSupport(
-                  event,
-                  () => createCategory(categoryForm),
-                  () => setCategoryForm(emptyCategoryForm)
-                )
-              }
-              style={formGridStyle}
-            >
-              <TextField label="Nome" value={categoryForm.name} onChange={(value) => setCategoryForm((current) => ({ ...current, name: value }))} inputStyle={inputStyle} required />
-              <TextField label="Cor" value={categoryForm.color ?? ""} onChange={(value) => setCategoryForm((current) => ({ ...current, color: value }))} inputStyle={inputStyle} type="color" />
-              <TextAreaField label="Descricao" value={categoryForm.description ?? ""} onChange={(value) => setCategoryForm((current) => ({ ...current, description: value }))} inputStyle={inputStyle} />
-              <SubmitButton isPending={isPending} buttonStyle={buttonStyle} />
-            </form>
+            isAdmMaster ? (
+              <form onSubmit={submitCategory} style={formGridStyle}>
+                <TextField label="Nome" value={categoryForm.name} onChange={(value) => setCategoryForm((current) => ({ ...current, name: value }))} inputStyle={inputStyle} required />
+                <TextField label="Cor" value={categoryForm.color ?? ""} onChange={(value) => setCategoryForm((current) => ({ ...current, color: value }))} inputStyle={inputStyle} type="color" />
+                <SelectField label="Status" value={categoryForm.status ?? "active"} onChange={(value) => setCategoryForm((current) => ({ ...current, status: value }))} options={[["active", "Ativo"], ["inactive", "Inativo"]]} inputStyle={inputStyle} />
+                <TextAreaField label="Descricao" value={categoryForm.description ?? ""} onChange={(value) => setCategoryForm((current) => ({ ...current, description: value }))} inputStyle={inputStyle} />
+                <div style={{ display: "flex", gap: "8px", gridColumn: "1 / -1", justifyContent: "flex-end" }}>
+                  {editingCategory ? (
+                    <button type="button" onClick={resetCategoryForm} style={buttonStyle}>
+                      Cancelar edicao
+                    </button>
+                  ) : null}
+                  <SubmitButton isPending={isPending} buttonStyle={buttonStyle} />
+                </div>
+              </form>
+            ) : (
+              <div
+                style={{
+                  border: "1px solid hsl(var(--border))",
+                  borderRadius: "8px",
+                  padding: "12px"
+                }}
+              >
+                Usuarios comuns podem apenas escolher tipos ja cadastrados pelo ADM.
+              </div>
+            )
           }
         >
           <DataTable
@@ -1028,11 +1039,20 @@ export function ServicesManager({
               category.name,
               category.description ?? "-",
               category.status === "active" ? "Ativa" : "Inativa",
-              <button key={category.id} type="button" onClick={() => deleteSupport("service_categories", category.id)} style={buttonStyle}>
-                Excluir
-              </button>
+              isAdmMaster ? (
+                <ActionGroup key={category.id}>
+                  <button type="button" onClick={() => editCategory(category)} style={buttonStyle}>
+                    Editar
+                  </button>
+                  <button type="button" onClick={() => removeCategory(category)} style={buttonStyle}>
+                    Excluir
+                  </button>
+                </ActionGroup>
+              ) : (
+                "-"
+              )
             ])}
-            emptyText="Nenhuma categoria cadastrada."
+            emptyText="Nenhum tipo de servico cadastrado."
           />
         </SupportSection>
       ) : null}

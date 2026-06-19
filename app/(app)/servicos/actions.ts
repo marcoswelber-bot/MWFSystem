@@ -66,9 +66,11 @@ export type ServiceFormInput = {
 };
 
 export type CategoryFormInput = {
+  id?: string;
   name: string;
   description?: string;
   color?: string;
+  status?: string;
 };
 
 export type ProfessionalLinkFormInput = {
@@ -142,7 +144,6 @@ export type NotificationFormInput = {
 };
 
 type DeletableTable =
-  | "service_categories"
   | "service_professionals"
   | "service_packages"
   | "service_discounts"
@@ -154,6 +155,45 @@ type DeletableTable =
 function cleanOptionalValue(value?: string) {
   const cleanValue = value?.trim();
   return cleanValue ? cleanValue : null;
+}
+
+async function getCurrentUserRole() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return null;
+  }
+
+  const metadataRole =
+    typeof user.app_metadata?.role === "string"
+      ? user.app_metadata.role
+      : typeof user.user_metadata?.role === "string"
+        ? user.user_metadata.role
+        : null;
+
+  if (metadataRole) {
+    return metadataRole;
+  }
+
+  const { data } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  return data?.role ?? null;
+}
+
+async function assertAdmMaster() {
+  const role = await getCurrentUserRole();
+
+  if (role !== "adm_master") {
+    throw new Error("Apenas o ADM pode cadastrar, editar ou excluir tipos de servico.");
+  }
 }
 
 function cleanOptionalNumber(value?: string) {
@@ -186,12 +226,17 @@ function getServicePayload(input: ServiceFormInput): ServiceInsert {
 
   const defaultDuration = cleanOptionalInteger(input.default_duration_minutes);
   const defaultPrice = cleanOptionalNumber(input.default_price);
+  const categoryId = cleanOptionalValue(input.category_id);
   const category = cleanOptionalValue(input.category);
+
+  if (!categoryId || !category) {
+    throw new Error("Selecione um tipo de servico cadastrado pelo ADM.");
+  }
 
   return {
     name,
     internal_code: cleanOptionalValue(input.internal_code),
-    category_id: cleanOptionalValue(input.category_id),
+    category_id: categoryId,
     category,
     type: cleanOptionalValue(input.classification) ?? category,
     description: cleanOptionalValue(input.description),
@@ -363,14 +408,17 @@ export async function deleteService(id: string): Promise<ServiceActionResult> {
 
 export async function createCategory(input: CategoryFormInput) {
   try {
+    await assertAdmMaster();
+
     if (!input.name.trim()) {
-      throw new Error("Nome da categoria e obrigatorio.");
+      throw new Error("Nome do tipo de servico e obrigatorio.");
     }
 
     const payload: CategoryInsert = {
       name: input.name.trim(),
       description: cleanOptionalValue(input.description),
-      color: cleanOptionalValue(input.color)
+      color: cleanOptionalValue(input.color),
+      status: input.status ?? "active"
     };
     const supabase = await createClient();
     const { error } = await supabase.from("service_categories").insert(payload);
@@ -380,7 +428,56 @@ export async function createCategory(input: CategoryFormInput) {
     }
 
     revalidatePath("/servicos");
-    return { ok: true, message: "Categoria criada com sucesso." };
+    return { ok: true, message: "Tipo de servico criado com sucesso." };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
+}
+
+export async function updateCategory(id: string, input: CategoryFormInput) {
+  try {
+    await assertAdmMaster();
+
+    if (!input.name.trim()) {
+      throw new Error("Nome do tipo de servico e obrigatorio.");
+    }
+
+    const payload: CategoryInsert = {
+      name: input.name.trim(),
+      description: cleanOptionalValue(input.description),
+      color: cleanOptionalValue(input.color),
+      status: input.status ?? "active"
+    };
+    const supabase = await createClient();
+    const { error } = await supabase
+      .from("service_categories")
+      .update(payload)
+      .eq("id", id);
+
+    if (error) {
+      return { ok: false, message: getErrorMessage(error) };
+    }
+
+    revalidatePath("/servicos");
+    return { ok: true, message: "Tipo de servico atualizado com sucesso." };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
+}
+
+export async function deleteCategory(id: string): Promise<ServiceActionResult> {
+  try {
+    await assertAdmMaster();
+
+    const supabase = await createClient();
+    const { error } = await supabase.from("service_categories").delete().eq("id", id);
+
+    if (error) {
+      return { ok: false, message: getErrorMessage(error) };
+    }
+
+    revalidatePath("/servicos");
+    return { ok: true, message: "Tipo de servico excluido definitivamente." };
   } catch (error) {
     return { ok: false, message: getErrorMessage(error) };
   }

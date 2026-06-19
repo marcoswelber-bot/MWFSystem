@@ -89,10 +89,35 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
   let rawResources: Database["public"]["Tables"]["service_resources"]["Row"][] = [];
   let rawNotifications: Database["public"]["Tables"]["internal_notifications"]["Row"][] = [];
   let rawAuditLogs: Database["public"]["Tables"]["service_audit_logs"]["Row"][] = [];
+  let currentUserRole: string | null = null;
   let loadError: string | undefined;
 
   try {
     const supabase = await createClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    currentUserRole =
+      typeof user?.app_metadata?.role === "string"
+        ? user.app_metadata.role
+        : typeof user?.user_metadata?.role === "string"
+          ? user.user_metadata.role
+          : null;
+
+    if (user && !currentUserRole) {
+      const profileResult = await readSupabaseList<
+        Database["public"]["Tables"]["profiles"]["Row"]
+      >(
+        "profiles",
+        supabase.from("profiles").select("*").eq("id", user.id).limit(1)
+      );
+
+      currentUserRole = profileResult.data[0]?.role ?? null;
+      if (profileResult.error) {
+        loadError = appendLoadError(loadError, profileResult.error);
+      }
+    }
+
     let servicesQuery = supabase
       .from("services")
       .select("*")
@@ -101,7 +126,7 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
     if (search) {
       const term = escapeSearchTerm(search);
       servicesQuery = servicesQuery.or(
-        `name.ilike.%${term}%,internal_code.ilike.%${term}%,category.ilike.%${term}%,classification.ilike.%${term}%`
+        `name.ilike.%${term}%,internal_code.ilike.%${term}%,category.ilike.%${term}%`
       );
     }
 
@@ -295,6 +320,7 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
         auditLogs={auditLogs}
         initialSearch={search}
         loadError={loadError}
+        isAdmMaster={currentUserRole === "adm_master"}
       />
     </div>
   );
