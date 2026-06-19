@@ -7,17 +7,36 @@ import {
   activateEmployee,
   createEmployee,
   deactivateEmployee,
+  deleteProfessionalCommission,
   deleteEmployee,
   type EmployeeActionResult,
   type EmployeeFormInput,
+  type ProfessionalCommissionFormInput,
+  saveProfessionalCommission,
+  setProfessionalCommissionStatus,
   updateEmployee
 } from "@/app/(app)/funcionarios/actions";
 
 type Employee = Database["public"]["Tables"]["employees"]["Row"];
+type Service = Database["public"]["Tables"]["services"]["Row"];
+type CommissionRule =
+  Database["public"]["Tables"]["professional_service_commissions"]["Row"] & {
+    employee_name: string;
+    service_name: string;
+  };
+type CommissionHistory =
+  Database["public"]["Tables"]["professional_service_commission_history"]["Row"] & {
+    employee_name: string;
+    service_name: string;
+  };
 type StatusFilter = "all" | "active" | "inactive";
+type ActiveTab = "employees" | "commissions";
 
 type EmployeesManagerProps = {
   employees: Employee[];
+  services: Service[];
+  commissionRules: CommissionRule[];
+  commissionHistory: CommissionHistory[];
   initialSearch: string;
   loadError?: string;
 };
@@ -31,6 +50,20 @@ const emptyForm: EmployeeFormInput = {
   commission_type: "",
   commission_value: "",
   status: "active"
+};
+
+const emptyCommissionForm: ProfessionalCommissionFormInput = {
+  employee_id: "",
+  service_id: "",
+  attendance_type: "presencial",
+  service_mode: "individual",
+  group_commission_basis: "per_patient",
+  base_price: "",
+  commission_type: "percent",
+  commission_value: "",
+  status: "active",
+  notes: "",
+  change_reason: ""
 };
 
 function employeeToForm(employee: Employee): EmployeeFormInput {
@@ -47,16 +80,71 @@ function employeeToForm(employee: Employee): EmployeeFormInput {
   };
 }
 
+function commissionToForm(rule: CommissionRule): ProfessionalCommissionFormInput {
+  return {
+    id: rule.id,
+    employee_id: rule.employee_id,
+    service_id: rule.service_id,
+    attendance_type: rule.attendance_type,
+    service_mode: rule.service_mode,
+    group_commission_basis: rule.group_commission_basis,
+    base_price: rule.base_price === null ? "" : String(rule.base_price),
+    commission_type: rule.commission_type,
+    commission_value: String(rule.commission_value),
+    status: rule.status,
+    notes: rule.notes ?? "",
+    change_reason: ""
+  };
+}
+
+function money(value: number | null) {
+  if (value === null) {
+    return "-";
+  }
+
+  return new Intl.NumberFormat("pt-BR", {
+    currency: "BRL",
+    style: "currency"
+  }).format(value);
+}
+
+function estimateCommission(basePrice?: string, type?: string, value?: string) {
+  const base = Number((basePrice ?? "").replace(",", "."));
+  const commission = Number((value ?? "").replace(",", "."));
+
+  if (Number.isNaN(commission)) {
+    return 0;
+  }
+
+  if (type === "fixed") {
+    return commission;
+  }
+
+  if (Number.isNaN(base)) {
+    return 0;
+  }
+
+  return (base * commission) / 100;
+}
+
 export function EmployeesManager({
   employees,
+  services,
+  commissionRules,
+  commissionHistory,
   initialSearch,
   loadError
 }: EmployeesManagerProps) {
   const router = useRouter();
   const [isPending, startTransition] = React.useTransition();
   const [formOpen, setFormOpen] = React.useState(false);
+  const [activeTab, setActiveTab] = React.useState<ActiveTab>("employees");
   const [editingEmployee, setEditingEmployee] = React.useState<Employee | null>(null);
+  const [editingCommission, setEditingCommission] =
+    React.useState<CommissionRule | null>(null);
   const [form, setForm] = React.useState<EmployeeFormInput>(emptyForm);
+  const [commissionForm, setCommissionForm] =
+    React.useState<ProfessionalCommissionFormInput>(emptyCommissionForm);
   const [search, setSearch] = React.useState(initialSearch);
   const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("all");
   const [message, setMessage] = React.useState<EmployeeActionResult | null>(
@@ -78,14 +166,65 @@ export function EmployeesManager({
     return employee.status === statusFilter;
   });
 
+  const filteredCommissionRules = commissionRules.filter((rule) => {
+    if (statusFilter === "all") {
+      return true;
+    }
+
+    return rule.status === statusFilter;
+  });
+
+  const estimatedCommission = estimateCommission(
+    commissionForm.base_price,
+    commissionForm.commission_type,
+    commissionForm.commission_value
+  );
+
   function updateForm(field: keyof EmployeeFormInput, value: string) {
     setForm((currentForm) => ({ ...currentForm, [field]: value }));
+  }
+
+  function updateCommissionForm(
+    field: keyof ProfessionalCommissionFormInput,
+    value: string | boolean
+  ) {
+    setCommissionForm((currentForm) => ({ ...currentForm, [field]: value }));
+  }
+
+  function updateCommissionService(serviceId: string) {
+    const service = services.find((item) => item.id === serviceId);
+    const individualPrice =
+      service?.default_price ?? service?.price ?? service?.promotional_price ?? null;
+    const groupPrice = service?.promotional_price ?? individualPrice;
+    const nextBasePrice =
+      commissionForm.service_mode === "group" ? groupPrice : individualPrice;
+
+    setCommissionForm((currentForm) => ({
+      ...currentForm,
+      service_id: serviceId,
+      base_price: nextBasePrice === null ? "" : String(nextBasePrice)
+    }));
+  }
+
+  function updateCommissionMode(serviceMode: string) {
+    const service = services.find((item) => item.id === commissionForm.service_id);
+    const individualPrice =
+      service?.default_price ?? service?.price ?? service?.promotional_price ?? null;
+    const groupPrice = service?.promotional_price ?? individualPrice;
+    const nextBasePrice = serviceMode === "group" ? groupPrice : individualPrice;
+
+    setCommissionForm((currentForm) => ({
+      ...currentForm,
+      service_mode: serviceMode,
+      base_price: nextBasePrice === null ? "" : String(nextBasePrice)
+    }));
   }
 
   function openCreateForm() {
     setEditingEmployee(null);
     setForm(emptyForm);
     setMessage(null);
+    setActiveTab("employees");
     setFormOpen(true);
   }
 
@@ -93,6 +232,7 @@ export function EmployeesManager({
     setEditingEmployee(employee);
     setForm(employeeToForm(employee));
     setMessage(null);
+    setActiveTab("employees");
     setFormOpen(true);
   }
 
@@ -100,6 +240,20 @@ export function EmployeesManager({
     setEditingEmployee(null);
     setForm(emptyForm);
     setFormOpen(false);
+  }
+
+  function openCreateCommission() {
+    setEditingCommission(null);
+    setCommissionForm(emptyCommissionForm);
+    setMessage(null);
+    setActiveTab("commissions");
+  }
+
+  function openEditCommission(rule: CommissionRule) {
+    setEditingCommission(rule);
+    setCommissionForm(commissionToForm(rule));
+    setMessage(null);
+    setActiveTab("commissions");
   }
 
   function refreshEmployees() {
@@ -165,6 +319,73 @@ export function EmployeesManager({
     setMessage(null);
     startTransition(async () => {
       const result = await deleteEmployee(employee.id);
+      setMessage(result);
+
+      if (result.ok) {
+        refreshEmployees();
+      }
+    });
+  }
+
+  function handleSubmitCommission(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage(null);
+
+    if (!commissionForm.employee_id || !commissionForm.service_id) {
+      setMessage({
+        ok: false,
+        message: "Selecione profissional e servico."
+      });
+      return;
+    }
+
+    startTransition(async () => {
+      const result = await saveProfessionalCommission({
+        ...commissionForm,
+        id: editingCommission?.id
+      });
+
+      setMessage(result);
+
+      if (result.ok) {
+        setEditingCommission(null);
+        setCommissionForm(emptyCommissionForm);
+        refreshEmployees();
+      }
+    });
+  }
+
+  function toggleCommissionStatus(rule: CommissionRule) {
+    const reason =
+      window.prompt("Motivo da alteracao de status da comissao:") ?? undefined;
+
+    setMessage(null);
+    startTransition(async () => {
+      const result = await setProfessionalCommissionStatus(
+        rule.id,
+        rule.status === "active" ? "inactive" : "active",
+        reason
+      );
+      setMessage(result);
+
+      if (result.ok) {
+        refreshEmployees();
+      }
+    });
+  }
+
+  function handleDeleteCommission(rule: CommissionRule) {
+    const reason = window.prompt(
+      `Motivo para excluir a regra de comissao de ${rule.employee_name} em ${rule.service_name}:`
+    );
+
+    if (reason === null) {
+      return;
+    }
+
+    setMessage(null);
+    startTransition(async () => {
+      const result = await deleteProfessionalCommission(rule.id, reason);
       setMessage(result);
 
       if (result.ok) {
@@ -253,6 +474,30 @@ export function EmployeesManager({
         ))}
       </div>
 
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+        {[
+          ["employees", "Cadastro"],
+          ["commissions", "Servicos e Comissoes"]
+        ].map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setActiveTab(value as ActiveTab)}
+            style={{
+              ...buttonStyle,
+              background:
+                activeTab === value ? "hsl(var(--primary))" : "transparent",
+              color:
+                activeTab === value
+                  ? "hsl(var(--primary-foreground))"
+                  : "inherit"
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {message ? (
         <div
           style={{
@@ -287,16 +532,18 @@ export function EmployeesManager({
         </div>
       </section>
 
-      {formOpen ? (
-        <section
-          style={{
-            border: "1px solid hsl(var(--border))",
-            borderRadius: "8px",
-            display: "grid",
-            gap: "16px",
-            padding: "20px"
-          }}
-        >
+      {activeTab === "employees" ? (
+        <>
+          {formOpen ? (
+            <section
+              style={{
+                border: "1px solid hsl(var(--border))",
+                borderRadius: "8px",
+                display: "grid",
+                gap: "16px",
+                padding: "20px"
+              }}
+            >
           <div style={{ display: "flex", justifyContent: "space-between", gap: "16px" }}>
             <div>
               <h2 style={{ fontSize: "20px", fontWeight: 700 }}>
@@ -404,97 +651,477 @@ export function EmployeesManager({
               </button>
             </div>
           </form>
-        </section>
-      ) : null}
+            </section>
+          ) : null}
 
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ borderCollapse: "collapse", width: "100%" }}>
-          <thead>
-            <tr>
-              {["Nome", "Funcao", "Telefone", "Email", "Status", "Acoes"].map(
-                (heading) => (
-                  <th
-                    key={heading}
-                    style={{
-                      borderBottom: "1px solid hsl(var(--border))",
-                      padding: "10px",
-                      textAlign: heading === "Acoes" ? "right" : "left"
-                    }}
-                  >
-                    {heading}
-                  </th>
-                )
-              )}
-            </tr>
-          </thead>
-          <tbody>
-            {filteredEmployees.length > 0 ? (
-              filteredEmployees.map((employee) => (
-                <tr key={employee.id}>
-                  <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
-                    {employee.name}
-                  </td>
-                  <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
-                    {employee.role ?? "-"}
-                  </td>
-                  <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
-                    {employee.phone ?? "-"}
-                  </td>
-                  <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
-                    {employee.email ?? "-"}
-                  </td>
-                  <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
-                    {employee.status === "active" ? "Ativo" : "Inativo"}
-                  </td>
-                  <td
-                    style={{
-                      borderBottom: "1px solid hsl(var(--border))",
-                      padding: "10px",
-                      textAlign: "right"
-                    }}
-                  >
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "flex-end" }}>
-                      <button
-                        type="button"
-                        onClick={() => openEditForm(employee)}
-                        style={buttonStyle}
-                      >
-                        Editar
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isPending}
-                        onClick={() => toggleEmployeeStatus(employee)}
-                        style={buttonStyle}
-                      >
-                        {employee.status === "active" ? "Inativar" : "Ativar"}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isPending}
-                        onClick={() => handleDeleteEmployee(employee)}
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ borderCollapse: "collapse", width: "100%" }}>
+              <thead>
+                <tr>
+                  {["Nome", "Funcao", "Telefone", "Email", "Status", "Acoes"].map(
+                    (heading) => (
+                      <th
+                        key={heading}
                         style={{
-                          ...buttonStyle,
-                          borderColor: "hsl(var(--destructive))",
-                          color: "hsl(var(--destructive))"
+                          borderBottom: "1px solid hsl(var(--border))",
+                          padding: "10px",
+                          textAlign: heading === "Acoes" ? "right" : "left"
                         }}
                       >
-                        Excluir definitivo
-                      </button>
-                    </div>
-                  </td>
+                        {heading}
+                      </th>
+                    )
+                  )}
                 </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={6} style={{ padding: "16px", textAlign: "center" }}>
-                  Nenhum funcionario encontrado.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody>
+                {filteredEmployees.length > 0 ? (
+                  filteredEmployees.map((employee) => (
+                    <tr key={employee.id}>
+                      <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                        {employee.name}
+                      </td>
+                      <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                        {employee.role ?? "-"}
+                      </td>
+                      <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                        {employee.phone ?? "-"}
+                      </td>
+                      <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                        {employee.email ?? "-"}
+                      </td>
+                      <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                        {employee.status === "active" ? "Ativo" : "Inativo"}
+                      </td>
+                      <td
+                        style={{
+                          borderBottom: "1px solid hsl(var(--border))",
+                          padding: "10px",
+                          textAlign: "right"
+                        }}
+                      >
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "flex-end" }}>
+                          <button
+                            type="button"
+                            onClick={() => openEditForm(employee)}
+                            style={buttonStyle}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isPending}
+                            onClick={() => toggleEmployeeStatus(employee)}
+                            style={buttonStyle}
+                          >
+                            {employee.status === "active" ? "Inativar" : "Ativar"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isPending}
+                            onClick={() => handleDeleteEmployee(employee)}
+                            style={{
+                              ...buttonStyle,
+                              borderColor: "hsl(var(--destructive))",
+                              color: "hsl(var(--destructive))"
+                            }}
+                          >
+                            Excluir definitivo
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6} style={{ padding: "16px", textAlign: "center" }}>
+                      Nenhum funcionario encontrado.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : null}
+
+      {activeTab === "commissions" ? (
+        <section
+          style={{
+            border: "1px solid hsl(var(--border))",
+            borderRadius: "8px",
+            display: "grid",
+            gap: "16px",
+            padding: "20px"
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "16px" }}>
+            <div>
+              <h2 style={{ fontSize: "20px", fontWeight: 700 }}>
+                Servicos e Comissoes
+              </h2>
+              <p>
+                Configure a comissao por profissional, servico, tipo de atendimento e
+                modalidade.
+              </p>
+            </div>
+            <button type="button" onClick={openCreateCommission} style={buttonStyle}>
+              Nova regra
+            </button>
+          </div>
+
+          <form
+            onSubmit={handleSubmitCommission}
+            style={{
+              display: "grid",
+              gap: "14px",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))"
+            }}
+          >
+            <label>
+              Profissional
+              <select
+                value={commissionForm.employee_id}
+                onChange={(event) =>
+                  updateCommissionForm("employee_id", event.target.value)
+                }
+                style={inputStyle}
+              >
+                <option value="">Selecione</option>
+                {employees.map((employee) => (
+                  <option key={employee.id} value={employee.id}>
+                    {employee.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Servico/Procedimento
+              <select
+                value={commissionForm.service_id}
+                onChange={(event) => updateCommissionService(event.target.value)}
+                style={inputStyle}
+              >
+                <option value="">Selecione</option>
+                {services.map((service) => (
+                  <option key={service.id} value={service.id}>
+                    {service.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Tipo de atendimento
+              <select
+                value={commissionForm.attendance_type}
+                onChange={(event) =>
+                  updateCommissionForm("attendance_type", event.target.value)
+                }
+                style={inputStyle}
+              >
+                <option value="presencial">Presencial</option>
+                <option value="online">Online</option>
+                <option value="domiciliar">Domiciliar</option>
+              </select>
+            </label>
+            <label>
+              Modalidade
+              <select
+                value={commissionForm.service_mode}
+                onChange={(event) => updateCommissionMode(event.target.value)}
+                style={inputStyle}
+              >
+                <option value="individual">Individual</option>
+                <option value="group">Grupo</option>
+              </select>
+            </label>
+            <label>
+              Grupo: calcular por
+              <select
+                value={commissionForm.group_commission_basis}
+                onChange={(event) =>
+                  updateCommissionForm("group_commission_basis", event.target.value)
+                }
+                disabled={commissionForm.service_mode !== "group"}
+                style={inputStyle}
+              >
+                <option value="per_patient">Por paciente</option>
+                <option value="per_group">Por turma</option>
+              </select>
+            </label>
+            <label>
+              Valor base do servico
+              <input
+                inputMode="decimal"
+                value={commissionForm.base_price}
+                onChange={(event) =>
+                  updateCommissionForm("base_price", event.target.value)
+                }
+                style={inputStyle}
+              />
+            </label>
+            <label>
+              Tipo de comissao
+              <select
+                value={commissionForm.commission_type}
+                onChange={(event) =>
+                  updateCommissionForm("commission_type", event.target.value)
+                }
+                style={inputStyle}
+              >
+                <option value="percent">Percentual</option>
+                <option value="fixed">Valor fixo</option>
+              </select>
+            </label>
+            <label>
+              Percentual ou valor
+              <input
+                inputMode="decimal"
+                value={commissionForm.commission_value}
+                onChange={(event) =>
+                  updateCommissionForm("commission_value", event.target.value)
+                }
+                style={inputStyle}
+              />
+            </label>
+            <label>
+              Valor estimado a receber
+              <input readOnly value={money(estimatedCommission)} style={inputStyle} />
+            </label>
+            <label>
+              Motivo da alteracao
+              <input
+                value={commissionForm.change_reason}
+                onChange={(event) =>
+                  updateCommissionForm("change_reason", event.target.value)
+                }
+                style={inputStyle}
+              />
+            </label>
+            <label style={{ gridColumn: "1 / -1" }}>
+              Observacoes
+              <input
+                value={commissionForm.notes}
+                onChange={(event) => updateCommissionForm("notes", event.target.value)}
+                style={inputStyle}
+              />
+            </label>
+            <div
+              style={{
+                display: "flex",
+                gap: "8px",
+                gridColumn: "1 / -1",
+                justifyContent: "flex-end"
+              }}
+            >
+              {editingCommission ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingCommission(null);
+                    setCommissionForm(emptyCommissionForm);
+                  }}
+                  style={buttonStyle}
+                >
+                  Cancelar edicao
+                </button>
+              ) : null}
+              <button
+                type="submit"
+                disabled={isPending}
+                style={{
+                  ...buttonStyle,
+                  background: "hsl(var(--primary))",
+                  color: "hsl(var(--primary-foreground))"
+                }}
+              >
+                {isPending
+                  ? "Salvando..."
+                  : editingCommission
+                    ? "Atualizar regra"
+                    : "Salvar regra"}
+              </button>
+            </div>
+          </form>
+
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ borderCollapse: "collapse", width: "100%" }}>
+              <thead>
+                <tr>
+                  {[
+                    "Profissional",
+                    "Servico",
+                    "Atendimento",
+                    "Modalidade",
+                    "Base",
+                    "Comissao",
+                    "Estimado",
+                    "Status",
+                    "Acoes"
+                  ].map((heading) => (
+                    <th
+                      key={heading}
+                      style={{
+                        borderBottom: "1px solid hsl(var(--border))",
+                        padding: "10px",
+                        textAlign: heading === "Acoes" ? "right" : "left"
+                      }}
+                    >
+                      {heading}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredCommissionRules.length > 0 ? (
+                  filteredCommissionRules.map((rule) => (
+                    <tr key={rule.id}>
+                      <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                        {rule.employee_name}
+                      </td>
+                      <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                        {rule.service_name}
+                      </td>
+                      <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                        {rule.attendance_type}
+                      </td>
+                      <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                        {rule.service_mode === "group"
+                          ? rule.group_commission_basis === "per_group"
+                            ? "Grupo por turma"
+                            : "Grupo por paciente"
+                          : "Individual"}
+                      </td>
+                      <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                        {money(rule.base_price)}
+                      </td>
+                      <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                        {rule.commission_type === "fixed"
+                          ? money(rule.commission_value)
+                          : `${rule.commission_value}%`}
+                      </td>
+                      <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                        {money(rule.estimated_amount)}
+                      </td>
+                      <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                        {rule.status === "active" ? "Ativa" : "Inativa"}
+                      </td>
+                      <td
+                        style={{
+                          borderBottom: "1px solid hsl(var(--border))",
+                          padding: "10px",
+                          textAlign: "right"
+                        }}
+                      >
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "flex-end" }}>
+                          <button
+                            type="button"
+                            onClick={() => openEditCommission(rule)}
+                            style={buttonStyle}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isPending}
+                            onClick={() => toggleCommissionStatus(rule)}
+                            style={buttonStyle}
+                          >
+                            {rule.status === "active" ? "Inativar" : "Ativar"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isPending}
+                            onClick={() => handleDeleteCommission(rule)}
+                            style={{
+                              ...buttonStyle,
+                              borderColor: "hsl(var(--destructive))",
+                              color: "hsl(var(--destructive))"
+                            }}
+                          >
+                            Excluir
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={9} style={{ padding: "16px", textAlign: "center" }}>
+                      Nenhuma regra de comissao cadastrada.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ overflowX: "auto" }}>
+            <h3 style={{ fontSize: "18px", fontWeight: 700, marginBottom: "10px" }}>
+              Historico de alteracoes
+            </h3>
+            <table style={{ borderCollapse: "collapse", width: "100%" }}>
+              <thead>
+                <tr>
+                  {["Profissional", "Servico", "Acao", "Antes", "Depois", "Motivo", "Data"].map(
+                    (heading) => (
+                      <th
+                        key={heading}
+                        style={{
+                          borderBottom: "1px solid hsl(var(--border))",
+                          padding: "10px",
+                          textAlign: "left"
+                        }}
+                      >
+                        {heading}
+                      </th>
+                    )
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {commissionHistory.length > 0 ? (
+                  commissionHistory.map((item) => (
+                    <tr key={item.id}>
+                      <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                        {item.employee_name}
+                      </td>
+                      <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                        {item.service_name}
+                      </td>
+                      <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                        {item.action}
+                      </td>
+                      <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                        {item.old_commission_value === null
+                          ? "-"
+                          : `${item.old_commission_value} (${money(item.old_estimated_amount)})`}
+                      </td>
+                      <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                        {item.new_commission_value === null
+                          ? "-"
+                          : `${item.new_commission_value} (${money(item.new_estimated_amount)})`}
+                      </td>
+                      <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                        {item.change_reason ?? "-"}
+                      </td>
+                      <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                        {new Date(item.created_at).toLocaleString("pt-BR")}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={7} style={{ padding: "16px", textAlign: "center" }}>
+                      Nenhum historico de comissao registrado.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

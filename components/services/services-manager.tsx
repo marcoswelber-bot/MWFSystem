@@ -859,7 +859,7 @@ export function ServicesManager({
                   />
                 </label>
                 <label>
-                  Tipo de comissao
+                  Tipo de comissao padrao opcional
                   <input
                     value={serviceForm.commission_type}
                     onChange={(event) =>
@@ -872,7 +872,7 @@ export function ServicesManager({
                   />
                 </label>
                 <label>
-                  Valor da comissao
+                  Valor da comissao padrao opcional
                   <input
                     inputMode="decimal"
                     value={serviceForm.commission_value}

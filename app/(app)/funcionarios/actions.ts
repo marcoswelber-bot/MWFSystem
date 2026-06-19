@@ -7,6 +7,10 @@ import type { Database } from "@/types/database";
 
 type EmployeeInsert = Database["public"]["Tables"]["employees"]["Insert"];
 type EmployeeUpdate = Database["public"]["Tables"]["employees"]["Update"];
+type ProfessionalCommission =
+  Database["public"]["Tables"]["professional_service_commissions"]["Row"];
+type ProfessionalCommissionInsert =
+  Database["public"]["Tables"]["professional_service_commissions"]["Insert"];
 
 export type EmployeeFormInput = {
   name: string;
@@ -22,6 +26,21 @@ export type EmployeeFormInput = {
 export type EmployeeActionResult = {
   ok: boolean;
   message: string;
+};
+
+export type ProfessionalCommissionFormInput = {
+  id?: string;
+  employee_id: string;
+  service_id: string;
+  attendance_type: string;
+  service_mode: string;
+  group_commission_basis?: string;
+  base_price?: string;
+  commission_type: string;
+  commission_value: string;
+  status?: string;
+  notes?: string;
+  change_reason?: string;
 };
 
 function cleanOptionalValue(value?: string) {
@@ -62,6 +81,93 @@ function getEmployeePayload(input: EmployeeFormInput): EmployeeInsert {
     commission_value: cleanOptionalNumber(input.commission_value),
     status: input.status ?? "active"
   };
+}
+
+function getEstimatedCommission(
+  basePrice: number | null,
+  commissionType: string,
+  commissionValue: number
+) {
+  if (commissionType === "fixed") {
+    return commissionValue;
+  }
+
+  return basePrice === null ? 0 : (basePrice * commissionValue) / 100;
+}
+
+function getCommissionPayload(
+  input: ProfessionalCommissionFormInput
+): ProfessionalCommissionInsert {
+  if (!input.employee_id) {
+    throw new Error("Selecione um profissional.");
+  }
+
+  if (!input.service_id) {
+    throw new Error("Selecione um servico.");
+  }
+
+  const basePrice = cleanOptionalNumber(input.base_price);
+  const commissionValue = cleanOptionalNumber(input.commission_value);
+
+  if (commissionValue === null) {
+    throw new Error("Informe o valor da comissao.");
+  }
+
+  const commissionType = input.commission_type || "percent";
+
+  return {
+    employee_id: input.employee_id,
+    service_id: input.service_id,
+    attendance_type: input.attendance_type || "presencial",
+    service_mode: input.service_mode || "individual",
+    group_commission_basis:
+      input.service_mode === "group"
+        ? input.group_commission_basis || "per_patient"
+        : "per_patient",
+    base_price: basePrice,
+    commission_type: commissionType,
+    commission_value: commissionValue,
+    estimated_amount: getEstimatedCommission(
+      basePrice,
+      commissionType,
+      commissionValue
+    ),
+    status: input.status ?? "active",
+    notes: cleanOptionalValue(input.notes)
+  };
+}
+
+async function getCurrentUserId() {
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getUser();
+  return data.user?.id ?? null;
+}
+
+async function writeCommissionHistory(
+  action: string,
+  rule: ProfessionalCommissionInsert & { id?: string },
+  previousRule?: ProfessionalCommission | null,
+  reason?: string
+) {
+  const supabase = await createClient();
+  const changedBy = await getCurrentUserId();
+
+  await supabase.from("professional_service_commission_history").insert({
+    commission_rule_id: rule.id ?? null,
+    employee_id: rule.employee_id,
+    service_id: rule.service_id,
+    action,
+    old_commission_type: previousRule?.commission_type ?? null,
+    old_commission_value: previousRule?.commission_value ?? null,
+    old_estimated_amount: previousRule?.estimated_amount ?? null,
+    old_status: previousRule?.status ?? null,
+    new_commission_type: rule.commission_type,
+    new_commission_value: rule.commission_value,
+    new_estimated_amount: rule.estimated_amount,
+    new_status: rule.status,
+    change_reason: cleanOptionalValue(reason),
+    changed_by: changedBy
+  });
 }
 
 export async function createEmployee(
@@ -161,6 +267,143 @@ export async function deleteEmployee(
 
     revalidatePath("/funcionarios");
     return { ok: true, message: "Funcionario excluido definitivamente." };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
+}
+
+export async function saveProfessionalCommission(
+  input: ProfessionalCommissionFormInput
+): Promise<EmployeeActionResult> {
+  try {
+    const supabase = await createClient();
+    const payload = getCommissionPayload(input);
+    const changedBy = await getCurrentUserId();
+    let previousRule: ProfessionalCommission | null = null;
+
+    if (input.id) {
+      const { data, error: loadError } = await supabase
+        .from("professional_service_commissions")
+        .select("*")
+        .eq("id", input.id)
+        .maybeSingle();
+
+      if (loadError) {
+        return { ok: false, message: getErrorMessage(loadError) };
+      }
+
+      previousRule = data;
+
+      const { error } = await supabase
+        .from("professional_service_commissions")
+        .update({ ...payload, updated_by: changedBy })
+        .eq("id", input.id);
+
+      if (error) {
+        return { ok: false, message: getErrorMessage(error) };
+      }
+
+      await writeCommissionHistory(
+        "updated",
+        { ...payload, id: input.id },
+        previousRule,
+        input.change_reason
+      );
+      revalidatePath("/funcionarios");
+      return { ok: true, message: "Regra de comissao atualizada com sucesso." };
+    }
+
+    const { data, error } = await supabase
+      .from("professional_service_commissions")
+      .insert({ ...payload, created_by: changedBy, updated_by: changedBy })
+      .select("*")
+      .single();
+
+    if (error) {
+      return { ok: false, message: getErrorMessage(error) };
+    }
+
+    await writeCommissionHistory(
+      "created",
+      { ...payload, id: data.id },
+      null,
+      input.change_reason
+    );
+    revalidatePath("/funcionarios");
+    return { ok: true, message: "Regra de comissao criada com sucesso." };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
+}
+
+export async function setProfessionalCommissionStatus(
+  id: string,
+  status: "active" | "inactive",
+  reason?: string
+): Promise<EmployeeActionResult> {
+  try {
+    const supabase = await createClient();
+    const changedBy = await getCurrentUserId();
+    const { data: previousRule, error: loadError } = await supabase
+      .from("professional_service_commissions")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (loadError) {
+      return { ok: false, message: getErrorMessage(loadError) };
+    }
+
+    const { error } = await supabase
+      .from("professional_service_commissions")
+      .update({ status, updated_by: changedBy })
+      .eq("id", id);
+
+    if (error) {
+      return { ok: false, message: getErrorMessage(error) };
+    }
+
+    await writeCommissionHistory(
+      status === "active" ? "activated" : "deactivated",
+      { ...previousRule, status },
+      previousRule,
+      reason
+    );
+    revalidatePath("/funcionarios");
+    return { ok: true, message: "Status da comissao atualizado." };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
+}
+
+export async function deleteProfessionalCommission(
+  id: string,
+  reason?: string
+): Promise<EmployeeActionResult> {
+  try {
+    const supabase = await createClient();
+    const { data: previousRule, error: loadError } = await supabase
+      .from("professional_service_commissions")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (loadError) {
+      return { ok: false, message: getErrorMessage(loadError) };
+    }
+
+    const { error } = await supabase
+      .from("professional_service_commissions")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      return { ok: false, message: getErrorMessage(error) };
+    }
+
+    await writeCommissionHistory("deleted", previousRule, previousRule, reason);
+    revalidatePath("/funcionarios");
+    return { ok: true, message: "Regra de comissao excluida definitivamente." };
   } catch (error) {
     return { ok: false, message: getErrorMessage(error) };
   }
