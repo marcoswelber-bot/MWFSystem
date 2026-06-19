@@ -7,7 +7,6 @@ import {
   restoreDefaultUserPermissions,
   saveUserPermissions,
   updateEmployeeRole,
-  userRoles,
   type PermissionActionResult
 } from "@/app/(app)/configuracoes/permissions-actions";
 import {
@@ -27,10 +26,18 @@ import {
 type Employee = Database["public"]["Tables"]["employees"]["Row"];
 
 type UserPermissionsManagerProps = {
-  employees: Employee[];
-  initialPermissions: Record<string, PermissionMap>;
-  isAdmMaster: boolean;
+  employees?: Employee[];
+  initialPermissions?: Record<string, PermissionMap>;
+  isAdmMaster?: boolean;
 };
+
+const userRoles = [
+  "ADM MASTER",
+  "Administrador",
+  "Gerente",
+  "Recepcao",
+  "Profissional"
+] as const;
 
 function clonePermissions(permissions?: PermissionMap) {
   const fallbackPermissions = getEmptyPermissionMap();
@@ -38,7 +45,10 @@ function clonePermissions(permissions?: PermissionMap) {
   return Object.fromEntries(
     permissionModules.map((module) => [
       module.key,
-      { ...(permissions?.[module.key] ?? fallbackPermissions[module.key]) }
+      {
+        ...fallbackPermissions[module.key],
+        ...(permissions?.[module.key] ?? {})
+      }
     ])
   ) as PermissionMap;
 }
@@ -48,10 +58,17 @@ function getEmployeeLabel(employee: Employee) {
 }
 
 export function UserPermissionsManager({
-  employees,
-  initialPermissions,
-  isAdmMaster
+  employees: rawEmployees = [],
+  initialPermissions: rawInitialPermissions = {},
+  isAdmMaster = false
 }: UserPermissionsManagerProps) {
+  const employees = Array.isArray(rawEmployees)
+    ? rawEmployees.filter((employee): employee is Employee => Boolean(employee?.id))
+    : [];
+  const initialPermissions =
+    rawInitialPermissions && typeof rawInitialPermissions === "object"
+      ? rawInitialPermissions
+      : {};
   const [selectedEmployeeId, setSelectedEmployeeId] = React.useState(
     employees[0]?.id ?? ""
   );
@@ -107,6 +124,7 @@ export function UserPermissionsManager({
         ? clonePermissions(initialPermissions[employeeId] ?? getEmptyPermissionMap())
         : getEmptyPermissionMap()
     );
+    setCopyFromEmployeeId("");
     setMessage(null);
   }
 
@@ -245,6 +263,9 @@ export function UserPermissionsManager({
             onChange={(event) => selectEmployee(event.target.value)}
             style={inputStyle}
           >
+            {!filteredEmployees.length ? (
+              <option value="">Nenhum usuario encontrado</option>
+            ) : null}
             {filteredEmployees.map((employee) => (
               <option key={employee.id} value={employee.id}>
                 {getEmployeeLabel(employee)}
@@ -319,6 +340,19 @@ export function UserPermissionsManager({
             </tr>
           </thead>
           <tbody>
+            {!filteredEmployees.length ? (
+              <tr>
+                <td
+                  colSpan={4}
+                  style={{
+                    borderBottom: "1px solid hsl(var(--border))",
+                    padding: "10px"
+                  }}
+                >
+                  Nenhum funcionario encontrado.
+                </td>
+              </tr>
+            ) : null}
             {filteredEmployees.map((employee) => (
               <tr
                 key={employee.id}
@@ -387,7 +421,7 @@ export function UserPermissionsManager({
             {permissionModules.map((module) => {
               const modulePermissions = selectedIsAdmMaster
                 ? fullPermissionSet
-                : permissions[module.key];
+                : permissions[module.key] ?? getEmptyPermissionMap()[module.key];
 
               return (
                 <tr key={module.key}>

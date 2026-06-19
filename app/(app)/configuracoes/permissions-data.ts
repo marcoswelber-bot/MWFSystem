@@ -11,26 +11,26 @@ type Employee = Database["public"]["Tables"]["employees"]["Row"];
 type UserPermission = Database["public"]["Tables"]["user_permissions"]["Row"];
 
 export function buildPermissionMaps(
-  employees: Employee[],
-  permissionRows: UserPermission[]
+  employees: Employee[] = [],
+  permissionRows: UserPermission[] = []
 ) {
   const maps: Record<string, PermissionMap> = {};
 
-  for (const employee of employees) {
+  for (const employee of employees.filter((item) => Boolean(item?.id))) {
     const employeePermissions = getEmptyPermissionMap();
 
     for (const row of permissionRows.filter(
-      (permission) => permission.employee_id === employee.id
+      (permission) => permission?.employee_id === employee.id
     )) {
       if (row.module_key in employeePermissions) {
         employeePermissions[row.module_key as keyof PermissionMap] = {
-          view: row.can_view,
-          create: row.can_create,
-          edit: row.can_edit,
-          delete: row.can_delete,
-          toggle: row.can_toggle,
-          export: row.can_export,
-          import: row.can_import
+          view: Boolean(row.can_view),
+          create: Boolean(row.can_create),
+          edit: Boolean(row.can_edit),
+          delete: Boolean(row.can_delete),
+          toggle: Boolean(row.can_toggle),
+          export: Boolean(row.can_export),
+          import: Boolean(row.can_import)
         };
       }
     }
@@ -66,7 +66,7 @@ export async function loadPermissionsPageData() {
     if (employeesResult.error) {
       loadError = getErrorMessage(employeesResult.error);
     } else {
-      employees = employeesResult.data ?? [];
+      employees = Array.isArray(employeesResult.data) ? employeesResult.data : [];
     }
 
     if (permissionsResult.error) {
@@ -74,7 +74,9 @@ export async function loadPermissionsPageData() {
         ? `${loadError} ${getErrorMessage(permissionsResult.error)}`
         : getErrorMessage(permissionsResult.error);
     } else {
-      permissionRows = permissionsResult.data ?? [];
+      permissionRows = Array.isArray(permissionsResult.data)
+        ? permissionsResult.data
+        : [];
     }
   } catch (error) {
     loadError = getErrorMessage(error);

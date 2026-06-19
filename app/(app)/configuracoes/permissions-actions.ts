@@ -20,16 +20,6 @@ export type PermissionActionResult = {
   message: string;
 };
 
-export const userRoles = [
-  "ADM MASTER",
-  "Administrador",
-  "Gerente",
-  "Recepcao",
-  "Profissional"
-] as const;
-
-export type UserRoleName = (typeof userRoles)[number];
-
 function normalizeRole(role?: string | null) {
   return role
     ?.normalize("NFD")
