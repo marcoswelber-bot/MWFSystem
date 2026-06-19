@@ -32,5 +32,25 @@ export function getErrorMessage(error: unknown): string {
     return error;
   }
 
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    const parts = [
+      typeof record.message === "string" ? record.message : undefined,
+      typeof record.details === "string" ? `Details: ${record.details}` : undefined,
+      typeof record.hint === "string" ? `Hint: ${record.hint}` : undefined,
+      typeof record.code === "string" ? `Code: ${record.code}` : undefined
+    ].filter(Boolean);
+
+    if (parts.length > 0) {
+      return parts.join(" ");
+    }
+
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return Object.prototype.toString.call(error);
+    }
+  }
+
   return "Unknown Supabase error";
 }

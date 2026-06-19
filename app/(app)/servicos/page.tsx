@@ -48,6 +48,32 @@ function appendLoadError(currentError: string | undefined, nextError: unknown) {
   return currentError ? `${currentError} ${message}` : message;
 }
 
+async function readSupabaseList<T>(
+  label: string,
+  query: PromiseLike<{ data: T[] | null; error: unknown }>
+) {
+  try {
+    const { data, error } = await query;
+
+    if (error) {
+      return {
+        data: [],
+        error: `[${label}] ${getErrorMessage(error)}`
+      };
+    }
+
+    return {
+      data: data ?? [],
+      error: undefined
+    };
+  } catch (error) {
+    return {
+      data: [],
+      error: `[${label}] ${getErrorMessage(error)}`
+    };
+  }
+}
+
 export default async function ServicosPage({ searchParams }: ServicosPageProps) {
   const params = await searchParams;
   const search = params.q?.trim() ?? "";
@@ -79,11 +105,10 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
       );
     }
 
-    const servicesResult = await servicesQuery;
+    const servicesResult = await readSupabaseList<Service>("services", servicesQuery);
+    services = servicesResult.data;
     if (servicesResult.error) {
       loadError = appendLoadError(loadError, servicesResult.error);
-    } else {
-      services = servicesResult.data ?? [];
     }
 
     const [
@@ -99,108 +124,105 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
       notificationsResult,
       auditLogsResult
     ] = await Promise.all([
-      supabase.from("service_categories").select("*").order("name", { ascending: true }),
-      supabase.from("employees").select("*").order("name", { ascending: true }),
-      supabase
-        .from("service_professionals")
-        .select("*")
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("service_packages")
-        .select("*")
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("service_discounts")
-        .select("*")
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("commercial_rules")
-        .select("*")
-        .order("created_at", { ascending: false }),
-      supabase.from("treatment_goals").select("*").order("name", { ascending: true }),
-      supabase
-        .from("treatment_protocols")
-        .select("*")
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("service_resources")
-        .select("*")
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("internal_notifications")
-        .select("*")
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("service_audit_logs")
-        .select("*")
-        .order("created_at", { ascending: false })
+      readSupabaseList<Category>(
+        "service_categories",
+        supabase.from("service_categories").select("*").order("name", { ascending: true })
+      ),
+      readSupabaseList<Employee>(
+        "employees",
+        supabase.from("employees").select("*").order("name", { ascending: true })
+      ),
+      readSupabaseList<Database["public"]["Tables"]["service_professionals"]["Row"]>(
+        "service_professionals",
+        supabase
+          .from("service_professionals")
+          .select("*")
+          .order("created_at", { ascending: false })
+      ),
+      readSupabaseList<ServicePackage>(
+        "service_packages",
+        supabase
+          .from("service_packages")
+          .select("*")
+          .order("created_at", { ascending: false })
+      ),
+      readSupabaseList<Database["public"]["Tables"]["service_discounts"]["Row"]>(
+        "service_discounts",
+        supabase
+          .from("service_discounts")
+          .select("*")
+          .order("created_at", { ascending: false })
+      ),
+      readSupabaseList<CommercialRule>(
+        "commercial_rules",
+        supabase
+          .from("commercial_rules")
+          .select("*")
+          .order("created_at", { ascending: false })
+      ),
+      readSupabaseList<TreatmentGoal>(
+        "treatment_goals",
+        supabase.from("treatment_goals").select("*").order("name", { ascending: true })
+      ),
+      readSupabaseList<Database["public"]["Tables"]["treatment_protocols"]["Row"]>(
+        "treatment_protocols",
+        supabase
+          .from("treatment_protocols")
+          .select("*")
+          .order("created_at", { ascending: false })
+      ),
+      readSupabaseList<Database["public"]["Tables"]["service_resources"]["Row"]>(
+        "service_resources",
+        supabase
+          .from("service_resources")
+          .select("*")
+          .order("created_at", { ascending: false })
+      ),
+      readSupabaseList<Database["public"]["Tables"]["internal_notifications"]["Row"]>(
+        "internal_notifications",
+        supabase
+          .from("internal_notifications")
+          .select("*")
+          .order("created_at", { ascending: false })
+      ),
+      readSupabaseList<Database["public"]["Tables"]["service_audit_logs"]["Row"]>(
+        "service_audit_logs",
+        supabase
+          .from("service_audit_logs")
+          .select("*")
+          .order("created_at", { ascending: false })
+      )
     ]);
 
-    if (categoriesResult.error) {
-      loadError = appendLoadError(loadError, categoriesResult.error);
-    } else {
-      categories = categoriesResult.data ?? [];
-    }
+    categories = categoriesResult.data;
+    employees = employeesResult.data;
+    rawProfessionalLinks = professionalLinksResult.data;
+    packages = packagesResult.data;
+    rawDiscounts = discountsResult.data;
+    commercialRules = rulesResult.data;
+    goals = goalsResult.data;
+    rawProtocols = protocolsResult.data;
+    rawResources = resourcesResult.data;
+    rawNotifications = notificationsResult.data;
+    rawAuditLogs = auditLogsResult.data;
 
-    if (employeesResult.error) {
-      loadError = appendLoadError(loadError, employeesResult.error);
-    } else {
-      employees = employeesResult.data ?? [];
-    }
-
-    if (professionalLinksResult.error) {
-      loadError = appendLoadError(loadError, professionalLinksResult.error);
-    } else {
-      rawProfessionalLinks = professionalLinksResult.data ?? [];
-    }
-
-    if (packagesResult.error) {
-      loadError = appendLoadError(loadError, packagesResult.error);
-    } else {
-      packages = packagesResult.data ?? [];
-    }
-
-    if (discountsResult.error) {
-      loadError = appendLoadError(loadError, discountsResult.error);
-    } else {
-      rawDiscounts = discountsResult.data ?? [];
-    }
-
-    if (rulesResult.error) {
-      loadError = appendLoadError(loadError, rulesResult.error);
-    } else {
-      commercialRules = rulesResult.data ?? [];
-    }
-
-    if (goalsResult.error) {
-      loadError = appendLoadError(loadError, goalsResult.error);
-    } else {
-      goals = goalsResult.data ?? [];
-    }
-
-    if (protocolsResult.error) {
-      loadError = appendLoadError(loadError, protocolsResult.error);
-    } else {
-      rawProtocols = protocolsResult.data ?? [];
-    }
-
-    if (resourcesResult.error) {
-      loadError = appendLoadError(loadError, resourcesResult.error);
-    } else {
-      rawResources = resourcesResult.data ?? [];
-    }
-
-    if (notificationsResult.error) {
-      loadError = appendLoadError(loadError, notificationsResult.error);
-    } else {
-      rawNotifications = notificationsResult.data ?? [];
-    }
-
-    if (auditLogsResult.error) {
-      loadError = appendLoadError(loadError, auditLogsResult.error);
-    } else {
-      rawAuditLogs = auditLogsResult.data ?? [];
-    }
+    [
+      categoriesResult.error,
+      employeesResult.error,
+      professionalLinksResult.error,
+      packagesResult.error,
+      discountsResult.error,
+      rulesResult.error,
+      goalsResult.error,
+      protocolsResult.error,
+      resourcesResult.error,
+      notificationsResult.error,
+      auditLogsResult.error
+    ].forEach((error) => {
+      if (error) {
+        loadError = appendLoadError(loadError, error);
+      }
+    });
   } catch (error) {
     loadError = appendLoadError(loadError, error);
   }
