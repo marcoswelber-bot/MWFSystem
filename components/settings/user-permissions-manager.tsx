@@ -4,6 +4,7 @@ import * as React from "react";
 import type { Database } from "@/types/database";
 import {
   copyUserPermissions,
+  restoreDefaultUserPermissions,
   saveUserPermissions,
   updateEmployeeRole,
   userRoles,
@@ -52,6 +53,7 @@ export function UserPermissionsManager({
   const [selectedEmployeeId, setSelectedEmployeeId] = React.useState(
     employees[0]?.id ?? ""
   );
+  const [search, setSearch] = React.useState("");
   const [copyFromEmployeeId, setCopyFromEmployeeId] = React.useState("");
   const [permissions, setPermissions] = React.useState<PermissionMap>(
     selectedEmployeeId
@@ -84,6 +86,17 @@ export function UserPermissionsManager({
     padding: "10px 14px",
     fontWeight: 600
   };
+  const filteredEmployees = employees.filter((employee) => {
+    const term = search.trim().toLowerCase();
+
+    if (!term) {
+      return true;
+    }
+
+    return [employee.name, employee.email, employee.role]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(term));
+  });
 
   function selectEmployee(employeeId: string) {
     setSelectedEmployeeId(employeeId);
@@ -133,6 +146,21 @@ export function UserPermissionsManager({
         setPermissions(
           clonePermissions(initialPermissions[copyFromEmployeeId] ?? getEmptyPermissionMap())
         );
+      }
+    });
+  }
+
+  function restoreDefaultPermissions() {
+    if (!selectedEmployeeId) {
+      return;
+    }
+
+    startTransition(async () => {
+      const result = await restoreDefaultUserPermissions(selectedEmployeeId);
+      setMessage(result);
+
+      if (result.ok) {
+        setPermissions(getEmptyPermissionMap());
       }
     });
   }
@@ -199,13 +227,23 @@ export function UserPermissionsManager({
         }}
       >
         <label>
+          Buscar usuario
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Buscar por nome, email ou cargo"
+            style={inputStyle}
+          />
+        </label>
+
+        <label>
           Funcionario/usuario
           <select
             value={selectedEmployeeId}
             onChange={(event) => selectEmployee(event.target.value)}
             style={inputStyle}
           >
-            {employees.map((employee) => (
+            {filteredEmployees.map((employee) => (
               <option key={employee.id} value={employee.id}>
                 {getEmployeeLabel(employee)}
               </option>
@@ -258,6 +296,55 @@ export function UserPermissionsManager({
             Copiar permissoes
           </button>
         </div>
+      </div>
+
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ borderCollapse: "collapse", width: "100%" }}>
+          <thead>
+            <tr>
+              {["Usuario", "Email", "Cargo", "Status"].map((heading) => (
+                <th
+                  key={heading}
+                  style={{
+                    borderBottom: "1px solid hsl(var(--border))",
+                    padding: "10px",
+                    textAlign: "left"
+                  }}
+                >
+                  {heading}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filteredEmployees.map((employee) => (
+              <tr
+                key={employee.id}
+                onClick={() => selectEmployee(employee.id)}
+                style={{
+                  background:
+                    employee.id === selectedEmployeeId
+                      ? "hsl(var(--secondary))"
+                      : "transparent",
+                  cursor: "pointer"
+                }}
+              >
+                <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                  {employee.name}
+                </td>
+                <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                  {employee.email ?? "-"}
+                </td>
+                <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                  {employee.role ?? "-"}
+                </td>
+                <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                  {employee.status === "active" ? "Ativo" : "Inativo"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       {selectedIsAdmMaster ? (
@@ -332,6 +419,14 @@ export function UserPermissionsManager({
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <button
+          type="button"
+          disabled={!isAdmMaster || selectedIsAdmMaster || isPending}
+          onClick={restoreDefaultPermissions}
+          style={{ ...buttonStyle, marginRight: "8px" }}
+        >
+          Restaurar permissoes padrao
+        </button>
         <button
           type="button"
           disabled={!isAdmMaster || selectedIsAdmMaster || isPending}

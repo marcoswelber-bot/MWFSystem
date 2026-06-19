@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import type { Route } from "next";
 import { usePathname } from "next/navigation";
 import { Activity, LogOut, Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { signOut } from "@/app/login/actions";
@@ -93,22 +94,47 @@ export function AppShell({ children, userEmail, visibleModules }: AppShellProps)
       <nav className="flex-1 space-y-1 overflow-y-auto p-3">
         {visibleNavigation.map((item) => {
           const Icon = item.icon;
-          const active = pathname === item.href;
+          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const visibleChildren = item.children?.filter((child) =>
+            visibleModuleSet.has(child.moduleKey)
+          );
 
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              title={item.title}
-              className={cn(
-                "flex h-11 items-center gap-3 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground",
-                active && "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
-                collapsed && "justify-center px-0"
-              )}
-            >
-              <Icon className="h-4 w-4 shrink-0" />
-              {!collapsed ? <span className="truncate">{item.title}</span> : null}
-            </Link>
+            <div key={item.href}>
+              <Link
+                href={item.href as Route}
+                title={item.title}
+                className={cn(
+                  "flex h-11 items-center gap-3 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground",
+                  active && "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
+                  collapsed && "justify-center px-0"
+                )}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                {!collapsed ? <span className="truncate">{item.title}</span> : null}
+              </Link>
+              {!collapsed && visibleChildren?.length ? (
+                <div className="ml-8 mt-1 space-y-1">
+                  {visibleChildren.map((child) => {
+                    const childActive = pathname === child.href;
+
+                    return (
+                      <Link
+                        key={child.href}
+                        href={child.href as Route}
+                        title={child.title}
+                        className={cn(
+                          "flex h-9 items-center rounded-md px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground",
+                          childActive && "bg-secondary text-foreground"
+                        )}
+                      >
+                        {child.title}
+                      </Link>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
           );
         })}
       </nav>

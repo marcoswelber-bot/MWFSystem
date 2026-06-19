@@ -22,7 +22,9 @@ function rowToPermissionSet(row: UserPermission): PermissionSet {
     create: row.can_create,
     edit: row.can_edit,
     delete: row.can_delete,
-    toggle: row.can_toggle
+    toggle: row.can_toggle,
+    export: row.can_export,
+    import: row.can_import
   };
 }
 

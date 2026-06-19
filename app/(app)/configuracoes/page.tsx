@@ -1,7 +1,7 @@
 import { Building2, KeyRound, Settings, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 import { ModuleCard } from "@/components/module-card";
 import { PageHeader } from "@/components/page-header";
-import { UserPermissionsManager } from "@/components/settings/user-permissions-manager";
 import {
   Card,
   CardContent,
@@ -9,77 +9,7 @@ import {
   CardHeader,
   CardTitle
 } from "@/components/ui/card";
-import { createClient } from "@/lib/supabase/server";
-import { getErrorMessage } from "@/lib/supabase/env";
-import {
-  getEmptyPermissionMap,
-  type PermissionMap
-} from "@/lib/permission-modules";
-import { isCurrentUserAdmMaster } from "@/lib/permissions";
-import type { Database } from "@/types/database";
-
-type Employee = Database["public"]["Tables"]["employees"]["Row"];
-type UserPermission = Database["public"]["Tables"]["user_permissions"]["Row"];
-
-function buildPermissionMaps(
-  employees: Employee[],
-  permissionRows: UserPermission[]
-) {
-  const maps: Record<string, PermissionMap> = {};
-
-  for (const employee of employees) {
-    const employeePermissions = getEmptyPermissionMap();
-
-    for (const row of permissionRows.filter(
-      (permission) => permission.employee_id === employee.id
-    )) {
-      if (row.module_key in employeePermissions) {
-        employeePermissions[row.module_key as keyof PermissionMap] = {
-          view: row.can_view,
-          create: row.can_create,
-          edit: row.can_edit,
-          delete: row.can_delete,
-          toggle: row.can_toggle
-        };
-      }
-    }
-
-    maps[employee.id] = employeePermissions;
-  }
-
-  return maps;
-}
-
-export default async function ConfiguracoesPage() {
-  let employees: Employee[] = [];
-  let permissionRows: UserPermission[] = [];
-  let loadError: string | undefined;
-  const isAdmMaster = await isCurrentUserAdmMaster();
-
-  try {
-    const supabase = await createClient();
-    const [employeesResult, permissionsResult] = await Promise.all([
-      supabase.from("employees").select("*").order("name", { ascending: true }),
-      supabase.from("user_permissions").select("*")
-    ]);
-
-    if (employeesResult.error) {
-      loadError = getErrorMessage(employeesResult.error);
-    } else {
-      employees = employeesResult.data ?? [];
-    }
-
-    if (permissionsResult.error) {
-      loadError = loadError
-        ? `${loadError} ${getErrorMessage(permissionsResult.error)}`
-        : getErrorMessage(permissionsResult.error);
-    } else {
-      permissionRows = permissionsResult.data ?? [];
-    }
-  } catch (error) {
-    loadError = getErrorMessage(error);
-  }
-
+export default function ConfiguracoesPage() {
   return (
     <div>
       <PageHeader
@@ -95,17 +25,22 @@ export default async function ConfiguracoesPage() {
         <ModuleCard title="Seguranca" description="Politicas e RLS" icon={KeyRound} value="RLS" />
       </section>
 
-      {loadError ? (
-        <div className="mt-6 rounded-md border border-destructive p-4 text-destructive">
-          {loadError}
-        </div>
-      ) : null}
-
-      <UserPermissionsManager
-        employees={employees}
-        initialPermissions={buildPermissionMaps(employees, permissionRows)}
-        isAdmMaster={isAdmMaster}
-      />
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Permissoes de Usuarios</CardTitle>
+          <CardDescription>
+            Libere modulos e acoes por usuario. Somente o ADM Master pode administrar permissoes.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Link
+            href="/configuracoes/permissoes"
+            className="inline-flex rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+          >
+            Abrir Permissoes de Usuarios
+          </Link>
+        </CardContent>
+      </Card>
 
       <Card className="mt-6">
         <CardHeader>

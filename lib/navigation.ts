@@ -11,8 +11,22 @@ import {
   UsersRound,
   WalletCards
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import type { PermissionModuleKey } from "@/lib/permission-modules";
 
-export const appNavigation = [
+export type NavigationItem = {
+  title: string;
+  href: string;
+  icon: LucideIcon;
+  moduleKey: PermissionModuleKey;
+  children?: Array<{
+    title: string;
+    href: string;
+    moduleKey: PermissionModuleKey;
+  }>;
+};
+
+export const appNavigation: NavigationItem[] = [
   {
     title: "Dashboard",
     href: "/dashboard",
@@ -71,7 +85,14 @@ export const appNavigation = [
     title: "Configuracoes",
     href: "/configuracoes",
     icon: Settings,
-    moduleKey: "configuracoes"
+    moduleKey: "configuracoes",
+    children: [
+      {
+        title: "Permissoes de Usuarios",
+        href: "/configuracoes/permissoes",
+        moduleKey: "configuracoes"
+      }
+    ]
   }
 ] as const;
 

@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getErrorMessage } from "@/lib/supabase/env";
 import {
   permissionModules,
+  getEmptyPermissionMap,
   isAdmEmail,
   type PermissionModuleKey,
   type PermissionSet
@@ -168,7 +169,9 @@ export async function saveUserPermissions(
         can_create: Boolean(permission?.create),
         can_edit: Boolean(permission?.edit),
         can_delete: Boolean(permission?.delete),
-        can_toggle: Boolean(permission?.toggle)
+        can_toggle: Boolean(permission?.toggle),
+        can_export: Boolean(permission?.export),
+        can_import: Boolean(permission?.import)
       };
     });
 
@@ -216,7 +219,9 @@ export async function copyUserPermissions(
         can_create: Boolean(source?.can_create),
         can_edit: Boolean(source?.can_edit),
         can_delete: Boolean(source?.can_delete),
-        can_toggle: Boolean(source?.can_toggle)
+        can_toggle: Boolean(source?.can_toggle),
+        can_export: Boolean(source?.can_export),
+        can_import: Boolean(source?.can_import)
       };
     });
 
@@ -233,4 +238,10 @@ export async function copyUserPermissions(
   } catch (error) {
     return { ok: false, message: getErrorMessage(error) };
   }
+}
+
+export async function restoreDefaultUserPermissions(
+  employeeId: string
+): Promise<PermissionActionResult> {
+  return saveUserPermissions(employeeId, getEmptyPermissionMap());
 }

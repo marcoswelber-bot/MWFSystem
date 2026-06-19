@@ -897,6 +897,8 @@ export type Database = {
           can_edit: boolean;
           can_delete: boolean;
           can_toggle: boolean;
+          can_export: boolean;
+          can_import: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -909,6 +911,8 @@ export type Database = {
           can_edit?: boolean;
           can_delete?: boolean;
           can_toggle?: boolean;
+          can_export?: boolean;
+          can_import?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -921,6 +925,8 @@ export type Database = {
           can_edit?: boolean;
           can_delete?: boolean;
           can_toggle?: boolean;
+          can_export?: boolean;
+          can_import?: boolean;
           created_at?: string;
           updated_at?: string;
         };

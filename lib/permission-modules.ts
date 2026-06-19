@@ -3,7 +3,9 @@ export const permissionActions = [
   "create",
   "edit",
   "delete",
-  "toggle"
+  "toggle",
+  "export",
+  "import"
 ] as const;
 
 export type PermissionAction = (typeof permissionActions)[number];
@@ -40,7 +42,9 @@ export const emptyPermissionSet: PermissionSet = {
   create: false,
   edit: false,
   delete: false,
-  toggle: false
+  toggle: false,
+  export: false,
+  import: false
 };
 
 export const fullPermissionSet: PermissionSet = {
@@ -48,7 +52,9 @@ export const fullPermissionSet: PermissionSet = {
   create: true,
   edit: true,
   delete: true,
-  toggle: true
+  toggle: true,
+  export: true,
+  import: true
 };
 
 export const permissionActionLabels: Record<PermissionAction, string> = {
@@ -56,7 +62,9 @@ export const permissionActionLabels: Record<PermissionAction, string> = {
   create: "criar",
   edit: "editar",
   delete: "excluir",
-  toggle: "ativar/inativar"
+  toggle: "ativar/inativar",
+  export: "exportar",
+  import: "importar"
 };
 
 export function isAdmRole(role?: string | null) {
