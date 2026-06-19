@@ -32,11 +32,13 @@ type UserPermissionsManagerProps = {
   isAdmMaster: boolean;
 };
 
-function clonePermissions(permissions: PermissionMap) {
+function clonePermissions(permissions?: PermissionMap) {
+  const fallbackPermissions = getEmptyPermissionMap();
+
   return Object.fromEntries(
     permissionModules.map((module) => [
       module.key,
-      { ...(permissions[module.key] ?? {}) }
+      { ...(permissions?.[module.key] ?? fallbackPermissions[module.key]) }
     ])
   ) as PermissionMap;
 }
