@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getErrorMessage } from "@/lib/supabase/env";
 import { assertCan, isAdmRole } from "@/lib/permissions";
@@ -102,6 +103,104 @@ function getEstimatedCommission(
   return basePrice === null ? 0 : (basePrice * commissionValue) / 100;
 }
 
+async function findAuthUserByEmail(email: string) {
+  const supabaseAdmin = createAdminClient();
+  const normalizedEmail = email.trim().toLowerCase();
+  const perPage = 1000;
+  let page = 1;
+
+  while (true) {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({
+      page,
+      perPage
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    const user = data.users.find(
+      (item) => item.email?.trim().toLowerCase() === normalizedEmail
+    );
+
+    if (user) {
+      return user;
+    }
+
+    if (data.users.length < perPage) {
+      return null;
+    }
+
+    page += 1;
+  }
+}
+
+async function syncEmployeeAuthUser(
+  payload: EmployeeInsert | EmployeeUpdate,
+  previousLoginEmail?: string | null
+) {
+  if (!payload.system_access) {
+    return;
+  }
+
+  const loginEmail = cleanOptionalValue(payload.login_email ?? undefined);
+
+  if (!loginEmail) {
+    throw new Error("Informe o email de login para liberar acesso ao sistema.");
+  }
+
+  const temporaryPassword = cleanOptionalValue(
+    payload.temporary_password ?? undefined
+  );
+  const supabaseAdmin = createAdminClient();
+  const existingUser =
+    (await findAuthUserByEmail(loginEmail)) ||
+    (previousLoginEmail ? await findAuthUserByEmail(previousLoginEmail) : null);
+
+  const userMetadata = {
+    name: payload.name ?? "",
+    role: payload.role ?? "Funcionario",
+    access_type: "employee"
+  };
+
+  if (existingUser) {
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(
+      existingUser.id,
+      {
+        email: loginEmail,
+        ...(temporaryPassword ? { password: temporaryPassword } : {}),
+        email_confirm: true,
+        app_metadata: { role: "employee" },
+        user_metadata: userMetadata
+      }
+    );
+
+    if (error) {
+      throw error;
+    }
+
+    return;
+  }
+
+  if (!temporaryPassword) {
+    throw new Error(
+      "Informe a senha provisoria para criar o usuario no Supabase Auth."
+    );
+  }
+
+  const { error } = await supabaseAdmin.auth.admin.createUser({
+    email: loginEmail,
+    password: temporaryPassword,
+    email_confirm: true,
+    app_metadata: { role: "employee" },
+    user_metadata: userMetadata
+  });
+
+  if (error) {
+    throw error;
+  }
+}
+
 function getCommissionPayload(
   input: ProfessionalCommissionFormInput
 ): ProfessionalCommissionInsert {
@@ -180,6 +279,7 @@ export async function createEmployee(
     if (isAdmRole(payload.role)) {
       throw new Error("Use Permissoes de Usuarios para definir ADM Master.");
     }
+    await syncEmployeeAuthUser(payload);
     const { error } = await supabase.from("employees").insert(payload);
 
     if (error) {
@@ -204,6 +304,17 @@ export async function updateEmployee(
     if (isAdmRole(payload.role)) {
       throw new Error("Use Permissoes de Usuarios para definir ADM Master.");
     }
+    const { data: currentEmployee, error: loadError } = await supabase
+      .from("employees")
+      .select("login_email")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (loadError) {
+      return { ok: false, message: getErrorMessage(loadError) };
+    }
+
+    await syncEmployeeAuthUser(payload, currentEmployee?.login_email ?? null);
     const { error } = await supabase
       .from("employees")
       .update(payload)

@@ -10,6 +10,8 @@
 
 ✅ Login de funcionários
 
+✅ Sincronização de funcionários com Supabase Auth
+
 ✅ Login de pacientes
 
 🔄 Sistema de permissões e cargos (em andamento)

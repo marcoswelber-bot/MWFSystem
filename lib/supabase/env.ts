@@ -3,6 +3,10 @@ type SupabaseConfig = {
   anonKey: string;
 };
 
+type SupabaseAdminConfig = SupabaseConfig & {
+  serviceRoleKey: string;
+};
+
 export function getSupabaseConfig(): SupabaseConfig {
   const missing = [
     ["NEXT_PUBLIC_SUPABASE_URL", process.env.NEXT_PUBLIC_SUPABASE_URL],
@@ -18,6 +22,21 @@ export function getSupabaseConfig(): SupabaseConfig {
   return {
     url: process.env.NEXT_PUBLIC_SUPABASE_URL!,
     anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  };
+}
+
+export function getSupabaseAdminConfig(): SupabaseAdminConfig {
+  const baseConfig = getSupabaseConfig();
+
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error(
+      "Missing Supabase environment variable(s): SUPABASE_SERVICE_ROLE_KEY"
+    );
+  }
+
+  return {
+    ...baseConfig,
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY
   };
 }
 
