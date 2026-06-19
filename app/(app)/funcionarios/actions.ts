@@ -18,6 +18,9 @@ export type EmployeeFormInput = {
   phone?: string;
   whatsapp?: string;
   email?: string;
+  system_access?: boolean;
+  login_email?: string;
+  temporary_password?: string;
   role?: string;
   commission_type?: string;
   commission_value?: string;
@@ -77,6 +80,9 @@ function getEmployeePayload(input: EmployeeFormInput): EmployeeInsert {
     phone: cleanOptionalValue(input.phone),
     whatsapp: cleanOptionalValue(input.whatsapp),
     email: cleanOptionalValue(input.email),
+    system_access: Boolean(input.system_access),
+    login_email: cleanOptionalValue(input.login_email),
+    temporary_password: cleanOptionalValue(input.temporary_password),
     role: cleanOptionalValue(input.role),
     commission_type: cleanOptionalValue(input.commission_type),
     commission_value: cleanOptionalNumber(input.commission_value),

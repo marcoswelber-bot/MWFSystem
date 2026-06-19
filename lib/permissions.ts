@@ -41,7 +41,7 @@ export async function getCurrentEmployee() {
   const { data } = await supabase
     .from("employees")
     .select("*")
-    .eq("email", user.email)
+    .or(`login_email.eq.${user.email.toLowerCase()},email.eq.${user.email}`)
     .maybeSingle();
 
   return { user, employee: data };

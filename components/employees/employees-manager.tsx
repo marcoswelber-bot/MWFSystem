@@ -49,6 +49,9 @@ const emptyForm: EmployeeFormInput = {
   phone: "",
   whatsapp: "",
   email: "",
+  system_access: false,
+  login_email: "",
+  temporary_password: "",
   role: "",
   commission_type: "",
   commission_value: "",
@@ -75,6 +78,9 @@ function employeeToForm(employee: Employee): EmployeeFormInput {
     phone: employee.phone ?? "",
     whatsapp: employee.whatsapp ?? "",
     email: employee.email ?? "",
+    system_access: employee.system_access,
+    login_email: employee.login_email ?? "",
+    temporary_password: employee.temporary_password ?? "",
     role: employee.role ?? "",
     commission_type: employee.commission_type ?? "",
     commission_value:
@@ -193,7 +199,7 @@ export function EmployeesManager({
     commissionForm.commission_value
   );
 
-  function updateForm(field: keyof EmployeeFormInput, value: string) {
+  function updateForm(field: keyof EmployeeFormInput, value: string | boolean) {
     setForm((currentForm) => ({ ...currentForm, [field]: value }));
   }
 
@@ -287,6 +293,14 @@ export function EmployeesManager({
 
     if (!form.name.trim()) {
       setMessage({ ok: false, message: "Nome do funcionario e obrigatorio." });
+      return;
+    }
+
+    if (form.system_access && !form.login_email?.trim()) {
+      setMessage({
+        ok: false,
+        message: "Informe o email de login para liberar acesso ao sistema."
+      });
       return;
     }
 
@@ -618,6 +632,39 @@ export function EmployeesManager({
               <input
                 value={form.role}
                 onChange={(event) => updateForm("role", event.target.value)}
+                style={inputStyle}
+              />
+            </label>
+            <label>
+              Tem acesso ao sistema?
+              <select
+                value={form.system_access ? "yes" : "no"}
+                onChange={(event) =>
+                  updateForm("system_access", event.target.value === "yes")
+                }
+                style={inputStyle}
+              >
+                <option value="no">Nao</option>
+                <option value="yes">Sim</option>
+              </select>
+            </label>
+            <label>
+              Email de login
+              <input
+                type="email"
+                value={form.login_email}
+                onChange={(event) => updateForm("login_email", event.target.value)}
+                style={inputStyle}
+              />
+            </label>
+            <label>
+              Senha provisoria
+              <input
+                type="text"
+                value={form.temporary_password}
+                onChange={(event) =>
+                  updateForm("temporary_password", event.target.value)
+                }
                 style={inputStyle}
               />
             </label>

@@ -15,6 +15,9 @@ export type PatientFormInput = {
   birth_date?: string;
   phone?: string;
   email?: string;
+  portal_access?: boolean;
+  login_email?: string;
+  temporary_password?: string;
   address?: string;
   notes?: string;
   status?: string;
@@ -43,6 +46,9 @@ function getPatientPayload(input: PatientFormInput): PatientInsert {
     birth_date: cleanOptionalValue(input.birth_date),
     phone: cleanOptionalValue(input.phone),
     email: cleanOptionalValue(input.email),
+    portal_access: Boolean(input.portal_access),
+    login_email: cleanOptionalValue(input.login_email),
+    temporary_password: cleanOptionalValue(input.temporary_password),
     address: cleanOptionalValue(input.address),
     notes: cleanOptionalValue(input.notes),
     status: input.status ?? "active"

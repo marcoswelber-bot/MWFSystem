@@ -11,7 +11,8 @@ const protectedRoutes = [
   "/servicos",
   "/prontuarios",
   "/relatorios",
-  "/configuracoes"
+  "/configuracoes",
+  "/portal"
 ];
 
 export async function updateSession(request: NextRequest) {

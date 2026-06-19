@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
+import { getCurrentAccessProfile } from "@/lib/access-control";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentPermissionMap } from "@/lib/permissions";
 import type { PermissionModuleKey } from "@/lib/permission-modules";
@@ -16,6 +17,17 @@ export default async function ProtectedLayout({
 
   if (!user) {
     redirect("/login");
+  }
+
+  const accessProfile = await getCurrentAccessProfile();
+
+  if (accessProfile?.kind === "patient") {
+    redirect("/portal");
+  }
+
+  if (accessProfile?.kind === "blocked" || accessProfile?.kind === "unknown") {
+    await supabase.auth.signOut();
+    redirect(`/login?error=${encodeURIComponent(accessProfile.reason)}`);
   }
 
   const permissions = await getCurrentPermissionMap();

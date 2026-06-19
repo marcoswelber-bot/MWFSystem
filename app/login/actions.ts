@@ -3,6 +3,7 @@
 import type { Route } from "next";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getAccessProfileByEmail } from "@/lib/access-control";
 import { getErrorMessage } from "@/lib/supabase/env";
 
 const protectedRoutes = [
@@ -14,7 +15,8 @@ const protectedRoutes = [
   "/servicos",
   "/prontuarios",
   "/relatorios",
-  "/configuracoes"
+  "/configuracoes",
+  "/portal"
 ] as const;
 
 function normalizeRedirectRoute(value: FormDataEntryValue | null): Route {
@@ -36,6 +38,7 @@ export async function signInWithPassword(formData: FormData) {
   const password = String(formData.get("password") ?? "");
   const redirectedFrom = normalizeRedirectRoute(formData.get("redirectedFrom"));
   let errorMessage: string | null = null;
+  let targetRoute: Route = redirectedFrom;
 
   try {
     const supabase = await createClient();
@@ -46,6 +49,15 @@ export async function signInWithPassword(formData: FormData) {
 
     if (error) {
       errorMessage = getErrorMessage(error);
+    } else {
+      const profile = await getAccessProfileByEmail(email);
+
+      if (profile.kind === "blocked" || profile.kind === "unknown") {
+        await supabase.auth.signOut();
+        errorMessage = profile.reason;
+      } else if (profile.kind === "patient") {
+        targetRoute = "/portal" as Route;
+      }
     }
   } catch (error) {
     errorMessage = getErrorMessage(error);
@@ -55,7 +67,7 @@ export async function signInWithPassword(formData: FormData) {
     redirect(`/login?error=${encodeURIComponent(errorMessage)}` as Route);
   }
 
-  redirect(redirectedFrom);
+  redirect(targetRoute);
 }
 
 export async function signOut() {

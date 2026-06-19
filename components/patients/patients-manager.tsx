@@ -30,6 +30,9 @@ const emptyForm: PatientFormInput = {
   birth_date: "",
   phone: "",
   email: "",
+  portal_access: false,
+  login_email: "",
+  temporary_password: "",
   address: "",
   notes: "",
   status: "active"
@@ -42,6 +45,9 @@ function patientToForm(patient: Patient): PatientFormInput {
     birth_date: patient.birth_date ?? "",
     phone: patient.phone ?? "",
     email: patient.email ?? "",
+    portal_access: patient.portal_access,
+    login_email: patient.login_email ?? "",
+    temporary_password: patient.temporary_password ?? "",
     address: patient.address ?? "",
     notes: patient.notes ?? "",
     status: patient.status
@@ -82,7 +88,7 @@ export function PatientsManager({
     return patient.status === statusFilter;
   });
 
-  function updateForm(field: keyof PatientFormInput, value: string) {
+  function updateForm(field: keyof PatientFormInput, value: string | boolean) {
     setForm((currentForm) => ({ ...currentForm, [field]: value }));
   }
 
@@ -122,6 +128,14 @@ export function PatientsManager({
 
     if (!form.full_name.trim()) {
       setMessage({ ok: false, message: "Nome do paciente e obrigatorio." });
+      return;
+    }
+
+    if (form.portal_access && !form.login_email?.trim()) {
+      setMessage({
+        ok: false,
+        message: "Informe o email de login para liberar acesso ao portal."
+      });
       return;
     }
 
@@ -361,6 +375,39 @@ export function PatientsManager({
                 type="email"
                 value={form.email}
                 onChange={(event) => updateForm("email", event.target.value)}
+                style={inputStyle}
+              />
+            </label>
+            <label>
+              Tem acesso ao portal?
+              <select
+                value={form.portal_access ? "yes" : "no"}
+                onChange={(event) =>
+                  updateForm("portal_access", event.target.value === "yes")
+                }
+                style={inputStyle}
+              >
+                <option value="no">Nao</option>
+                <option value="yes">Sim</option>
+              </select>
+            </label>
+            <label>
+              Email de login
+              <input
+                type="email"
+                value={form.login_email}
+                onChange={(event) => updateForm("login_email", event.target.value)}
+                style={inputStyle}
+              />
+            </label>
+            <label>
+              Senha provisoria
+              <input
+                type="text"
+                value={form.temporary_password}
+                onChange={(event) =>
+                  updateForm("temporary_password", event.target.value)
+                }
                 style={inputStyle}
               />
             </label>

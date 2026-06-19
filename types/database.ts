@@ -65,6 +65,9 @@ export type Database = {
           whatsapp: string | null;
           email: string | null;
           role: string | null;
+          system_access: boolean;
+          login_email: string | null;
+          temporary_password: string | null;
           commission_type: string | null;
           commission_value: number | null;
           status: string;
@@ -79,6 +82,9 @@ export type Database = {
           whatsapp?: string | null;
           email?: string | null;
           role?: string | null;
+          system_access?: boolean;
+          login_email?: string | null;
+          temporary_password?: string | null;
           commission_type?: string | null;
           commission_value?: number | null;
           status?: string;
@@ -93,6 +99,9 @@ export type Database = {
           whatsapp?: string | null;
           email?: string | null;
           role?: string | null;
+          system_access?: boolean;
+          login_email?: string | null;
+          temporary_password?: string | null;
           commission_type?: string | null;
           commission_value?: number | null;
           status?: string;
@@ -1010,6 +1019,9 @@ export type Database = {
           birth_date: string | null;
           phone: string | null;
           email: string | null;
+          portal_access: boolean;
+          login_email: string | null;
+          temporary_password: string | null;
           address: string | null;
           notes: string | null;
           status: string;
@@ -1024,6 +1036,9 @@ export type Database = {
           birth_date?: string | null;
           phone?: string | null;
           email?: string | null;
+          portal_access?: boolean;
+          login_email?: string | null;
+          temporary_password?: string | null;
           address?: string | null;
           notes?: string | null;
           status?: string;
@@ -1038,6 +1053,9 @@ export type Database = {
           birth_date?: string | null;
           phone?: string | null;
           email?: string | null;
+          portal_access?: boolean;
+          login_email?: string | null;
+          temporary_password?: string | null;
           address?: string | null;
           notes?: string | null;
           status?: string;
