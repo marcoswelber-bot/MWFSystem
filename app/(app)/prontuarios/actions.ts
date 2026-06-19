@@ -1,0 +1,160 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { createClient } from "@/lib/supabase/server";
+import { getErrorMessage } from "@/lib/supabase/env";
+import type { Database } from "@/types/database";
+
+type MedicalRecordInsert =
+  Database["public"]["Tables"]["medical_records"]["Insert"];
+type MedicalRecordUpdate =
+  Database["public"]["Tables"]["medical_records"]["Update"];
+
+export type MedicalRecordFormInput = {
+  patient_id?: string;
+  employee_id?: string;
+  title: string;
+  complaint?: string;
+  history?: string;
+  conduct?: string;
+  evolution?: string;
+  notes?: string;
+  status?: string;
+};
+
+export type MedicalRecordActionResult = {
+  ok: boolean;
+  message: string;
+};
+
+function cleanOptionalValue(value?: string) {
+  const cleanValue = value?.trim();
+  return cleanValue ? cleanValue : null;
+}
+
+function getMedicalRecordPayload(
+  input: MedicalRecordFormInput
+): MedicalRecordInsert {
+  const title = input.title.trim();
+
+  if (!title) {
+    throw new Error("Titulo do prontuario e obrigatorio.");
+  }
+
+  return {
+    patient_id: cleanOptionalValue(input.patient_id),
+    employee_id: cleanOptionalValue(input.employee_id),
+    title,
+    complaint: cleanOptionalValue(input.complaint),
+    history: cleanOptionalValue(input.history),
+    conduct: cleanOptionalValue(input.conduct),
+    evolution: cleanOptionalValue(input.evolution),
+    notes: cleanOptionalValue(input.notes),
+    status: input.status ?? "active"
+  };
+}
+
+export async function createMedicalRecord(
+  input: MedicalRecordFormInput
+): Promise<MedicalRecordActionResult> {
+  try {
+    const supabase = await createClient();
+    const payload = getMedicalRecordPayload(input);
+    const { error } = await supabase.from("medical_records").insert(payload);
+
+    if (error) {
+      return { ok: false, message: getErrorMessage(error) };
+    }
+
+    revalidatePath("/prontuarios");
+    return { ok: true, message: "Prontuario cadastrado com sucesso." };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
+}
+
+export async function updateMedicalRecord(
+  id: string,
+  input: MedicalRecordFormInput
+): Promise<MedicalRecordActionResult> {
+  try {
+    const supabase = await createClient();
+    const payload = getMedicalRecordPayload(input) satisfies MedicalRecordUpdate;
+    const { error } = await supabase
+      .from("medical_records")
+      .update(payload)
+      .eq("id", id);
+
+    if (error) {
+      return { ok: false, message: getErrorMessage(error) };
+    }
+
+    revalidatePath("/prontuarios");
+    return { ok: true, message: "Prontuario atualizado com sucesso." };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
+}
+
+export async function deactivateMedicalRecord(
+  id: string
+): Promise<MedicalRecordActionResult> {
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase
+      .from("medical_records")
+      .update({ status: "inactive" })
+      .eq("id", id);
+
+    if (error) {
+      return { ok: false, message: getErrorMessage(error) };
+    }
+
+    revalidatePath("/prontuarios");
+    return { ok: true, message: "Prontuario inativado com sucesso." };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
+}
+
+export async function activateMedicalRecord(
+  id: string
+): Promise<MedicalRecordActionResult> {
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase
+      .from("medical_records")
+      .update({ status: "active" })
+      .eq("id", id);
+
+    if (error) {
+      return { ok: false, message: getErrorMessage(error) };
+    }
+
+    revalidatePath("/prontuarios");
+    return { ok: true, message: "Prontuario ativado com sucesso." };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
+}
+
+export async function deleteMedicalRecord(
+  id: string
+): Promise<MedicalRecordActionResult> {
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase
+      .from("medical_records")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      return { ok: false, message: getErrorMessage(error) };
+    }
+
+    revalidatePath("/prontuarios");
+    return { ok: true, message: "Prontuario excluido definitivamente." };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
+}
