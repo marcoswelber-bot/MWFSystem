@@ -18,6 +18,8 @@
 
 ✅ Estrutura de clínicas/unidades
 
+✅ Correção da página de clínicas
+
 🔄 Sistema de permissões e cargos (em andamento)
 
 ## Próximas Etapas

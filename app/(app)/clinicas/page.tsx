@@ -28,6 +28,7 @@ function toEntityRecord(clinic: Clinic): EntityRecord {
     cnpj: clinic.cnpj,
     address: clinic.address,
     status: clinic.status,
+    status_label: clinic.status === "active" ? "Ativo" : "Inativo",
     created_at: clinic.created_at,
     updated_at: clinic.updated_at
   };
@@ -106,11 +107,7 @@ export default async function ClinicasPage({ searchParams }: ClinicasPageProps) 
           { key: "cnpj", label: "CNPJ" },
           { key: "phone", label: "Telefone" },
           { key: "email", label: "Email" },
-          {
-            key: "status",
-            label: "Status",
-            render: (record) => (record.status === "active" ? "Ativo" : "Inativo")
-          }
+          { key: "status_label", label: "Status" }
         ]}
       />
     </div>
