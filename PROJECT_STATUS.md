@@ -14,6 +14,8 @@
 
 ✅ Login de pacientes
 
+✅ Sincronização de pacientes com Supabase Auth
+
 🔄 Sistema de permissões e cargos (em andamento)
 
 ## Próximas Etapas

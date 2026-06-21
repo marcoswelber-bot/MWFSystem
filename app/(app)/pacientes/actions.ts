@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getErrorMessage } from "@/lib/supabase/env";
 import { assertCan } from "@/lib/permissions";
@@ -55,6 +56,103 @@ function getPatientPayload(input: PatientFormInput): PatientInsert {
   };
 }
 
+async function findAuthUserByEmail(email: string) {
+  const supabaseAdmin = createAdminClient();
+  const normalizedEmail = email.trim().toLowerCase();
+  const perPage = 1000;
+  let page = 1;
+
+  while (true) {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({
+      page,
+      perPage
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    const user = data.users.find(
+      (item) => item.email?.trim().toLowerCase() === normalizedEmail
+    );
+
+    if (user) {
+      return user;
+    }
+
+    if (data.users.length < perPage) {
+      return null;
+    }
+
+    page += 1;
+  }
+}
+
+async function syncPatientAuthUser(
+  payload: PatientInsert | PatientUpdate,
+  previousLoginEmail?: string | null
+) {
+  if (!payload.portal_access) {
+    return;
+  }
+
+  const loginEmail = cleanOptionalValue(payload.login_email ?? undefined);
+
+  if (!loginEmail) {
+    throw new Error("Informe o email de login para liberar acesso ao portal.");
+  }
+
+  const temporaryPassword = cleanOptionalValue(
+    payload.temporary_password ?? undefined
+  );
+  const supabaseAdmin = createAdminClient();
+  const existingUser =
+    (await findAuthUserByEmail(loginEmail)) ||
+    (previousLoginEmail ? await findAuthUserByEmail(previousLoginEmail) : null);
+
+  const userMetadata = {
+    name: payload.full_name ?? "",
+    access_type: "patient"
+  };
+
+  if (existingUser) {
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(
+      existingUser.id,
+      {
+        email: loginEmail,
+        ...(temporaryPassword ? { password: temporaryPassword } : {}),
+        email_confirm: true,
+        app_metadata: { role: "patient" },
+        user_metadata: userMetadata
+      }
+    );
+
+    if (error) {
+      throw error;
+    }
+
+    return;
+  }
+
+  if (!temporaryPassword) {
+    throw new Error(
+      "Informe a senha provisoria para criar o usuario no Supabase Auth."
+    );
+  }
+
+  const { error } = await supabaseAdmin.auth.admin.createUser({
+    email: loginEmail,
+    password: temporaryPassword,
+    email_confirm: true,
+    app_metadata: { role: "patient" },
+    user_metadata: userMetadata
+  });
+
+  if (error) {
+    throw error;
+  }
+}
+
 export async function createPatient(
   input: PatientFormInput
 ): Promise<PatientActionResult> {
@@ -62,6 +160,7 @@ export async function createPatient(
     await assertCan("pacientes", "create");
     const supabase = await createClient();
     const payload = getPatientPayload(input);
+    await syncPatientAuthUser(payload);
     const { error } = await supabase.from("patients").insert(payload);
 
     if (error) {
@@ -83,6 +182,17 @@ export async function updatePatient(
     await assertCan("pacientes", "edit");
     const supabase = await createClient();
     const payload = getPatientPayload(input) satisfies PatientUpdate;
+    const { data: currentPatient, error: loadError } = await supabase
+      .from("patients")
+      .select("login_email")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (loadError) {
+      return { ok: false, message: getErrorMessage(loadError) };
+    }
+
+    await syncPatientAuthUser(payload, currentPatient?.login_email ?? null);
     const { error } = await supabase
       .from("patients")
       .update(payload)
