@@ -1,9 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { isAdmEmail, isAdmRole } from "@/lib/permission-modules";
 import type { Database } from "@/types/database";
+import { cookies } from "next/headers";
+
+export const ACTIVE_CLINIC_COOKIE = "mwf_active_clinic_id";
 
 type Employee = Database["public"]["Tables"]["employees"]["Row"];
 type Patient = Database["public"]["Tables"]["patients"]["Row"];
+type Clinic = Database["public"]["Tables"]["clinics"]["Row"];
 
 export type AccessProfile =
   | {
@@ -163,6 +167,8 @@ export async function getCurrentAccessProfile() {
 
 export async function getCurrentClinicScope() {
   const profile = await getCurrentAccessProfile();
+  const cookieStore = await cookies();
+  const activeClinicId = cookieStore.get(ACTIVE_CLINIC_COOKIE)?.value ?? null;
 
   if (!profile || profile.kind === "blocked" || profile.kind === "unknown") {
     return {
@@ -175,14 +181,47 @@ export async function getCurrentClinicScope() {
   if (profile.kind === "adm_master") {
     return {
       isAdmMaster: true,
-      clinicId: null,
+      clinicId: activeClinicId,
       profile
     };
   }
 
+  const linkedClinicId = profile.employee?.clinic_id ?? profile.patient?.clinic_id ?? null;
+
   return {
     isAdmMaster: false,
-    clinicId: profile.employee?.clinic_id ?? profile.patient?.clinic_id ?? null,
+    clinicId: linkedClinicId,
     profile
   };
+}
+
+export async function getAvailableClinicsForProfile(profile: AccessProfile | null) {
+  if (!profile || profile.kind === "blocked" || profile.kind === "unknown") {
+    return [] as Clinic[];
+  }
+
+  const supabase = await createClient();
+
+  if (profile.kind === "adm_master") {
+    const { data } = await supabase
+      .from("clinics")
+      .select("*")
+      .order("name", { ascending: true });
+
+    return data ?? [];
+  }
+
+  const clinicId = profile.employee?.clinic_id ?? profile.patient?.clinic_id ?? null;
+
+  if (!clinicId) {
+    return [] as Clinic[];
+  }
+
+  const { data } = await supabase
+    .from("clinics")
+    .select("*")
+    .eq("id", clinicId)
+    .order("name", { ascending: true });
+
+  return data ?? [];
 }

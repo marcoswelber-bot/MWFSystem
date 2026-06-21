@@ -3,8 +3,9 @@
 import * as React from "react";
 import Link from "next/link";
 import type { Route } from "next";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Activity, LogOut, Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { setActiveClinic } from "@/app/(app)/clinic-actions";
 import { signOut } from "@/app/login/actions";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -15,11 +16,27 @@ import type { PermissionModuleKey } from "@/lib/permission-modules";
 type AppShellProps = {
   children: React.ReactNode;
   userEmail?: string;
+  userName?: string;
+  userRole?: string;
+  clinics?: Array<{ id: string; name: string }>;
+  activeClinicId?: string | null;
+  isAdmMaster?: boolean;
   visibleModules?: PermissionModuleKey[];
 };
 
-export function AppShell({ children, userEmail, visibleModules }: AppShellProps) {
+export function AppShell({
+  children,
+  userEmail,
+  userName,
+  userRole,
+  clinics = [],
+  activeClinicId,
+  isAdmMaster = false,
+  visibleModules
+}: AppShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [isChangingClinic, startClinicTransition] = React.useTransition();
   const [collapsed, setCollapsed] = React.useState(false);
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const visibleModuleSet = React.useMemo(
@@ -33,6 +50,18 @@ export function AppShell({ children, userEmail, visibleModules }: AppShellProps)
   React.useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
+
+  const activeClinic = clinics.find((clinic) => clinic.id === activeClinicId);
+  const clinicLabel =
+    activeClinic?.name ?? (isAdmMaster ? "Todas as clinicas" : "Sem clinica");
+  const hasClinicSelector = isAdmMaster ? clinics.length > 0 : clinics.length > 1;
+
+  function changeActiveClinic(value: string) {
+    startClinicTransition(async () => {
+      await setActiveClinic(value === "__all" ? "" : value);
+      router.refresh();
+    });
+  }
 
   const sidebar = (
     <aside
@@ -49,7 +78,9 @@ export function AppShell({ children, userEmail, visibleModules }: AppShellProps)
           {!collapsed ? (
             <div className="min-w-0">
               <p className="truncate font-semibold">MWFSystem</p>
-              <p className="truncate text-xs text-muted-foreground">ADM Master</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {userRole ?? "Painel administrativo"}
+              </p>
             </div>
           ) : null}
         </Link>
@@ -78,13 +109,33 @@ export function AppShell({ children, userEmail, visibleModules }: AppShellProps)
           )}
         >
           <p className="text-xs font-medium uppercase text-muted-foreground">
-            {collapsed ? "Clínica" : "Clínica atual"}
+            {collapsed ? "Clinica" : "Clinica atual"}
           </p>
           {!collapsed ? (
             <>
-              <p className="mt-1 truncate text-sm font-semibold">Rede MWF</p>
+              {hasClinicSelector ? (
+                <select
+                  value={activeClinicId ?? "__all"}
+                  onChange={(event) => changeActiveClinic(event.target.value)}
+                  disabled={isChangingClinic}
+                  className="mt-2 w-full rounded-md border bg-background px-2 py-2 text-sm font-semibold text-foreground"
+                >
+                  {isAdmMaster ? <option value="__all">Todas as clinicas</option> : null}
+                  {clinics.map((clinic) => (
+                    <option key={clinic.id} value={clinic.id}>
+                      {clinic.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p className="mt-1 truncate text-sm font-semibold">{clinicLabel}</p>
+              )}
               <p className="truncate text-xs text-muted-foreground">
-                Visualização consolidada
+                {isChangingClinic
+                  ? "Atualizando..."
+                  : isAdmMaster
+                    ? "Escopo ADM Master"
+                    : "Clinica vinculada"}
               </p>
             </>
           ) : null}
@@ -190,9 +241,9 @@ export function AppShell({ children, userEmail, visibleModules }: AppShellProps)
               <Menu className="h-4 w-4" />
             </Button>
             <div>
-              <p className="text-sm font-medium">Painel administrativo</p>
+              <p className="text-sm font-medium">{userName ?? userEmail ?? "Usuario"}</p>
               <p className="hidden text-xs text-muted-foreground sm:block">
-                {userEmail ?? "Sessão Supabase"}
+                {userRole ?? "Perfil do sistema"}
               </p>
             </div>
           </div>

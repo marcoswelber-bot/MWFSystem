@@ -4,6 +4,8 @@
 
 ✅ Vínculo de clínica nos formulários principais
 
+✅ Identificação de usuário e clínica ativa no layout
+
 ✅ Estrutura inicial
 
 ✅ Autenticação
