@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/page-header";
 import { ServicesManager } from "@/components/services/services-manager";
 import { createClient } from "@/lib/supabase/server";
 import { getErrorMessage } from "@/lib/supabase/env";
+import { getCurrentClinicScope } from "@/lib/access-control";
 import { getCurrentPermissionMap, isCurrentUserAdmMaster } from "@/lib/permissions";
 import type { Database } from "@/types/database";
 
@@ -93,13 +94,21 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
   let loadError: string | undefined;
   const permissions = await getCurrentPermissionMap();
   const isAdmMaster = await isCurrentUserAdmMaster();
+  const clinicScope = await getCurrentClinicScope();
 
-  try {
+  if (!clinicScope.isAdmMaster && !clinicScope.clinicId) {
+    loadError = "Usuario sem clinica vinculada.";
+  } else {
+    try {
     const supabase = await createClient();
     let servicesQuery = supabase
       .from("services")
       .select("*")
       .order("created_at", { ascending: false });
+
+    if (!clinicScope.isAdmMaster && clinicScope.clinicId) {
+      servicesQuery = servicesQuery.eq("clinic_id", clinicScope.clinicId);
+    }
 
     if (search) {
       const term = escapeSearchTerm(search);
@@ -133,7 +142,10 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
       ),
       readSupabaseList<Employee>(
         "employees",
-        supabase.from("employees").select("*").order("name", { ascending: true })
+        (clinicScope.isAdmMaster || !clinicScope.clinicId
+          ? supabase.from("employees").select("*")
+          : supabase.from("employees").select("*").eq("clinic_id", clinicScope.clinicId)
+        ).order("name", { ascending: true })
       ),
       readSupabaseList<Database["public"]["Tables"]["service_professionals"]["Row"]>(
         "service_professionals",
@@ -226,39 +238,51 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
         loadError = appendLoadError(loadError, error);
       }
     });
-  } catch (error) {
-    loadError = appendLoadError(loadError, error);
+    } catch (error) {
+      loadError = appendLoadError(loadError, error);
+    }
   }
 
   const servicesById = new Map(services.map((service) => [service.id, service.name]));
+  const visibleServiceIds = new Set(services.map((service) => service.id));
   const employeesById = new Map(
     employees.map((employee) => [employee.id, employee.name])
   );
   const goalsById = new Map(goals.map((goal) => [goal.id, goal.name]));
 
-  const professionalLinks: ProfessionalLink[] = rawProfessionalLinks.map((link) => ({
-    ...link,
-    service_name: servicesById.get(link.service_id) ?? "Servico nao encontrado",
-    employee_name: employeesById.get(link.employee_id) ?? "Profissional nao encontrado"
-  }));
-  const discounts: Discount[] = rawDiscounts.map((discount) => ({
-    ...discount,
-    service_name: discount.service_id
-      ? servicesById.get(discount.service_id) ?? "Servico nao encontrado"
-      : "-"
-  }));
+  const professionalLinks: ProfessionalLink[] = rawProfessionalLinks
+    .filter((link) => visibleServiceIds.has(link.service_id))
+    .map((link) => ({
+      ...link,
+      service_name: servicesById.get(link.service_id) ?? "Servico nao encontrado",
+      employee_name: employeesById.get(link.employee_id) ?? "Profissional nao encontrado"
+    }));
+  const discounts: Discount[] = rawDiscounts
+    .filter((discount) => !discount.service_id || visibleServiceIds.has(discount.service_id))
+    .map((discount) => ({
+      ...discount,
+      service_name: discount.service_id
+        ? servicesById.get(discount.service_id) ?? "Servico nao encontrado"
+        : "-"
+    }));
   const protocols: Protocol[] = rawProtocols.map((protocol) => ({
     ...protocol,
     goal_name: protocol.goal_id
       ? goalsById.get(protocol.goal_id) ?? "Objetivo nao encontrado"
       : "-"
   }));
-  const resources: Resource[] = rawResources.map((resource) => ({
-    ...resource,
-    service_name: servicesById.get(resource.service_id) ?? "Servico nao encontrado"
-  }));
-  const notifications: InternalNotification[] = rawNotifications.map(
-    (notification) => ({
+  const resources: Resource[] = rawResources
+    .filter((resource) => visibleServiceIds.has(resource.service_id))
+    .map((resource) => ({
+      ...resource,
+      service_name: servicesById.get(resource.service_id) ?? "Servico nao encontrado"
+    }));
+  const notifications: InternalNotification[] = rawNotifications
+    .filter(
+      (notification) =>
+        !notification.service_id || visibleServiceIds.has(notification.service_id)
+    )
+    .map((notification) => ({
       ...notification,
       service_name: notification.service_id
         ? servicesById.get(notification.service_id) ?? "Servico nao encontrado"
@@ -266,14 +290,15 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
       employee_name: notification.employee_id
         ? employeesById.get(notification.employee_id) ?? "Profissional nao encontrado"
         : "-"
-    })
-  );
-  const auditLogs: AuditLog[] = rawAuditLogs.map((log) => ({
-    ...log,
-    service_name: log.service_id
-      ? servicesById.get(log.service_id) ?? "Servico nao encontrado"
-      : "-"
-  }));
+    }));
+  const auditLogs: AuditLog[] = rawAuditLogs
+    .filter((log) => !log.service_id || visibleServiceIds.has(log.service_id))
+    .map((log) => ({
+      ...log,
+      service_name: log.service_id
+        ? servicesById.get(log.service_id) ?? "Servico nao encontrado"
+        : "-"
+    }));
 
   return (
     <div>

@@ -6,6 +6,7 @@ import {
 import { PageHeader } from "@/components/page-header";
 import { createClient } from "@/lib/supabase/server";
 import { getErrorMessage } from "@/lib/supabase/env";
+import { getCurrentClinicScope } from "@/lib/access-control";
 import type { Database } from "@/types/database";
 
 type MedicalRecord = Database["public"]["Tables"]["medical_records"]["Row"];
@@ -36,13 +37,23 @@ export default async function ProntuariosPage({
   let patients: Patient[] = [];
   let employees: Employee[] = [];
   let loadError: string | undefined;
+  const clinicScope = await getCurrentClinicScope();
 
-  try {
+  if (!clinicScope.isAdmMaster && !clinicScope.clinicId) {
+    loadError = "Usuario sem clinica vinculada.";
+  } else {
+    try {
     const supabase = await createClient();
-    const recordsResult = await supabase
+    let recordsQuery = supabase
       .from("medical_records")
       .select("*")
       .order("created_at", { ascending: false });
+
+    if (!clinicScope.isAdmMaster && clinicScope.clinicId) {
+      recordsQuery = recordsQuery.eq("clinic_id", clinicScope.clinicId);
+    }
+
+    const recordsResult = await recordsQuery;
 
     if (recordsResult.error) {
       loadError = appendLoadError(loadError, recordsResult.error);
@@ -50,10 +61,16 @@ export default async function ProntuariosPage({
       records = recordsResult.data ?? [];
     }
 
-    const patientsResult = await supabase
+    let patientsQuery = supabase
       .from("patients")
       .select("*")
       .order("full_name", { ascending: true });
+
+    if (!clinicScope.isAdmMaster && clinicScope.clinicId) {
+      patientsQuery = patientsQuery.eq("clinic_id", clinicScope.clinicId);
+    }
+
+    const patientsResult = await patientsQuery;
 
     if (patientsResult.error) {
       loadError = appendLoadError(loadError, patientsResult.error);
@@ -61,18 +78,25 @@ export default async function ProntuariosPage({
       patients = patientsResult.data ?? [];
     }
 
-    const employeesResult = await supabase
+    let employeesQuery = supabase
       .from("employees")
       .select("*")
       .order("name", { ascending: true });
+
+    if (!clinicScope.isAdmMaster && clinicScope.clinicId) {
+      employeesQuery = employeesQuery.eq("clinic_id", clinicScope.clinicId);
+    }
+
+    const employeesResult = await employeesQuery;
 
     if (employeesResult.error) {
       loadError = appendLoadError(loadError, employeesResult.error);
     } else {
       employees = employeesResult.data ?? [];
     }
-  } catch (error) {
-    loadError = appendLoadError(loadError, error);
+    } catch (error) {
+      loadError = appendLoadError(loadError, error);
+    }
   }
 
   const patientsById = new Map(

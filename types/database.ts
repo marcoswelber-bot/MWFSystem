@@ -944,6 +944,7 @@ export type Database = {
       medical_records: {
         Row: {
           id: string;
+          clinic_id: string | null;
           patient_id: string | null;
           employee_id: string | null;
           title: string;
@@ -958,6 +959,7 @@ export type Database = {
         };
         Insert: {
           id?: string;
+          clinic_id?: string | null;
           patient_id?: string | null;
           employee_id?: string | null;
           title: string;
@@ -972,6 +974,7 @@ export type Database = {
         };
         Update: {
           id?: string;
+          clinic_id?: string | null;
           patient_id?: string | null;
           employee_id?: string | null;
           title?: string;

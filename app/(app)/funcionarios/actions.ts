@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getCurrentClinicScope } from "@/lib/access-control";
 import { createClient } from "@/lib/supabase/server";
 import { getErrorMessage } from "@/lib/supabase/env";
 import { assertCan, isAdmRole } from "@/lib/permissions";
@@ -276,6 +277,13 @@ export async function createEmployee(
     await assertCan("funcionarios", "create");
     const supabase = await createClient();
     const payload = getEmployeePayload(input);
+    const clinicScope = await getCurrentClinicScope();
+    if (!clinicScope.isAdmMaster && !clinicScope.clinicId) {
+      throw new Error("Usuario sem clinica vinculada.");
+    }
+    if (!clinicScope.isAdmMaster && clinicScope.clinicId) {
+      payload.clinic_id = clinicScope.clinicId;
+    }
     if (isAdmRole(payload.role)) {
       throw new Error("Use Permissoes de Usuarios para definir ADM Master.");
     }
@@ -301,6 +309,13 @@ export async function updateEmployee(
     await assertCan("funcionarios", "edit");
     const supabase = await createClient();
     const payload = getEmployeePayload(input) satisfies EmployeeUpdate;
+    const clinicScope = await getCurrentClinicScope();
+    if (!clinicScope.isAdmMaster && !clinicScope.clinicId) {
+      throw new Error("Usuario sem clinica vinculada.");
+    }
+    if (!clinicScope.isAdmMaster && clinicScope.clinicId) {
+      payload.clinic_id = clinicScope.clinicId;
+    }
     if (isAdmRole(payload.role)) {
       throw new Error("Use Permissoes de Usuarios para definir ADM Master.");
     }

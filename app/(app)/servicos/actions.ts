@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getCurrentClinicScope } from "@/lib/access-control";
 import { createClient } from "@/lib/supabase/server";
 import { getErrorMessage } from "@/lib/supabase/env";
 import { assertCan } from "@/lib/permissions";
@@ -352,6 +353,13 @@ export async function createService(
     await assertCan("servicos", "create");
     const supabase = await createClient();
     const payload = getServicePayload(input);
+    const clinicScope = await getCurrentClinicScope();
+    if (!clinicScope.isAdmMaster && !clinicScope.clinicId) {
+      throw new Error("Usuario sem clinica vinculada.");
+    }
+    if (!clinicScope.isAdmMaster && clinicScope.clinicId) {
+      payload.clinic_id = clinicScope.clinicId;
+    }
     const { data, error } = await supabase
       .from("services")
       .insert(payload)
@@ -378,6 +386,13 @@ export async function updateService(
     await assertCan("servicos", "edit");
     const supabase = await createClient();
     const payload = getServicePayload(input) satisfies ServiceUpdate;
+    const clinicScope = await getCurrentClinicScope();
+    if (!clinicScope.isAdmMaster && !clinicScope.clinicId) {
+      throw new Error("Usuario sem clinica vinculada.");
+    }
+    if (!clinicScope.isAdmMaster && clinicScope.clinicId) {
+      payload.clinic_id = clinicScope.clinicId;
+    }
     const { error } = await supabase.from("services").update(payload).eq("id", id);
 
     if (error) {

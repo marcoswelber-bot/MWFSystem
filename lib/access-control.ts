@@ -160,3 +160,29 @@ export async function getCurrentAccessProfile() {
 
   return getAccessProfileByEmail(user.email);
 }
+
+export async function getCurrentClinicScope() {
+  const profile = await getCurrentAccessProfile();
+
+  if (!profile || profile.kind === "blocked" || profile.kind === "unknown") {
+    return {
+      isAdmMaster: false,
+      clinicId: null,
+      profile
+    };
+  }
+
+  if (profile.kind === "adm_master") {
+    return {
+      isAdmMaster: true,
+      clinicId: null,
+      profile
+    };
+  }
+
+  return {
+    isAdmMaster: false,
+    clinicId: profile.employee?.clinic_id ?? profile.patient?.clinic_id ?? null,
+    profile
+  };
+}

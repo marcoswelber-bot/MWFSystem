@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getCurrentClinicScope } from "@/lib/access-control";
 import { createClient } from "@/lib/supabase/server";
 import { getErrorMessage } from "@/lib/supabase/env";
 import { assertCan } from "@/lib/permissions";
@@ -160,6 +161,13 @@ export async function createPatient(
     await assertCan("pacientes", "create");
     const supabase = await createClient();
     const payload = getPatientPayload(input);
+    const clinicScope = await getCurrentClinicScope();
+    if (!clinicScope.isAdmMaster && !clinicScope.clinicId) {
+      throw new Error("Usuario sem clinica vinculada.");
+    }
+    if (!clinicScope.isAdmMaster && clinicScope.clinicId) {
+      payload.clinic_id = clinicScope.clinicId;
+    }
     await syncPatientAuthUser(payload);
     const { error } = await supabase.from("patients").insert(payload);
 
@@ -182,6 +190,13 @@ export async function updatePatient(
     await assertCan("pacientes", "edit");
     const supabase = await createClient();
     const payload = getPatientPayload(input) satisfies PatientUpdate;
+    const clinicScope = await getCurrentClinicScope();
+    if (!clinicScope.isAdmMaster && !clinicScope.clinicId) {
+      throw new Error("Usuario sem clinica vinculada.");
+    }
+    if (!clinicScope.isAdmMaster && clinicScope.clinicId) {
+      payload.clinic_id = clinicScope.clinicId;
+    }
     const { data: currentPatient, error: loadError } = await supabase
       .from("patients")
       .select("login_email")

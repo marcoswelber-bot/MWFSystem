@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getCurrentClinicScope } from "@/lib/access-control";
 import { createClient } from "@/lib/supabase/server";
 import { getErrorMessage } from "@/lib/supabase/env";
 import { assertCan } from "@/lib/permissions";
@@ -55,6 +56,33 @@ function getMedicalRecordPayload(
   };
 }
 
+async function resolveClinicIdForMedicalRecord(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  payload: MedicalRecordInsert | MedicalRecordUpdate
+) {
+  const clinicScope = await getCurrentClinicScope();
+
+  if (!clinicScope.isAdmMaster && clinicScope.clinicId) {
+    return clinicScope.clinicId;
+  }
+
+  if (!clinicScope.isAdmMaster && !clinicScope.clinicId) {
+    throw new Error("Usuario sem clinica vinculada.");
+  }
+
+  if (!payload.patient_id) {
+    return null;
+  }
+
+  const { data } = await supabase
+    .from("patients")
+    .select("clinic_id")
+    .eq("id", payload.patient_id)
+    .maybeSingle();
+
+  return data?.clinic_id ?? null;
+}
+
 export async function createMedicalRecord(
   input: MedicalRecordFormInput
 ): Promise<MedicalRecordActionResult> {
@@ -62,6 +90,7 @@ export async function createMedicalRecord(
     await assertCan("prontuarios", "create");
     const supabase = await createClient();
     const payload = getMedicalRecordPayload(input);
+    payload.clinic_id = await resolveClinicIdForMedicalRecord(supabase, payload);
     const { error } = await supabase.from("medical_records").insert(payload);
 
     if (error) {
@@ -83,6 +112,7 @@ export async function updateMedicalRecord(
     await assertCan("prontuarios", "edit");
     const supabase = await createClient();
     const payload = getMedicalRecordPayload(input) satisfies MedicalRecordUpdate;
+    payload.clinic_id = await resolveClinicIdForMedicalRecord(supabase, payload);
     const { error } = await supabase
       .from("medical_records")
       .update(payload)

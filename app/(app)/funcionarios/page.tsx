@@ -2,6 +2,7 @@ import { EmployeesManager } from "@/components/employees/employees-manager";
 import { PageHeader } from "@/components/page-header";
 import { createClient } from "@/lib/supabase/server";
 import { getErrorMessage } from "@/lib/supabase/env";
+import { getCurrentClinicScope } from "@/lib/access-control";
 import { getCurrentPermissionMap } from "@/lib/permissions";
 import type { Database } from "@/types/database";
 
@@ -59,18 +60,26 @@ export default async function FuncionariosPage({
   const params = await searchParams;
   const search = params.q?.trim() ?? "";
   const permissions = await getCurrentPermissionMap();
+  const clinicScope = await getCurrentClinicScope();
   let employees: Employee[] = [];
   let services: Service[] = [];
   let rawCommissionRules: Database["public"]["Tables"]["professional_service_commissions"]["Row"][] = [];
   let rawCommissionHistory: Database["public"]["Tables"]["professional_service_commission_history"]["Row"][] = [];
   let loadError: string | undefined;
 
-  try {
+  if (!clinicScope.isAdmMaster && !clinicScope.clinicId) {
+    loadError = "Usuario sem clinica vinculada.";
+  } else {
+    try {
     const supabase = await createClient();
     let query = supabase
       .from("employees")
       .select("*")
       .order("created_at", { ascending: false });
+
+    if (!clinicScope.isAdmMaster && clinicScope.clinicId) {
+      query = query.eq("clinic_id", clinicScope.clinicId);
+    }
 
     if (search) {
       const term = escapeSearchTerm(search);
@@ -90,7 +99,10 @@ export default async function FuncionariosPage({
     const [servicesResult, commissionsResult, historyResult] = await Promise.all([
       readSupabaseList<Service>(
         "services",
-        supabase.from("services").select("*").order("name", { ascending: true })
+        (clinicScope.isAdmMaster || !clinicScope.clinicId
+          ? supabase.from("services").select("*")
+          : supabase.from("services").select("*").eq("clinic_id", clinicScope.clinicId)
+        ).order("name", { ascending: true })
       ),
       readSupabaseList<
         Database["public"]["Tables"]["professional_service_commissions"]["Row"]
@@ -118,29 +130,44 @@ export default async function FuncionariosPage({
     loadError = appendLoadError(loadError, servicesResult.error);
     loadError = appendLoadError(loadError, commissionsResult.error);
     loadError = appendLoadError(loadError, historyResult.error);
-  } catch (error) {
-    loadError = getErrorMessage(error);
+    } catch (error) {
+      loadError = getErrorMessage(error);
+    }
   }
 
   const employeesById = new Map(
     employees.map((employee) => [employee.id, employee.name])
   );
   const servicesById = new Map(services.map((service) => [service.id, service.name]));
-  const commissionRules: CommissionRule[] = rawCommissionRules.map((rule) => ({
-    ...rule,
-    employee_name:
-      employeesById.get(rule.professional_id) ?? "Profissional nao encontrado",
-    service_name: servicesById.get(rule.service_id) ?? "Servico nao encontrado"
-  }));
-  const commissionHistory: CommissionHistory[] = rawCommissionHistory.map((item) => ({
-    ...item,
-    employee_name: item.professional_id
-      ? employeesById.get(item.professional_id) ?? "Profissional nao encontrado"
-      : "-",
-    service_name: item.service_id
-      ? servicesById.get(item.service_id) ?? "Servico nao encontrado"
-      : "-"
-  }));
+  const visibleEmployeeIds = new Set(employees.map((employee) => employee.id));
+  const visibleServiceIds = new Set(services.map((service) => service.id));
+  const commissionRules: CommissionRule[] = rawCommissionRules
+    .filter(
+      (rule) =>
+        visibleEmployeeIds.has(rule.professional_id) &&
+        visibleServiceIds.has(rule.service_id)
+    )
+    .map((rule) => ({
+      ...rule,
+      employee_name:
+        employeesById.get(rule.professional_id) ?? "Profissional nao encontrado",
+      service_name: servicesById.get(rule.service_id) ?? "Servico nao encontrado"
+    }));
+  const commissionHistory: CommissionHistory[] = rawCommissionHistory
+    .filter(
+      (item) =>
+        (!item.professional_id || visibleEmployeeIds.has(item.professional_id)) &&
+        (!item.service_id || visibleServiceIds.has(item.service_id))
+    )
+    .map((item) => ({
+      ...item,
+      employee_name: item.professional_id
+        ? employeesById.get(item.professional_id) ?? "Profissional nao encontrado"
+        : "-",
+      service_name: item.service_id
+        ? servicesById.get(item.service_id) ?? "Servico nao encontrado"
+        : "-"
+    }));
 
   return (
     <div>

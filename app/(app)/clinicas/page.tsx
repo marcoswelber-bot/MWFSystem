@@ -2,6 +2,7 @@ import { EntityCrudManager, type EntityRecord } from "@/components/entity-crud-m
 import { PageHeader } from "@/components/page-header";
 import { createClient } from "@/lib/supabase/server";
 import { getErrorMessage } from "@/lib/supabase/env";
+import { getCurrentClinicScope } from "@/lib/access-control";
 import { getCurrentPermissionMap } from "@/lib/permissions";
 import type { Database } from "@/types/database";
 
@@ -36,15 +37,23 @@ export default async function ClinicasPage({ searchParams }: ClinicasPageProps) 
   const params = await searchParams;
   const search = params.q?.trim() ?? "";
   const permissions = await getCurrentPermissionMap();
+  const clinicScope = await getCurrentClinicScope();
   let clinics: Clinic[] = [];
   let loadError: string | undefined;
 
-  try {
+  if (!clinicScope.isAdmMaster && !clinicScope.clinicId) {
+    loadError = "Usuario sem clinica vinculada.";
+  } else {
+    try {
     const supabase = await createClient();
     let query = supabase
       .from("clinics")
       .select("*")
       .order("created_at", { ascending: false });
+
+    if (!clinicScope.isAdmMaster && clinicScope.clinicId) {
+      query = query.eq("id", clinicScope.clinicId);
+    }
 
     if (search) {
       const term = escapeSearchTerm(search);
@@ -60,8 +69,9 @@ export default async function ClinicasPage({ searchParams }: ClinicasPageProps) 
     } else {
       clinics = data ?? [];
     }
-  } catch (error) {
-    loadError = getErrorMessage(error);
+    } catch (error) {
+      loadError = getErrorMessage(error);
+    }
   }
 
   return (

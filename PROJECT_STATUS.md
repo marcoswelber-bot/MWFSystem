@@ -16,6 +16,8 @@
 
 ✅ Sincronização de pacientes com Supabase Auth
 
+✅ Estrutura de clínicas/unidades
+
 🔄 Sistema de permissões e cargos (em andamento)
 
 ## Próximas Etapas
