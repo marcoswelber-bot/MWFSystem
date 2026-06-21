@@ -1,50 +1,200 @@
-import { CalendarDays, Clock, Plus } from "lucide-react";
-import { ModuleCard } from "@/components/module-card";
+import { AgendaManager } from "@/components/agenda/agenda-manager";
 import { PageHeader } from "@/components/page-header";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle
-} from "@/components/ui/card";
+import { getCurrentClinicScope } from "@/lib/access-control";
+import { getCurrentPermissionMap } from "@/lib/permissions";
+import { getErrorMessage } from "@/lib/supabase/env";
+import { createClient } from "@/lib/supabase/server";
+import type { Database } from "@/types/database";
 
-export default function AgendaPage() {
+type Appointment = Database["public"]["Tables"]["appointments"]["Row"] & {
+  patient_name: string;
+  employee_name: string;
+  service_name: string;
+};
+type ScheduleBlock = Database["public"]["Tables"]["schedule_blocks"]["Row"] & {
+  employee_name: string;
+};
+type Clinic = Database["public"]["Tables"]["clinics"]["Row"];
+type Patient = Database["public"]["Tables"]["patients"]["Row"];
+type Employee = Database["public"]["Tables"]["employees"]["Row"];
+type Service = Database["public"]["Tables"]["services"]["Row"];
+
+function appendLoadError(currentError: string | undefined, nextError: unknown) {
+  const message = getErrorMessage(nextError);
+  return currentError ? `${currentError} ${message}` : message;
+}
+
+async function readSupabaseList<T>(
+  label: string,
+  query: PromiseLike<{ data: T[] | null; error: unknown }>
+) {
+  try {
+    const { data, error } = await query;
+
+    if (error) {
+      return {
+        data: [],
+        error: `[${label}] ${getErrorMessage(error)}`
+      };
+    }
+
+    return {
+      data: data ?? [],
+      error: undefined
+    };
+  } catch (error) {
+    return {
+      data: [],
+      error: `[${label}] ${getErrorMessage(error)}`
+    };
+  }
+}
+
+export default async function AgendaPage() {
+  const permissions = await getCurrentPermissionMap();
+  const clinicScope = await getCurrentClinicScope();
+  let clinics: Clinic[] = [];
+  let patients: Patient[] = [];
+  let employees: Employee[] = [];
+  let services: Service[] = [];
+  let rawAppointments: Database["public"]["Tables"]["appointments"]["Row"][] = [];
+  let rawBlocks: Database["public"]["Tables"]["schedule_blocks"]["Row"][] = [];
+  let loadError: string | undefined;
+
+  if (!clinicScope.clinicId) {
+    loadError = clinicScope.isAdmMaster
+      ? "Selecione uma clinica ativa no topo para usar a Agenda."
+      : "Usuario sem clinica vinculada.";
+  } else {
+    try {
+      const supabase = await createClient();
+      const [
+        clinicsResult,
+        patientsResult,
+        employeesResult,
+        servicesResult,
+        appointmentsResult,
+        blocksResult
+      ] = await Promise.all([
+        readSupabaseList<Clinic>(
+          "clinics",
+          (clinicScope.isAdmMaster
+            ? supabase.from("clinics").select("*")
+            : supabase.from("clinics").select("*").eq("id", clinicScope.clinicId)
+          ).order("name", { ascending: true })
+        ),
+        readSupabaseList<Patient>(
+          "patients",
+          supabase
+            .from("patients")
+            .select("*")
+            .eq("clinic_id", clinicScope.clinicId)
+            .eq("status", "active")
+            .order("full_name", { ascending: true })
+        ),
+        readSupabaseList<Employee>(
+          "employees",
+          supabase
+            .from("employees")
+            .select("*")
+            .eq("clinic_id", clinicScope.clinicId)
+            .eq("status", "active")
+            .order("name", { ascending: true })
+        ),
+        readSupabaseList<Service>(
+          "services",
+          supabase
+            .from("services")
+            .select("*")
+            .eq("clinic_id", clinicScope.clinicId)
+            .order("name", { ascending: true })
+        ),
+        readSupabaseList<Database["public"]["Tables"]["appointments"]["Row"]>(
+          "appointments",
+          supabase
+            .from("appointments")
+            .select("*")
+            .eq("clinic_id", clinicScope.clinicId)
+            .order("appointment_date", { ascending: true })
+            .order("start_time", { ascending: true })
+        ),
+        readSupabaseList<Database["public"]["Tables"]["schedule_blocks"]["Row"]>(
+          "schedule_blocks",
+          supabase
+            .from("schedule_blocks")
+            .select("*")
+            .eq("clinic_id", clinicScope.clinicId)
+            .eq("status", "active")
+            .order("block_date", { ascending: true })
+            .order("start_time", { ascending: true })
+        )
+      ]);
+
+      clinics = clinicsResult.data;
+      patients = patientsResult.data;
+      employees = employeesResult.data;
+      services = servicesResult.data;
+      rawAppointments = appointmentsResult.data;
+      rawBlocks = blocksResult.data;
+
+      [
+        clinicsResult.error,
+        patientsResult.error,
+        employeesResult.error,
+        servicesResult.error,
+        appointmentsResult.error,
+        blocksResult.error
+      ].forEach((error) => {
+        if (error) {
+          loadError = appendLoadError(loadError, error);
+        }
+      });
+    } catch (error) {
+      loadError = appendLoadError(loadError, error);
+    }
+  }
+
+  const patientsById = new Map(
+    patients.map((patient) => [patient.id, patient.full_name])
+  );
+  const employeesById = new Map(
+    employees.map((employee) => [employee.id, employee.name])
+  );
+  const servicesById = new Map(services.map((service) => [service.id, service.name]));
+  const appointments: Appointment[] = rawAppointments.map((appointment) => ({
+    ...appointment,
+    patient_name: patientsById.get(appointment.patient_id) ?? "Paciente nao encontrado",
+    employee_name:
+      employeesById.get(appointment.employee_id) ?? "Profissional nao encontrado",
+    service_name: servicesById.get(appointment.service_id) ?? "Servico nao encontrado"
+  }));
+  const blocks: ScheduleBlock[] = rawBlocks.map((block) => ({
+    ...block,
+    employee_name: block.employee_id
+      ? employeesById.get(block.employee_id) ?? "Profissional nao encontrado"
+      : "Clinica"
+  }));
+
   return (
     <div>
-      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
-        <PageHeader
-          eyebrow="Atendimentos"
-          title="Agenda"
-          description="Organize consultas, procedimentos, bloqueios de horário, profissionais e unidades em uma agenda multiclínica."
-        />
-        <Button>
-          <Plus className="h-4 w-4" />
-          Novo agendamento
-        </Button>
-      </div>
+      <PageHeader
+        eyebrow="Atendimentos"
+        title="Agenda"
+        description="Crie agendamentos, visualize por dia, semana ou mes e bloqueie horarios por profissional ou clinica."
+      />
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <ModuleCard title="Hoje" description="Eventos confirmados" icon={CalendarDays} value="38" />
-        <ModuleCard title="Aguardando" description="Confirmação pendente" icon={Clock} value="09" />
-        <ModuleCard title="Disponíveis" description="Horários livres" icon={Plus} value="24" />
-      </section>
-
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle>Grade do dia</CardTitle>
-          <CardDescription>Modelo inicial para trocar por calendário completo.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {["08:00", "09:30", "11:00", "14:00", "15:30", "17:00"].map((time) => (
-            <div key={time} className="rounded-md border p-4">
-              <p className="font-semibold">{time}</p>
-              <p className="text-sm text-muted-foreground">Consulta disponível</p>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+      <AgendaManager
+        appointments={appointments}
+        blocks={blocks}
+        clinics={clinics}
+        patients={patients}
+        employees={employees}
+        services={services}
+        currentClinicId={clinicScope.clinicId}
+        isAdmMaster={clinicScope.isAdmMaster}
+        loadError={loadError}
+        permissions={permissions.agenda}
+      />
     </div>
   );
 }

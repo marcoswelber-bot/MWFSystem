@@ -16,6 +16,8 @@
 
 ✅ Módulo Serviços limitado a Serviços e Tipos de Serviço
 
+✅ Agenda com agendamentos e bloqueios
+
 ✅ Estrutura inicial
 
 ✅ Autenticação
@@ -38,7 +40,6 @@
 
 ## Próximas Etapas
 
-- Agenda
 - Comissão por profissional e serviço
 - Financeiro
 - WhatsApp automático

@@ -941,10 +941,161 @@ export type Database = {
         };
         Relationships: [];
       };
+      appointments: {
+        Row: {
+          id: string;
+          clinic_id: string;
+          patient_id: string;
+          employee_id: string;
+          service_id: string;
+          appointment_date: string;
+          start_time: string;
+          end_time: string | null;
+          notes: string | null;
+          status: string;
+          medical_record_id: string | null;
+          performed_at: string | null;
+          finance_integration_status: string;
+          commission_integration_status: string;
+          package_session_status: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          clinic_id: string;
+          patient_id: string;
+          employee_id: string;
+          service_id: string;
+          appointment_date: string;
+          start_time: string;
+          end_time?: string | null;
+          notes?: string | null;
+          status?: string;
+          medical_record_id?: string | null;
+          performed_at?: string | null;
+          finance_integration_status?: string;
+          commission_integration_status?: string;
+          package_session_status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          clinic_id?: string;
+          patient_id?: string;
+          employee_id?: string;
+          service_id?: string;
+          appointment_date?: string;
+          start_time?: string;
+          end_time?: string | null;
+          notes?: string | null;
+          status?: string;
+          medical_record_id?: string | null;
+          performed_at?: string | null;
+          finance_integration_status?: string;
+          commission_integration_status?: string;
+          package_session_status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      schedule_blocks: {
+        Row: {
+          id: string;
+          clinic_id: string;
+          employee_id: string | null;
+          block_date: string;
+          block_type: string;
+          start_time: string | null;
+          end_time: string | null;
+          reason: string | null;
+          status: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          clinic_id: string;
+          employee_id?: string | null;
+          block_date: string;
+          block_type?: string;
+          start_time?: string | null;
+          end_time?: string | null;
+          reason?: string | null;
+          status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          clinic_id?: string;
+          employee_id?: string | null;
+          block_date?: string;
+          block_type?: string;
+          start_time?: string | null;
+          end_time?: string | null;
+          reason?: string | null;
+          status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      patient_session_history: {
+        Row: {
+          id: string;
+          clinic_id: string;
+          patient_id: string;
+          employee_id: string | null;
+          service_id: string | null;
+          appointment_id: string | null;
+          session_date: string;
+          status: string;
+          notes: string | null;
+          finance_integration_status: string;
+          commission_integration_status: string;
+          package_session_status: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          clinic_id: string;
+          patient_id: string;
+          employee_id?: string | null;
+          service_id?: string | null;
+          appointment_id?: string | null;
+          session_date: string;
+          status?: string;
+          notes?: string | null;
+          finance_integration_status?: string;
+          commission_integration_status?: string;
+          package_session_status?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          clinic_id?: string;
+          patient_id?: string;
+          employee_id?: string | null;
+          service_id?: string | null;
+          appointment_id?: string | null;
+          session_date?: string;
+          status?: string;
+          notes?: string | null;
+          finance_integration_status?: string;
+          commission_integration_status?: string;
+          package_session_status?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       medical_records: {
         Row: {
           id: string;
           clinic_id: string | null;
+          appointment_id: string | null;
           patient_id: string | null;
           employee_id: string | null;
           title: string;
@@ -960,6 +1111,7 @@ export type Database = {
         Insert: {
           id?: string;
           clinic_id?: string | null;
+          appointment_id?: string | null;
           patient_id?: string | null;
           employee_id?: string | null;
           title: string;
@@ -975,6 +1127,7 @@ export type Database = {
         Update: {
           id?: string;
           clinic_id?: string | null;
+          appointment_id?: string | null;
           patient_id?: string | null;
           employee_id?: string | null;
           title?: string;
