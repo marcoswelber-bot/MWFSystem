@@ -12,6 +12,8 @@
 
 ✅ Acesso ADM MASTER à tela Tipos de Serviço corrigido
 
+✅ Tela Serviços reorganizada por abas independentes
+
 ✅ Estrutura inicial
 
 ✅ Autenticação

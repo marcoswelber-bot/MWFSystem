@@ -10,28 +10,13 @@ import type {
 } from "@/lib/permission-modules";
 import {
   createCategory,
-  createCommercialRule,
-  createDiscount,
-  createInternalNotification,
-  createPackage,
-  createProfessionalLink,
-  createProtocol,
-  createResource,
   createService,
   deleteService,
-  deleteSupportRecord,
   setCategoryStatus,
   setServiceStatus,
   updateService,
   updateCategory,
   type CategoryFormInput,
-  type DiscountFormInput,
-  type NotificationFormInput,
-  type PackageFormInput,
-  type ProfessionalLinkFormInput,
-  type ProtocolFormInput,
-  type ResourceFormInput,
-  type RuleFormInput,
   type ServiceActionResult,
   type ServiceFormInput
 } from "@/app/(app)/servicos/actions";
@@ -151,76 +136,6 @@ const emptyCategoryForm: CategoryFormInput = {
   status: "active"
 };
 
-const emptyProfessionalLinkForm: ProfessionalLinkFormInput = {
-  service_id: "",
-  employee_id: "",
-  is_primary: false,
-  commission_type: "",
-  commission_value: ""
-};
-
-const emptyPackageForm: PackageFormInput = {
-  name: "",
-  description: "",
-  sessions_quantity: "1",
-  total_price: "",
-  validity_days: "",
-  uses_credits: false,
-  contracted_credits: "0",
-  allow_freeze: true,
-  allow_renewal: true
-};
-
-const emptyDiscountForm: DiscountFormInput = {
-  service_id: "",
-  name: "",
-  sessions_quantity: "1",
-  discount_type: "percent",
-  discount_value: "",
-  original_price: ""
-};
-
-const emptyRuleForm: RuleFormInput = {
-  name: "",
-  rule_type: "coupon",
-  coupon_code: "",
-  discount_type: "percent",
-  discount_value: "",
-  max_discount_admin: "",
-  max_discount_manager: "",
-  max_discount_professional: "",
-  start_date: "",
-  end_date: ""
-};
-
-const emptyProtocolForm: ProtocolFormInput = {
-  name: "",
-  objective: "",
-  goal_id: "",
-  recommended_sessions: "",
-  recommended_interval_days: ""
-};
-
-const emptyResourceForm: ResourceFormInput = {
-  service_id: "",
-  room: "",
-  equipment: "",
-  stretcher_required: false,
-  specific_device: "",
-  materials: "",
-  preparation_minutes: "",
-  cleanup_minutes: ""
-};
-
-const emptyNotificationForm: NotificationFormInput = {
-  service_id: "",
-  employee_id: "",
-  title: "",
-  message: "",
-  notification_type: "internal",
-  whatsapp_template: ""
-};
-
 function serviceToForm(service: Service): ServiceFormInput {
   return {
     clinic_id: service.clinic_id ?? "",
@@ -291,16 +206,6 @@ export function ServicesManager({
   services,
   clinics,
   categories,
-  employees,
-  professionalLinks,
-  packages,
-  discounts,
-  commercialRules,
-  goals,
-  protocols,
-  resources,
-  notifications,
-  auditLogs,
   initialSearch,
   initialTab = "basicServices",
   loadError,
@@ -324,19 +229,6 @@ export function ServicesManager({
   );
   const [categoryForm, setCategoryForm] =
     React.useState<CategoryFormInput>(emptyCategoryForm);
-  const [professionalForm, setProfessionalForm] =
-    React.useState<ProfessionalLinkFormInput>(emptyProfessionalLinkForm);
-  const [packageForm, setPackageForm] =
-    React.useState<PackageFormInput>(emptyPackageForm);
-  const [discountForm, setDiscountForm] =
-    React.useState<DiscountFormInput>(emptyDiscountForm);
-  const [ruleForm, setRuleForm] = React.useState<RuleFormInput>(emptyRuleForm);
-  const [protocolForm, setProtocolForm] =
-    React.useState<ProtocolFormInput>(emptyProtocolForm);
-  const [resourceForm, setResourceForm] =
-    React.useState<ResourceFormInput>(emptyResourceForm);
-  const [notificationForm, setNotificationForm] =
-    React.useState<NotificationFormInput>(emptyNotificationForm);
   const [message, setMessage] = React.useState<ServiceActionResult | null>(
     loadError ? { ok: false, message: loadError } : null
   );
@@ -480,34 +372,6 @@ export function ServicesManager({
     });
   }
 
-  function deleteSupport(table: Parameters<typeof deleteSupportRecord>[0], id: string) {
-    if (!window.confirm("Excluir definitivamente este registro?")) {
-      return;
-    }
-
-    startTransition(async () => {
-      setResult(await deleteSupportRecord(table, id));
-    });
-  }
-
-  function submitSupport(
-    event: React.FormEvent<HTMLFormElement>,
-    action: () => Promise<ServiceActionResult>,
-    afterSuccess: () => void
-  ) {
-    event.preventDefault();
-    setMessage(null);
-    startTransition(async () => {
-      const result = await action();
-      setMessage(result);
-
-      if (result.ok) {
-        afterSuccess();
-        refresh();
-      }
-    });
-  }
-
   function editCategory(category: Category) {
     if (!isAdmMaster) {
       setMessage({
@@ -534,14 +398,20 @@ export function ServicesManager({
   }
 
   function submitCategory(event: React.FormEvent<HTMLFormElement>) {
-    submitSupport(
-      event,
-      () =>
-        editingCategory
-          ? updateCategory(editingCategory.id, categoryForm)
-          : createCategory(categoryForm),
-      resetCategoryForm
-    );
+    event.preventDefault();
+    setMessage(null);
+
+    startTransition(async () => {
+      const result = editingCategory
+        ? await updateCategory(editingCategory.id, categoryForm)
+        : await createCategory(categoryForm);
+      setMessage(result);
+
+      if (result.ok) {
+        resetCategoryForm();
+        refresh();
+      }
+    });
   }
 
   function toggleCategoryStatus(category: Category) {
@@ -602,48 +472,12 @@ export function ServicesManager({
 
     return can(moduleByTab[value], "view");
   });
+  const developmentTabs = tabs.filter(
+    ([value]) => value !== "basicServices" && value !== "serviceTypes"
+  );
 
   return (
     <div style={{ display: "grid", gap: "24px" }}>
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "end",
-          justifyContent: "space-between",
-          gap: "16px"
-        }}
-      >
-        <form
-          onSubmit={submitSearch}
-          style={{ display: "flex", flex: "1 1 420px", gap: "8px" }}
-        >
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Buscar por nome, codigo ou tipo de servico"
-            style={inputStyle}
-          />
-          <button type="submit" style={buttonStyle}>
-            Buscar
-          </button>
-        </form>
-
-        {can("servicos", "create") ? (
-          <button
-            type="button"
-            onClick={openCreateService}
-            style={{
-              ...buttonStyle,
-              background: "hsl(var(--primary))",
-              color: "hsl(var(--primary-foreground))"
-            }}
-          >
-            Novo servico
-          </button>
-        ) : null}
-      </div>
-
       <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
         {visibleTabs.map(([value, label]) => (
           <button
@@ -654,31 +488,6 @@ export function ServicesManager({
               ...buttonStyle,
               background: tab === value ? "hsl(var(--primary))" : "transparent",
               color: tab === value ? "hsl(var(--primary-foreground))" : "inherit"
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-        {[
-          ["all", "Todos"],
-          ["active", "Ativos"],
-          ["inactive", "Inativos"]
-        ].map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => setStatusFilter(value as StatusFilter)}
-            style={{
-              ...buttonStyle,
-              background:
-                statusFilter === value ? "hsl(var(--primary))" : "transparent",
-              color:
-                statusFilter === value
-                  ? "hsl(var(--primary-foreground))"
-                  : "inherit"
             }}
           >
             {label}
@@ -699,29 +508,93 @@ export function ServicesManager({
         </div>
       ) : null}
 
-      <section
-        style={{
-          display: "grid",
-          gap: "16px",
-          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))"
-        }}
-      >
-        <div style={{ border: "1px solid hsl(var(--border))", borderRadius: "8px", padding: "16px" }}>
-          <strong style={{ fontSize: "24px" }}>{activeCount}</strong>
-          <p>Servicos ativos</p>
-        </div>
-        <div style={{ border: "1px solid hsl(var(--border))", borderRadius: "8px", padding: "16px" }}>
-          <strong style={{ fontSize: "24px" }}>{filteredServices.length}</strong>
-          <p>Registros encontrados</p>
-        </div>
-        <div style={{ border: "1px solid hsl(var(--border))", borderRadius: "8px", padding: "16px" }}>
-          <strong style={{ fontSize: "24px" }}>{inactiveCount}</strong>
-          <p>Servicos inativos</p>
-        </div>
-      </section>
-
       {isServicesTab ? (
         <>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "end",
+              justifyContent: "space-between",
+              gap: "16px"
+            }}
+          >
+            <form
+              onSubmit={submitSearch}
+              style={{ display: "flex", flex: "1 1 420px", gap: "8px" }}
+            >
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Buscar por nome, codigo ou tipo de servico"
+                style={inputStyle}
+              />
+              <button type="submit" style={buttonStyle}>
+                Buscar
+              </button>
+            </form>
+
+            {can("servicos", "create") ? (
+              <button
+                type="button"
+                onClick={openCreateService}
+                style={{
+                  ...buttonStyle,
+                  background: "hsl(var(--primary))",
+                  color: "hsl(var(--primary-foreground))"
+                }}
+              >
+                Novo servico
+              </button>
+            ) : null}
+          </div>
+
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+            {[
+              ["all", "Todos"],
+              ["active", "Ativos"],
+              ["inactive", "Inativos"]
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setStatusFilter(value as StatusFilter)}
+                style={{
+                  ...buttonStyle,
+                  background:
+                    statusFilter === value ? "hsl(var(--primary))" : "transparent",
+                  color:
+                    statusFilter === value
+                      ? "hsl(var(--primary-foreground))"
+                      : "inherit"
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <section
+            style={{
+              display: "grid",
+              gap: "16px",
+              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))"
+            }}
+          >
+            <div style={{ border: "1px solid hsl(var(--border))", borderRadius: "8px", padding: "16px" }}>
+              <strong style={{ fontSize: "24px" }}>{activeCount}</strong>
+              <p>Servicos ativos</p>
+            </div>
+            <div style={{ border: "1px solid hsl(var(--border))", borderRadius: "8px", padding: "16px" }}>
+              <strong style={{ fontSize: "24px" }}>{filteredServices.length}</strong>
+              <p>Registros encontrados</p>
+            </div>
+            <div style={{ border: "1px solid hsl(var(--border))", borderRadius: "8px", padding: "16px" }}>
+              <strong style={{ fontSize: "24px" }}>{inactiveCount}</strong>
+              <p>Servicos inativos</p>
+            </div>
+          </section>
+
           {serviceFormOpen ? (
             <section style={panelStyle}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: "16px" }}>
@@ -972,325 +845,11 @@ export function ServicesManager({
         </SupportSection>
       ) : null}
 
-      {tab === "professionals" ? (
-        <SupportSection
-          title="Profissionais vinculados"
-          form={
-            <form
-              onSubmit={(event) =>
-                submitSupport(
-                  event,
-                  () => createProfessionalLink(professionalForm),
-                  () => setProfessionalForm(emptyProfessionalLinkForm)
-                )
-              }
-              style={formGridStyle}
-            >
-              <SelectField label="Servico" value={professionalForm.service_id} onChange={(value) => setProfessionalForm((current) => ({ ...current, service_id: value }))} options={services.map((service) => [service.id, service.name])} inputStyle={inputStyle} />
-              <SelectField label="Profissional" value={professionalForm.employee_id} onChange={(value) => setProfessionalForm((current) => ({ ...current, employee_id: value }))} options={employees.map((employee) => [employee.id, employee.name])} inputStyle={inputStyle} />
-              <TextField label="Tipo de comissao" value={professionalForm.commission_type ?? ""} onChange={(value) => setProfessionalForm((current) => ({ ...current, commission_type: value }))} inputStyle={inputStyle} />
-              <TextField label="Valor da comissao" value={professionalForm.commission_value ?? ""} onChange={(value) => setProfessionalForm((current) => ({ ...current, commission_value: value }))} inputStyle={inputStyle} />
-              <CheckboxField label="Profissional principal" checked={Boolean(professionalForm.is_primary)} onChange={(value) => setProfessionalForm((current) => ({ ...current, is_primary: value }))} />
-              <SubmitButton isPending={isPending} buttonStyle={buttonStyle} />
-            </form>
-          }
-        >
-          <DataTable
-            headers={["Servico", "Profissional", "Principal", "Comissao", "Acoes"]}
-            rows={professionalLinks.map((link) => [
-              link.service_name,
-              link.employee_name,
-              link.is_primary ? "Sim" : "Nao",
-              [link.commission_type, link.commission_value].filter(Boolean).join(" ") || "-",
-              <button key={link.id} type="button" onClick={() => deleteSupport("service_professionals", link.id)} style={buttonStyle}>
-                Excluir
-              </button>
-            ])}
-            emptyText="Nenhum profissional vinculado."
-          />
-        </SupportSection>
-      ) : null}
-
-      {tab === "packages" ? (
-        <SupportSection
-          title="Pacotes de sessoes e creditos"
-          form={
-            <form
-              onSubmit={(event) =>
-                submitSupport(
-                  event,
-                  () => createPackage(packageForm),
-                  () => setPackageForm(emptyPackageForm)
-                )
-              }
-              style={formGridStyle}
-            >
-              <TextField label="Nome" value={packageForm.name} onChange={(value) => setPackageForm((current) => ({ ...current, name: value }))} inputStyle={inputStyle} required />
-              <TextField label="Sessoes" value={packageForm.sessions_quantity ?? ""} onChange={(value) => setPackageForm((current) => ({ ...current, sessions_quantity: value }))} inputStyle={inputStyle} />
-              <TextField label="Valor total" value={packageForm.total_price ?? ""} onChange={(value) => setPackageForm((current) => ({ ...current, total_price: value }))} inputStyle={inputStyle} />
-              <TextField label="Validade em dias" value={packageForm.validity_days ?? ""} onChange={(value) => setPackageForm((current) => ({ ...current, validity_days: value }))} inputStyle={inputStyle} />
-              <TextField label="Creditos contratados" value={packageForm.contracted_credits ?? ""} onChange={(value) => setPackageForm((current) => ({ ...current, contracted_credits: value }))} inputStyle={inputStyle} />
-              <CheckboxField label="Usa creditos" checked={Boolean(packageForm.uses_credits)} onChange={(value) => setPackageForm((current) => ({ ...current, uses_credits: value }))} />
-              <CheckboxField label="Permite congelamento" checked={Boolean(packageForm.allow_freeze)} onChange={(value) => setPackageForm((current) => ({ ...current, allow_freeze: value }))} />
-              <CheckboxField label="Permite renovacao" checked={Boolean(packageForm.allow_renewal)} onChange={(value) => setPackageForm((current) => ({ ...current, allow_renewal: value }))} />
-              <TextAreaField label="Descricao" value={packageForm.description ?? ""} onChange={(value) => setPackageForm((current) => ({ ...current, description: value }))} inputStyle={inputStyle} />
-              <SubmitButton isPending={isPending} buttonStyle={buttonStyle} />
-            </form>
-          }
-        >
-          <DataTable
-            headers={["Nome", "Sessoes", "Total", "Por sessao", "Creditos", "Acoes"]}
-            rows={packages.map((item) => [
-              item.name,
-              String(item.sessions_quantity),
-              money(item.total_price),
-              money(item.price_per_session),
-              `${item.used_credits}/${item.contracted_credits}`,
-              <button key={item.id} type="button" onClick={() => deleteSupport("service_packages", item.id)} style={buttonStyle}>
-                Excluir
-              </button>
-            ])}
-            emptyText="Nenhum pacote cadastrado."
-          />
-        </SupportSection>
-      ) : null}
-
-      {tab === "discounts" ? (
-        <SupportSection
-          title="Descontos progressivos"
-          form={
-            <form
-              onSubmit={(event) =>
-                submitSupport(
-                  event,
-                  () => createDiscount(discountForm),
-                  () => setDiscountForm(emptyDiscountForm)
-                )
-              }
-              style={formGridStyle}
-            >
-              <SelectField label="Servico" value={discountForm.service_id ?? ""} onChange={(value) => setDiscountForm((current) => ({ ...current, service_id: value }))} options={services.map((service) => [service.id, service.name])} inputStyle={inputStyle} />
-              <TextField label="Nome" value={discountForm.name} onChange={(value) => setDiscountForm((current) => ({ ...current, name: value }))} inputStyle={inputStyle} required />
-              <TextField label="Quantidade contratada" value={discountForm.sessions_quantity ?? ""} onChange={(value) => setDiscountForm((current) => ({ ...current, sessions_quantity: value }))} inputStyle={inputStyle} />
-              <SelectField label="Tipo" value={discountForm.discount_type ?? "percent"} onChange={(value) => setDiscountForm((current) => ({ ...current, discount_type: value }))} options={[["percent", "Percentual"], ["fixed", "Valor fixo"]]} inputStyle={inputStyle} />
-              <TextField label="Desconto" value={discountForm.discount_value ?? ""} onChange={(value) => setDiscountForm((current) => ({ ...current, discount_value: value }))} inputStyle={inputStyle} />
-              <TextField label="Valor original por sessao" value={discountForm.original_price ?? ""} onChange={(value) => setDiscountForm((current) => ({ ...current, original_price: value }))} inputStyle={inputStyle} />
-              <SubmitButton isPending={isPending} buttonStyle={buttonStyle} />
-            </form>
-          }
-        >
-          <DataTable
-            headers={["Nome", "Servico", "Qtd", "Original", "Final", "Economia", "Acoes"]}
-            rows={discounts.map((discount) => [
-              discount.name,
-              discount.service_name,
-              String(discount.sessions_quantity),
-              money(discount.original_price),
-              money(discount.final_price),
-              money(discount.total_savings),
-              <button key={discount.id} type="button" onClick={() => deleteSupport("service_discounts", discount.id)} style={buttonStyle}>
-                Excluir
-              </button>
-            ])}
-            emptyText="Nenhum desconto cadastrado."
-          />
-        </SupportSection>
-      ) : null}
-
-      {tab === "rules" ? (
-        <SupportSection
-          title="Regras comerciais"
-          form={
-            <form
-              onSubmit={(event) =>
-                submitSupport(
-                  event,
-                  () => createCommercialRule(ruleForm),
-                  () => setRuleForm(emptyRuleForm)
-                )
-              }
-              style={formGridStyle}
-            >
-              <TextField label="Nome" value={ruleForm.name} onChange={(value) => setRuleForm((current) => ({ ...current, name: value }))} inputStyle={inputStyle} required />
-              <SelectField label="Tipo" value={ruleForm.rule_type} onChange={(value) => setRuleForm((current) => ({ ...current, rule_type: value }))} options={[["coupon", "Cupom"], ["campaign", "Campanha"], ["agreement", "Convenio"], ["referral", "Indicacao"], ["cashback", "Cashback futuro"], ["loyalty", "Fidelidade futura"]]} inputStyle={inputStyle} />
-              <TextField label="Cupom" value={ruleForm.coupon_code ?? ""} onChange={(value) => setRuleForm((current) => ({ ...current, coupon_code: value }))} inputStyle={inputStyle} />
-              <TextField label="Desconto" value={ruleForm.discount_value ?? ""} onChange={(value) => setRuleForm((current) => ({ ...current, discount_value: value }))} inputStyle={inputStyle} />
-              <TextField label="Max. admin" value={ruleForm.max_discount_admin ?? ""} onChange={(value) => setRuleForm((current) => ({ ...current, max_discount_admin: value }))} inputStyle={inputStyle} />
-              <TextField label="Max. gerente" value={ruleForm.max_discount_manager ?? ""} onChange={(value) => setRuleForm((current) => ({ ...current, max_discount_manager: value }))} inputStyle={inputStyle} />
-              <TextField label="Max. profissional" value={ruleForm.max_discount_professional ?? ""} onChange={(value) => setRuleForm((current) => ({ ...current, max_discount_professional: value }))} inputStyle={inputStyle} />
-              <TextField label="Inicio" value={ruleForm.start_date ?? ""} onChange={(value) => setRuleForm((current) => ({ ...current, start_date: value }))} inputStyle={inputStyle} type="date" />
-              <TextField label="Fim" value={ruleForm.end_date ?? ""} onChange={(value) => setRuleForm((current) => ({ ...current, end_date: value }))} inputStyle={inputStyle} type="date" />
-              <SubmitButton isPending={isPending} buttonStyle={buttonStyle} />
-            </form>
-          }
-        >
-          <DataTable
-            headers={["Nome", "Tipo", "Cupom", "Desconto", "Periodo", "Acoes"]}
-            rows={commercialRules.map((rule) => [
-              rule.name,
-              rule.rule_type,
-              rule.coupon_code ?? "-",
-              rule.discount_value === null ? "-" : String(rule.discount_value),
-              [rule.start_date, rule.end_date].filter(Boolean).join(" a ") || "-",
-              <button key={rule.id} type="button" onClick={() => deleteSupport("commercial_rules", rule.id)} style={buttonStyle}>
-                Excluir
-              </button>
-            ])}
-            emptyText="Nenhuma regra comercial cadastrada."
-          />
-        </SupportSection>
-      ) : null}
-
-      {tab === "protocols" ? (
-        <SupportSection
-          title="Protocolos de tratamento"
-          form={
-            <form
-              onSubmit={(event) =>
-                submitSupport(
-                  event,
-                  () => createProtocol(protocolForm),
-                  () => setProtocolForm(emptyProtocolForm)
-                )
-              }
-              style={formGridStyle}
-            >
-              <TextField label="Nome" value={protocolForm.name} onChange={(value) => setProtocolForm((current) => ({ ...current, name: value }))} inputStyle={inputStyle} required />
-              <SelectField label="Objetivo" value={protocolForm.goal_id ?? ""} onChange={(value) => setProtocolForm((current) => ({ ...current, goal_id: value }))} options={goals.map((goal) => [goal.id, goal.name])} inputStyle={inputStyle} />
-              <TextField label="Sessoes recomendadas" value={protocolForm.recommended_sessions ?? ""} onChange={(value) => setProtocolForm((current) => ({ ...current, recommended_sessions: value }))} inputStyle={inputStyle} />
-              <TextField label="Intervalo recomendado" value={protocolForm.recommended_interval_days ?? ""} onChange={(value) => setProtocolForm((current) => ({ ...current, recommended_interval_days: value }))} inputStyle={inputStyle} />
-              <TextAreaField label="Objetivo do protocolo" value={protocolForm.objective ?? ""} onChange={(value) => setProtocolForm((current) => ({ ...current, objective: value }))} inputStyle={inputStyle} />
-              <SubmitButton isPending={isPending} buttonStyle={buttonStyle} />
-            </form>
-          }
-        >
-          <DataTable
-            headers={["Nome", "Objetivo", "Sessoes", "Intervalo", "Acoes"]}
-            rows={protocols.map((protocol) => [
-              protocol.name,
-              protocol.goal_name,
-              protocol.recommended_sessions === null ? "-" : String(protocol.recommended_sessions),
-              protocol.recommended_interval_days === null ? "-" : `${protocol.recommended_interval_days} dias`,
-              <button key={protocol.id} type="button" onClick={() => deleteSupport("treatment_protocols", protocol.id)} style={buttonStyle}>
-                Excluir
-              </button>
-            ])}
-            emptyText="Nenhum protocolo cadastrado."
-          />
-        </SupportSection>
-      ) : null}
-
-      {tab === "resources" ? (
-        <SupportSection
-          title="Recursos necessarios"
-          form={
-            <form
-              onSubmit={(event) =>
-                submitSupport(
-                  event,
-                  () => createResource(resourceForm),
-                  () => setResourceForm(emptyResourceForm)
-                )
-              }
-              style={formGridStyle}
-            >
-              <SelectField label="Servico" value={resourceForm.service_id} onChange={(value) => setResourceForm((current) => ({ ...current, service_id: value }))} options={services.map((service) => [service.id, service.name])} inputStyle={inputStyle} />
-              <TextField label="Sala" value={resourceForm.room ?? ""} onChange={(value) => setResourceForm((current) => ({ ...current, room: value }))} inputStyle={inputStyle} />
-              <TextField label="Equipamento" value={resourceForm.equipment ?? ""} onChange={(value) => setResourceForm((current) => ({ ...current, equipment: value }))} inputStyle={inputStyle} />
-              <TextField label="Aparelho especifico" value={resourceForm.specific_device ?? ""} onChange={(value) => setResourceForm((current) => ({ ...current, specific_device: value }))} inputStyle={inputStyle} />
-              <TextField label="Tempo de preparo" value={resourceForm.preparation_minutes ?? ""} onChange={(value) => setResourceForm((current) => ({ ...current, preparation_minutes: value }))} inputStyle={inputStyle} />
-              <TextField label="Tempo de limpeza" value={resourceForm.cleanup_minutes ?? ""} onChange={(value) => setResourceForm((current) => ({ ...current, cleanup_minutes: value }))} inputStyle={inputStyle} />
-              <CheckboxField label="Exige maca" checked={Boolean(resourceForm.stretcher_required)} onChange={(value) => setResourceForm((current) => ({ ...current, stretcher_required: value }))} />
-              <TextAreaField label="Materiais utilizados" value={resourceForm.materials ?? ""} onChange={(value) => setResourceForm((current) => ({ ...current, materials: value }))} inputStyle={inputStyle} />
-              <SubmitButton isPending={isPending} buttonStyle={buttonStyle} />
-            </form>
-          }
-        >
-          <DataTable
-            headers={["Servico", "Sala", "Equipamento", "Preparo", "Limpeza", "Acoes"]}
-            rows={resources.map((resource) => [
-              resource.service_name,
-              resource.room ?? "-",
-              resource.equipment ?? "-",
-              resource.preparation_minutes === null ? "-" : `${resource.preparation_minutes} min`,
-              resource.cleanup_minutes === null ? "-" : `${resource.cleanup_minutes} min`,
-              <button key={resource.id} type="button" onClick={() => deleteSupport("service_resources", resource.id)} style={buttonStyle}>
-                Excluir
-              </button>
-            ])}
-            emptyText="Nenhum recurso cadastrado."
-          />
-        </SupportSection>
-      ) : null}
-
-      {tab === "notifications" ? (
-        <SupportSection
-          title="Notificacoes internas e WhatsApp manual"
-          form={
-            <form
-              onSubmit={(event) =>
-                submitSupport(
-                  event,
-                  () => createInternalNotification(notificationForm),
-                  () => setNotificationForm(emptyNotificationForm)
-                )
-              }
-              style={formGridStyle}
-            >
-              <SelectField label="Servico" value={notificationForm.service_id ?? ""} onChange={(value) => setNotificationForm((current) => ({ ...current, service_id: value }))} options={services.map((service) => [service.id, service.name])} inputStyle={inputStyle} />
-              <SelectField label="Profissional" value={notificationForm.employee_id ?? ""} onChange={(value) => setNotificationForm((current) => ({ ...current, employee_id: value }))} options={employees.map((employee) => [employee.id, employee.name])} inputStyle={inputStyle} />
-              <TextField label="Titulo" value={notificationForm.title} onChange={(value) => setNotificationForm((current) => ({ ...current, title: value }))} inputStyle={inputStyle} required />
-              <TextAreaField label="Mensagem interna" value={notificationForm.message} onChange={(value) => setNotificationForm((current) => ({ ...current, message: value }))} inputStyle={inputStyle} />
-              <TextAreaField label="Mensagem pronta para WhatsApp" value={notificationForm.whatsapp_template ?? ""} onChange={(value) => setNotificationForm((current) => ({ ...current, whatsapp_template: value }))} inputStyle={inputStyle} />
-              <SubmitButton isPending={isPending} buttonStyle={buttonStyle} />
-            </form>
-          }
-        >
-          <DataTable
-            headers={["Titulo", "Servico", "Profissional", "Status", "WhatsApp", "Acoes"]}
-            rows={notifications.map((notification) => [
-              notification.title,
-              notification.service_name,
-              notification.employee_name,
-              notification.status,
-              notification.whatsapp_template ? (
-                <a
-                  key={`${notification.id}-wa`}
-                  href={`https://wa.me/?text=${encodeURIComponent(notification.whatsapp_template)}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{ color: "hsl(var(--primary))", fontWeight: 700 }}
-                >
-                  Abrir mensagem
-                </a>
-              ) : (
-                "-"
-              ),
-              <button key={notification.id} type="button" onClick={() => deleteSupport("internal_notifications", notification.id)} style={buttonStyle}>
-                Excluir
-              </button>
-            ])}
-            emptyText="Nenhuma notificacao cadastrada."
-          />
-        </SupportSection>
-      ) : null}
-
-      {tab === "history" ? (
-        <SupportSection title="Historico e auditoria">
-          <DataTable
-            headers={["Servico", "Acao", "Campo", "Antes", "Depois", "Data"]}
-            rows={auditLogs.map((log) => [
-              log.service_name,
-              log.action,
-              log.field_name ?? "-",
-              log.old_value ?? "-",
-              log.new_value ?? "-",
-              new Date(log.created_at).toLocaleString("pt-BR")
-            ])}
-            emptyText="Nenhum historico registrado."
-          />
-        </SupportSection>
-      ) : null}
+      {developmentTabs.map(([value, title]) =>
+        tab === value ? (
+          <DevelopmentSection key={value} title={title} />
+        ) : null
+      )}
     </div>
   );
 }
@@ -1324,6 +883,25 @@ function SupportSection({
       {form}
       {children}
     </section>
+  );
+}
+
+function DevelopmentSection({ title }: { title: string }) {
+  return (
+    <SupportSection title={title}>
+      <div
+        style={{
+          border: "1px dashed hsl(var(--border))",
+          borderRadius: "8px",
+          padding: "24px"
+        }}
+      >
+        <p style={{ fontWeight: 700 }}>{title} em desenvolvimento</p>
+        <p style={{ color: "hsl(var(--muted-foreground))", marginTop: "6px" }}>
+          Esta aba sera ativada em uma proxima etapa.
+        </p>
+      </div>
+    </SupportSection>
   );
 }
 
@@ -1478,27 +1056,6 @@ function SelectField({
           </option>
         ))}
       </select>
-    </label>
-  );
-}
-
-function CheckboxField({
-  label,
-  checked,
-  onChange
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (value: boolean) => void;
-}) {
-  return (
-    <label style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
-      />
-      {label}
     </label>
   );
 }
