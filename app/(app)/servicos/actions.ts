@@ -506,6 +506,30 @@ export async function updateCategory(id: string, input: CategoryFormInput) {
   }
 }
 
+export async function setCategoryStatus(
+  id: string,
+  status: "active" | "inactive"
+): Promise<ServiceActionResult> {
+  try {
+    await assertAdmMaster();
+
+    const supabase = await createClient();
+    const { error } = await supabase
+      .from("service_categories")
+      .update({ status })
+      .eq("id", id);
+
+    if (error) {
+      return { ok: false, message: getErrorMessage(error) };
+    }
+
+    revalidatePath("/servicos");
+    return { ok: true, message: "Status do tipo de servico atualizado." };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
+}
+
 export async function deleteCategory(id: string): Promise<ServiceActionResult> {
   try {
     await assertAdmMaster();

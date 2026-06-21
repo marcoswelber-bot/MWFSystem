@@ -18,9 +18,9 @@ import {
   createProtocol,
   createResource,
   createService,
-  deleteCategory,
   deleteService,
   deleteSupportRecord,
+  setCategoryStatus,
   setServiceStatus,
   updateService,
   updateCategory,
@@ -341,6 +341,10 @@ export function ServicesManager({
     loadError ? { ok: false, message: loadError } : null
   );
 
+  React.useEffect(() => {
+    setTab(initialTab === "serviceTypes" && !isAdmMaster ? "basicServices" : initialTab);
+  }, [initialTab, isAdmMaster]);
+
   const activeCount = services.filter((service) => service.status === "active").length;
   const inactiveCount = services.filter(
     (service) => service.status === "inactive"
@@ -540,25 +544,22 @@ export function ServicesManager({
     );
   }
 
-  function removeCategory(category: Category) {
+  function toggleCategoryStatus(category: Category) {
     if (!isAdmMaster) {
       setMessage({
         ok: false,
-        message: "Apenas o ADM pode excluir tipos de servico."
+        message: "Apenas o ADM pode ativar ou inativar tipos de servico."
       });
       return;
     }
 
-    if (
-      !window.confirm(
-        `Excluir definitivamente o tipo de servico ${category.name}?`
-      )
-    ) {
-      return;
-    }
-
     startTransition(async () => {
-      setResult(await deleteCategory(category.id));
+      setResult(
+        await setCategoryStatus(
+          category.id,
+          category.status === "active" ? "inactive" : "active"
+        )
+      );
     });
   }
 
@@ -953,8 +954,13 @@ export function ServicesManager({
                   <button type="button" onClick={() => editCategory(category)} style={buttonStyle}>
                     Editar
                   </button>
-                  <button type="button" onClick={() => removeCategory(category)} style={buttonStyle}>
-                    Excluir
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={() => toggleCategoryStatus(category)}
+                    style={buttonStyle}
+                  >
+                    {category.status === "active" ? "Inativar" : "Ativar"}
                   </button>
                 </ActionGroup>
               ) : (

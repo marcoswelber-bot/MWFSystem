@@ -10,6 +10,8 @@
 
 ✅ Tipos de Serviço separados do cadastro de Serviços
 
+✅ Acesso ADM MASTER à tela Tipos de Serviço corrigido
+
 ✅ Estrutura inicial
 
 ✅ Autenticação
