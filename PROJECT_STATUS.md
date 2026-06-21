@@ -14,6 +14,8 @@
 
 ✅ Tela Serviços reorganizada por abas independentes
 
+✅ Módulo Serviços limitado a Serviços e Tipos de Serviço
+
 ✅ Estrutura inicial
 
 ✅ Autenticação

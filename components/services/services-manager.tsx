@@ -52,18 +52,7 @@ type AuditLog = Database["public"]["Tables"]["service_audit_logs"]["Row"] & {
 };
 
 type StatusFilter = "all" | "active" | "inactive";
-type Tab =
-  | "basicServices"
-  | "advancedServices"
-  | "serviceTypes"
-  | "professionals"
-  | "packages"
-  | "discounts"
-  | "rules"
-  | "protocols"
-  | "resources"
-  | "notifications"
-  | "history";
+type Tab = "basicServices" | "serviceTypes";
 
 type ServicesManagerProps = {
   services: Service[];
@@ -435,15 +424,7 @@ export function ServicesManager({
 
   const tabs: Array<[Tab, string]> = [
     ["basicServices", "Servicos"],
-    ["serviceTypes", "Tipos de servico"],
-    ["professionals", "Profissionais"],
-    ["packages", "Pacotes"],
-    ["discounts", "Descontos"],
-    ["rules", "Regras"],
-    ["protocols", "Protocolos"],
-    ["resources", "Recursos"],
-    ["notifications", "Notificacoes"],
-    ["history", "Historico"]
+    ["serviceTypes", "Tipos de servico"]
   ];
   const isServicesTab = tab === "basicServices";
   const activeCategories = categories.filter(
@@ -454,16 +435,7 @@ export function ServicesManager({
   const visibleTabs = tabs.filter(([value]) => {
     const moduleByTab: Record<Tab, PermissionModuleKey> = {
       basicServices: "servicos_basicos",
-      advancedServices: "servicos_avancados",
-      serviceTypes: "tipos_servico",
-      professionals: "comissoes",
-      packages: "pacotes",
-      discounts: "descontos",
-      rules: "regras",
-      protocols: "protocolos",
-      resources: "recursos",
-      notifications: "notificacoes",
-      history: "servicos"
+      serviceTypes: "tipos_servico"
     };
 
     if (value === "serviceTypes" && !isAdmMaster) {
@@ -472,10 +444,6 @@ export function ServicesManager({
 
     return can(moduleByTab[value], "view");
   });
-  const developmentTabs = tabs.filter(
-    ([value]) => value !== "basicServices" && value !== "serviceTypes"
-  );
-
   return (
     <div style={{ display: "grid", gap: "24px" }}>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
@@ -845,11 +813,6 @@ export function ServicesManager({
         </SupportSection>
       ) : null}
 
-      {developmentTabs.map(([value, title]) =>
-        tab === value ? (
-          <DevelopmentSection key={value} title={title} />
-        ) : null
-      )}
     </div>
   );
 }
@@ -883,25 +846,6 @@ function SupportSection({
       {form}
       {children}
     </section>
-  );
-}
-
-function DevelopmentSection({ title }: { title: string }) {
-  return (
-    <SupportSection title={title}>
-      <div
-        style={{
-          border: "1px dashed hsl(var(--border))",
-          borderRadius: "8px",
-          padding: "24px"
-        }}
-      >
-        <p style={{ fontWeight: 700 }}>{title} em desenvolvimento</p>
-        <p style={{ color: "hsl(var(--muted-foreground))", marginTop: "6px" }}>
-          Esta aba sera ativada em uma proxima etapa.
-        </p>
-      </div>
-    </SupportSection>
   );
 }
 
