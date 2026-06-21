@@ -28,6 +28,7 @@ export type ServiceActionResult = {
 
 export type ServiceFormInput = {
   name: string;
+  clinic_id?: string;
   internal_code?: string;
   category_id?: string;
   category?: string;
@@ -256,6 +257,7 @@ function getServicePayload(input: ServiceFormInput): ServiceInsert {
 
   return {
     name,
+    clinic_id: cleanOptionalValue(input.clinic_id),
     internal_code: cleanOptionalValue(input.internal_code),
     category_id: categoryId,
     category,

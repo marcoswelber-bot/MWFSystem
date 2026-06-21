@@ -7,6 +7,7 @@ import { getCurrentPermissionMap } from "@/lib/permissions";
 import type { Database } from "@/types/database";
 
 type Patient = Database["public"]["Tables"]["patients"]["Row"];
+type Clinic = Database["public"]["Tables"]["clinics"]["Row"];
 
 type PacientesPageProps = {
   searchParams: Promise<{
@@ -26,6 +27,7 @@ export default async function PacientesPage({
   const permissions = await getCurrentPermissionMap();
   const clinicScope = await getCurrentClinicScope();
   let patients: Patient[] = [];
+  let clinics: Clinic[] = [];
   let loadError: string | undefined;
 
   if (!clinicScope.isAdmMaster && !clinicScope.clinicId) {
@@ -33,6 +35,20 @@ export default async function PacientesPage({
   } else {
     try {
     const supabase = await createClient();
+    let clinicsQuery = supabase
+      .from("clinics")
+      .select("*")
+      .order("name", { ascending: true });
+    if (!clinicScope.isAdmMaster && clinicScope.clinicId) {
+      clinicsQuery = clinicsQuery.eq("id", clinicScope.clinicId);
+    }
+    const clinicsResult = await clinicsQuery;
+    if (clinicsResult.error) {
+      loadError = getErrorMessage(clinicsResult.error);
+    } else {
+      clinics = clinicsResult.data ?? [];
+    }
+
     let query = supabase
       .from("patients")
       .select("*")
@@ -71,6 +87,9 @@ export default async function PacientesPage({
 
       <PatientsManager
         patients={patients}
+        clinics={clinics}
+        isAdmMaster={clinicScope.isAdmMaster}
+        currentClinicId={clinicScope.clinicId}
         initialSearch={search}
         loadError={loadError}
         permissions={permissions.pacientes}

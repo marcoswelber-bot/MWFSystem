@@ -13,6 +13,7 @@ type PatientUpdate = Database["public"]["Tables"]["patients"]["Update"];
 
 export type PatientFormInput = {
   full_name: string;
+  clinic_id?: string;
   cpf?: string;
   birth_date?: string;
   phone?: string;
@@ -44,6 +45,7 @@ function getPatientPayload(input: PatientFormInput): PatientInsert {
 
   return {
     full_name: fullName,
+    clinic_id: cleanOptionalValue(input.clinic_id),
     cpf: cleanOptionalValue(input.cpf),
     birth_date: cleanOptionalValue(input.birth_date),
     phone: cleanOptionalValue(input.phone),

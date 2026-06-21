@@ -8,6 +8,7 @@ import type { Database } from "@/types/database";
 
 type Employee = Database["public"]["Tables"]["employees"]["Row"];
 type Service = Database["public"]["Tables"]["services"]["Row"];
+type Clinic = Database["public"]["Tables"]["clinics"]["Row"];
 type CommissionRule =
   Database["public"]["Tables"]["professional_service_commissions"]["Row"] & {
     employee_name: string;
@@ -62,6 +63,7 @@ export default async function FuncionariosPage({
   const permissions = await getCurrentPermissionMap();
   const clinicScope = await getCurrentClinicScope();
   let employees: Employee[] = [];
+  let clinics: Clinic[] = [];
   let services: Service[] = [];
   let rawCommissionRules: Database["public"]["Tables"]["professional_service_commissions"]["Row"][] = [];
   let rawCommissionHistory: Database["public"]["Tables"]["professional_service_commission_history"]["Row"][] = [];
@@ -72,6 +74,17 @@ export default async function FuncionariosPage({
   } else {
     try {
     const supabase = await createClient();
+    let clinicsQuery = supabase
+      .from("clinics")
+      .select("*")
+      .order("name", { ascending: true });
+    if (!clinicScope.isAdmMaster && clinicScope.clinicId) {
+      clinicsQuery = clinicsQuery.eq("id", clinicScope.clinicId);
+    }
+    const clinicsResult = await readSupabaseList<Clinic>("clinics", clinicsQuery);
+    clinics = clinicsResult.data;
+    loadError = appendLoadError(loadError, clinicsResult.error);
+
     let query = supabase
       .from("employees")
       .select("*")
@@ -179,6 +192,9 @@ export default async function FuncionariosPage({
 
       <EmployeesManager
         employees={employees}
+        clinics={clinics}
+        isAdmMaster={clinicScope.isAdmMaster}
+        currentClinicId={clinicScope.clinicId}
         services={services}
         commissionRules={commissionRules}
         commissionHistory={commissionHistory}

@@ -17,6 +17,7 @@ type ProfessionalCommissionInsert =
 
 export type EmployeeFormInput = {
   name: string;
+  clinic_id?: string;
   phone?: string;
   whatsapp?: string;
   email?: string;
@@ -79,6 +80,7 @@ function getEmployeePayload(input: EmployeeFormInput): EmployeeInsert {
 
   return {
     name,
+    clinic_id: cleanOptionalValue(input.clinic_id),
     phone: cleanOptionalValue(input.phone),
     whatsapp: cleanOptionalValue(input.whatsapp),
     email: cleanOptionalValue(input.email),

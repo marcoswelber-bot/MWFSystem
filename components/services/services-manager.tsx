@@ -37,6 +37,7 @@ import {
 } from "@/app/(app)/servicos/actions";
 
 type Service = Database["public"]["Tables"]["services"]["Row"];
+type Clinic = Database["public"]["Tables"]["clinics"]["Row"];
 type Category = Database["public"]["Tables"]["service_categories"]["Row"];
 type Employee = Database["public"]["Tables"]["employees"]["Row"];
 type ProfessionalLink =
@@ -81,6 +82,7 @@ type Tab =
 
 type ServicesManagerProps = {
   services: Service[];
+  clinics: Clinic[];
   categories: Category[];
   employees: Employee[];
   professionalLinks: ProfessionalLink[];
@@ -95,10 +97,12 @@ type ServicesManagerProps = {
   initialSearch: string;
   loadError?: string;
   isAdmMaster: boolean;
+  currentClinicId: string | null;
   permissions?: PermissionMap;
 };
 
 const emptyServiceForm: ServiceFormInput = {
+  clinic_id: "",
   name: "",
   internal_code: "",
   category_id: "",
@@ -218,6 +222,7 @@ const emptyNotificationForm: NotificationFormInput = {
 
 function serviceToForm(service: Service): ServiceFormInput {
   return {
+    clinic_id: service.clinic_id ?? "",
     name: service.name,
     internal_code: service.internal_code ?? "",
     category_id: service.category_id ?? "",
@@ -283,6 +288,7 @@ function money(value: number | null) {
 
 export function ServicesManager({
   services,
+  clinics,
   categories,
   employees,
   professionalLinks,
@@ -297,6 +303,7 @@ export function ServicesManager({
   initialSearch,
   loadError,
   isAdmMaster,
+  currentClinicId,
   permissions
 }: ServicesManagerProps) {
   const router = useRouter();
@@ -386,7 +393,10 @@ export function ServicesManager({
 
   function openCreateService() {
     setEditingService(null);
-    setServiceForm(emptyServiceForm);
+    setServiceForm({
+      ...emptyServiceForm,
+      clinic_id: isAdmMaster ? "" : currentClinicId ?? ""
+    });
     setMessage(null);
     setServiceFormOpen(true);
     if (!isServicesTab) {
@@ -745,6 +755,16 @@ export function ServicesManager({
                     style={inputStyle}
                   />
                 </label>
+                <SelectField
+                  label="Clinica/Unidade"
+                  value={serviceForm.clinic_id ?? ""}
+                  onChange={(value) =>
+                    setServiceForm((current) => ({ ...current, clinic_id: value }))
+                  }
+                  options={clinics.map((clinic) => [clinic.id, clinic.name])}
+                  inputStyle={inputStyle}
+                  disabled={!isAdmMaster}
+                />
                 <label>
                   Tipo de servico
                   <select
@@ -1571,13 +1591,15 @@ function SelectField({
   value,
   onChange,
   options,
-  inputStyle
+  inputStyle,
+  disabled = false
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   options: Array<[string, string]>;
   inputStyle: React.CSSProperties;
+  disabled?: boolean;
 }) {
   return (
     <label>
@@ -1586,6 +1608,7 @@ function SelectField({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         style={inputStyle}
+        disabled={disabled}
       >
         <option value="">Selecione</option>
         {options.map(([optionValue, optionLabel]) => (

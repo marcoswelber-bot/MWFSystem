@@ -2,6 +2,8 @@
 
 ## Andamento Atual
 
+✅ Vínculo de clínica nos formulários principais
+
 ✅ Estrutura inicial
 
 ✅ Autenticação

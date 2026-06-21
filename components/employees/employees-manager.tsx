@@ -19,6 +19,7 @@ import {
 } from "@/app/(app)/funcionarios/actions";
 
 type Employee = Database["public"]["Tables"]["employees"]["Row"];
+type Clinic = Database["public"]["Tables"]["clinics"]["Row"];
 type Service = Database["public"]["Tables"]["services"]["Row"];
 type CommissionRule =
   Database["public"]["Tables"]["professional_service_commissions"]["Row"] & {
@@ -35,6 +36,9 @@ type ActiveTab = "employees" | "commissions";
 
 type EmployeesManagerProps = {
   employees: Employee[];
+  clinics: Clinic[];
+  isAdmMaster: boolean;
+  currentClinicId: string | null;
   services: Service[];
   commissionRules: CommissionRule[];
   commissionHistory: CommissionHistory[];
@@ -46,6 +50,7 @@ type EmployeesManagerProps = {
 
 const emptyForm: EmployeeFormInput = {
   name: "",
+  clinic_id: "",
   phone: "",
   whatsapp: "",
   email: "",
@@ -75,6 +80,7 @@ const emptyCommissionForm: ProfessionalCommissionFormInput = {
 function employeeToForm(employee: Employee): EmployeeFormInput {
   return {
     name: employee.name,
+    clinic_id: employee.clinic_id ?? "",
     phone: employee.phone ?? "",
     whatsapp: employee.whatsapp ?? "",
     email: employee.email ?? "",
@@ -138,6 +144,9 @@ function estimateCommission(basePrice?: string, type?: string, value?: string) {
 
 export function EmployeesManager({
   employees,
+  clinics,
+  isAdmMaster,
+  currentClinicId,
   services,
   commissionRules,
   commissionHistory,
@@ -241,7 +250,10 @@ export function EmployeesManager({
 
   function openCreateForm() {
     setEditingEmployee(null);
-    setForm(emptyForm);
+    setForm({
+      ...emptyForm,
+      clinic_id: isAdmMaster ? "" : currentClinicId ?? ""
+    });
     setMessage(null);
     setActiveTab("employees");
     setFormOpen(true);
@@ -601,6 +613,22 @@ export function EmployeesManager({
                 onChange={(event) => updateForm("name", event.target.value)}
                 style={inputStyle}
               />
+            </label>
+            <label>
+              Clinica/Unidade
+              <select
+                value={form.clinic_id ?? ""}
+                onChange={(event) => updateForm("clinic_id", event.target.value)}
+                disabled={!isAdmMaster}
+                style={inputStyle}
+              >
+                <option value="">Selecione</option>
+                {clinics.map((clinic) => (
+                  <option key={clinic.id} value={clinic.id}>
+                    {clinic.name}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               Telefone

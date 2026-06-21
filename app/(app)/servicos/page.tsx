@@ -7,6 +7,7 @@ import { getCurrentPermissionMap, isCurrentUserAdmMaster } from "@/lib/permissio
 import type { Database } from "@/types/database";
 
 type Service = Database["public"]["Tables"]["services"]["Row"];
+type Clinic = Database["public"]["Tables"]["clinics"]["Row"];
 type Category = Database["public"]["Tables"]["service_categories"]["Row"];
 type Employee = Database["public"]["Tables"]["employees"]["Row"];
 type ProfessionalLink =
@@ -80,6 +81,7 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
   const params = await searchParams;
   const search = params.q?.trim() ?? "";
   let services: Service[] = [];
+  let clinics: Clinic[] = [];
   let categories: Category[] = [];
   let employees: Employee[] = [];
   let rawProfessionalLinks: Database["public"]["Tables"]["service_professionals"]["Row"][] = [];
@@ -101,6 +103,19 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
   } else {
     try {
     const supabase = await createClient();
+    let clinicsQuery = supabase
+      .from("clinics")
+      .select("*")
+      .order("name", { ascending: true });
+    if (!clinicScope.isAdmMaster && clinicScope.clinicId) {
+      clinicsQuery = clinicsQuery.eq("id", clinicScope.clinicId);
+    }
+    const clinicsResult = await readSupabaseList<Clinic>("clinics", clinicsQuery);
+    clinics = clinicsResult.data;
+    if (clinicsResult.error) {
+      loadError = appendLoadError(loadError, clinicsResult.error);
+    }
+
     let servicesQuery = supabase
       .from("services")
       .select("*")
@@ -310,6 +325,7 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
 
       <ServicesManager
         services={services}
+        clinics={clinics}
         categories={categories}
         employees={employees}
         professionalLinks={professionalLinks}
@@ -324,6 +340,7 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
         initialSearch={search}
         loadError={loadError}
         isAdmMaster={isAdmMaster}
+        currentClinicId={clinicScope.clinicId}
         permissions={permissions}
       />
     </div>

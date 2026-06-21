@@ -15,10 +15,14 @@ import {
 } from "@/app/(app)/pacientes/actions";
 
 type Patient = Database["public"]["Tables"]["patients"]["Row"];
+type Clinic = Database["public"]["Tables"]["clinics"]["Row"];
 type StatusFilter = "all" | "active" | "inactive";
 
 type PatientsManagerProps = {
   patients: Patient[];
+  clinics: Clinic[];
+  isAdmMaster: boolean;
+  currentClinicId: string | null;
   initialSearch: string;
   loadError?: string;
   permissions?: PermissionSet;
@@ -26,6 +30,7 @@ type PatientsManagerProps = {
 
 const emptyForm: PatientFormInput = {
   full_name: "",
+  clinic_id: "",
   cpf: "",
   birth_date: "",
   phone: "",
@@ -41,6 +46,7 @@ const emptyForm: PatientFormInput = {
 function patientToForm(patient: Patient): PatientFormInput {
   return {
     full_name: patient.full_name,
+    clinic_id: patient.clinic_id ?? "",
     cpf: patient.cpf ?? "",
     birth_date: patient.birth_date ?? "",
     phone: patient.phone ?? "",
@@ -56,6 +62,9 @@ function patientToForm(patient: Patient): PatientFormInput {
 
 export function PatientsManager({
   patients,
+  clinics,
+  isAdmMaster,
+  currentClinicId,
   initialSearch,
   loadError,
   permissions
@@ -94,7 +103,10 @@ export function PatientsManager({
 
   function openCreateForm() {
     setEditingPatient(null);
-    setForm(emptyForm);
+    setForm({
+      ...emptyForm,
+      clinic_id: isAdmMaster ? "" : currentClinicId ?? ""
+    });
     setMessage(null);
     setFormOpen(true);
   }
@@ -343,6 +355,22 @@ export function PatientsManager({
                 onChange={(event) => updateForm("full_name", event.target.value)}
                 style={inputStyle}
               />
+            </label>
+            <label>
+              Clinica/Unidade
+              <select
+                value={form.clinic_id ?? ""}
+                onChange={(event) => updateForm("clinic_id", event.target.value)}
+                disabled={!isAdmMaster}
+                style={inputStyle}
+              >
+                <option value="">Selecione</option>
+                {clinics.map((clinic) => (
+                  <option key={clinic.id} value={clinic.id}>
+                    {clinic.name}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               CPF
