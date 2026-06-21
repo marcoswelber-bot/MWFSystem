@@ -18,6 +18,8 @@
 
 ✅ Agenda com agendamentos e bloqueios
 
+✅ Agenda profissional com visualização diária, semanal, mensal e por profissional
+
 ✅ Estrutura inicial
 
 ✅ Autenticação

@@ -8,8 +8,12 @@ import type { Database } from "@/types/database";
 
 type Appointment = Database["public"]["Tables"]["appointments"]["Row"] & {
   patient_name: string;
+  patient_names: string[];
+  patient_ids: string[];
   employee_name: string;
   service_name: string;
+  service_is_group: boolean;
+  participant_limit: number | null;
 };
 type ScheduleBlock = Database["public"]["Tables"]["schedule_blocks"]["Row"] & {
   employee_name: string;
@@ -58,6 +62,8 @@ export default async function AgendaPage() {
   let employees: Employee[] = [];
   let services: Service[] = [];
   let rawAppointments: Database["public"]["Tables"]["appointments"]["Row"][] = [];
+  let rawParticipants: Database["public"]["Tables"]["appointment_participants"]["Row"][] =
+    [];
   let rawBlocks: Database["public"]["Tables"]["schedule_blocks"]["Row"][] = [];
   let loadError: string | undefined;
 
@@ -137,6 +143,26 @@ export default async function AgendaPage() {
       rawAppointments = appointmentsResult.data;
       rawBlocks = blocksResult.data;
 
+      if (rawAppointments.length > 0) {
+        const participantsResult = await readSupabaseList<
+          Database["public"]["Tables"]["appointment_participants"]["Row"]
+        >(
+          "appointment_participants",
+          supabase
+            .from("appointment_participants")
+            .select("*")
+            .in(
+              "appointment_id",
+              rawAppointments.map((appointment) => appointment.id)
+            )
+        );
+        rawParticipants = participantsResult.data;
+
+        if (participantsResult.error) {
+          loadError = appendLoadError(loadError, participantsResult.error);
+        }
+      }
+
       [
         clinicsResult.error,
         patientsResult.error,
@@ -161,12 +187,30 @@ export default async function AgendaPage() {
     employees.map((employee) => [employee.id, employee.name])
   );
   const servicesById = new Map(services.map((service) => [service.id, service.name]));
+  const serviceDetailsById = new Map(services.map((service) => [service.id, service]));
+  const participantsByAppointmentId = rawParticipants.reduce(
+    (accumulator, participant) => {
+      const current = accumulator.get(participant.appointment_id) ?? [];
+      current.push(participant.patient_id);
+      accumulator.set(participant.appointment_id, current);
+      return accumulator;
+    },
+    new Map<string, string[]>()
+  );
   const appointments: Appointment[] = rawAppointments.map((appointment) => ({
     ...appointment,
+    patient_ids:
+      participantsByAppointmentId.get(appointment.id) ?? [appointment.patient_id],
+    patient_names: (
+      participantsByAppointmentId.get(appointment.id) ?? [appointment.patient_id]
+    ).map((patientId) => patientsById.get(patientId) ?? "Paciente nao encontrado"),
     patient_name: patientsById.get(appointment.patient_id) ?? "Paciente nao encontrado",
     employee_name:
       employeesById.get(appointment.employee_id) ?? "Profissional nao encontrado",
-    service_name: servicesById.get(appointment.service_id) ?? "Servico nao encontrado"
+    service_name: servicesById.get(appointment.service_id) ?? "Servico nao encontrado",
+    service_is_group: serviceDetailsById.get(appointment.service_id)?.is_group ?? false,
+    participant_limit:
+      serviceDetailsById.get(appointment.service_id)?.participant_limit ?? null
   }));
   const blocks: ScheduleBlock[] = rawBlocks.map((block) => ({
     ...block,

@@ -958,6 +958,8 @@ export type Database = {
           finance_integration_status: string;
           commission_integration_status: string;
           package_session_status: string;
+          sessions_contracted: number;
+          sessions_completed: number;
           created_at: string;
           updated_at: string;
         };
@@ -977,6 +979,8 @@ export type Database = {
           finance_integration_status?: string;
           commission_integration_status?: string;
           package_session_status?: string;
+          sessions_contracted?: number;
+          sessions_completed?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -996,8 +1000,31 @@ export type Database = {
           finance_integration_status?: string;
           commission_integration_status?: string;
           package_session_status?: string;
+          sessions_contracted?: number;
+          sessions_completed?: number;
           created_at?: string;
           updated_at?: string;
+        };
+        Relationships: [];
+      };
+      appointment_participants: {
+        Row: {
+          id: string;
+          appointment_id: string;
+          patient_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          appointment_id: string;
+          patient_id: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          appointment_id?: string;
+          patient_id?: string;
+          created_at?: string;
         };
         Relationships: [];
       };

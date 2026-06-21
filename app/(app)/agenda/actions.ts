@@ -9,6 +9,8 @@ import type { Database } from "@/types/database";
 
 type AppointmentInsert = Database["public"]["Tables"]["appointments"]["Insert"];
 type AppointmentUpdate = Database["public"]["Tables"]["appointments"]["Update"];
+type AppointmentParticipantInsert =
+  Database["public"]["Tables"]["appointment_participants"]["Insert"];
 type ScheduleBlockInsert =
   Database["public"]["Tables"]["schedule_blocks"]["Insert"];
 
@@ -22,6 +24,7 @@ export type AppointmentStatus =
 export type AppointmentFormInput = {
   clinic_id?: string;
   patient_id: string;
+  patient_ids?: string[];
   employee_id: string;
   service_id: string;
   appointment_date: string;
@@ -29,6 +32,8 @@ export type AppointmentFormInput = {
   end_time?: string;
   notes?: string;
   status?: AppointmentStatus;
+  sessions_contracted?: string;
+  sessions_completed?: string;
 };
 
 export type ScheduleBlockFormInput = {
@@ -55,6 +60,22 @@ function assertRequired(value: string | undefined, message: string) {
   if (!value?.trim()) {
     throw new Error(message);
   }
+}
+
+function cleanPatientIds(input: AppointmentFormInput) {
+  const ids = input.patient_ids?.length ? input.patient_ids : [input.patient_id];
+  return Array.from(new Set(ids.map((id) => id.trim()).filter(Boolean)));
+}
+
+function cleanOptionalInteger(value?: string) {
+  const cleanValue = value?.trim();
+
+  if (!cleanValue) {
+    return undefined;
+  }
+
+  const parsedValue = Number.parseInt(cleanValue, 10);
+  return Number.isFinite(parsedValue) && parsedValue >= 0 ? parsedValue : undefined;
 }
 
 function normalizeTime(value?: string | null) {
@@ -94,7 +115,12 @@ async function resolveClinicId(inputClinicId?: string): Promise<string> {
 }
 
 function getAppointmentPayload(input: AppointmentFormInput): AppointmentInsert {
-  assertRequired(input.patient_id, "Selecione o paciente.");
+  const patientIds = cleanPatientIds(input);
+
+  if (patientIds.length === 0) {
+    throw new Error("Selecione pelo menos um paciente.");
+  }
+
   assertRequired(input.employee_id, "Selecione o profissional.");
   assertRequired(input.service_id, "Selecione o servico.");
   assertRequired(input.appointment_date, "Informe a data.");
@@ -102,14 +128,16 @@ function getAppointmentPayload(input: AppointmentFormInput): AppointmentInsert {
 
   return {
     clinic_id: "",
-    patient_id: input.patient_id,
+    patient_id: patientIds[0],
     employee_id: input.employee_id,
     service_id: input.service_id,
     appointment_date: input.appointment_date,
     start_time: normalizeTime(input.start_time) ?? input.start_time,
     end_time: normalizeTime(input.end_time),
     notes: cleanOptionalValue(input.notes),
-    status: input.status ?? "agendado"
+    status: input.status ?? "agendado",
+    sessions_contracted: cleanOptionalInteger(input.sessions_contracted) ?? 1,
+    sessions_completed: cleanOptionalInteger(input.sessions_completed) ?? 0
   };
 }
 
@@ -214,12 +242,80 @@ async function assertNoAppointmentConflict(
   }
 }
 
+async function assertServiceCapacity(serviceId: string, patientIds: string[]) {
+  const supabase = await createClient();
+  const { data: service, error } = await supabase
+    .from("services")
+    .select("is_group, participant_limit")
+    .eq("id", serviceId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!service?.is_group && patientIds.length > 1) {
+    throw new Error("Este servico esta configurado como atendimento individual.");
+  }
+
+  if (
+    service?.is_group &&
+    service.participant_limit &&
+    patientIds.length > service.participant_limit
+  ) {
+    throw new Error("A quantidade de pacientes excede a capacidade do grupo.");
+  }
+}
+
+async function syncAppointmentParticipants(
+  appointmentId: string,
+  patientIds: string[]
+) {
+  const supabase = await createClient();
+  const { error: deleteError } = await supabase
+    .from("appointment_participants")
+    .delete()
+    .eq("appointment_id", appointmentId);
+
+  if (deleteError) {
+    throw deleteError;
+  }
+
+  const rows: AppointmentParticipantInsert[] = patientIds.map((patientId) => ({
+    appointment_id: appointmentId,
+    patient_id: patientId
+  }));
+
+  if (rows.length === 0) {
+    return;
+  }
+
+  const { error: insertError } = await supabase
+    .from("appointment_participants")
+    .insert(rows);
+
+  if (insertError) {
+    throw insertError;
+  }
+}
+
 async function completeAppointmentSideEffects(
   appointmentId: string,
   appointment: Database["public"]["Tables"]["appointments"]["Row"]
 ) {
   const supabase = await createClient();
   let medicalRecordId = appointment.medical_record_id;
+  const { data: participants, error: participantsError } = await supabase
+    .from("appointment_participants")
+    .select("patient_id")
+    .eq("appointment_id", appointmentId);
+
+  if (participantsError) {
+    throw participantsError;
+  }
+
+  const patientIds = (participants ?? []).map((participant) => participant.patient_id);
+  const sessionPatientIds = patientIds.length > 0 ? patientIds : [appointment.patient_id];
 
   if (!medicalRecordId) {
     const { data: existingRecord, error: existingRecordError } = await supabase
@@ -257,37 +353,46 @@ async function completeAppointmentSideEffects(
     medicalRecordId = medicalRecord.id;
   }
 
-  const { data: existingHistory, error: existingHistoryError } = await supabase
-    .from("patient_session_history")
-    .select("id")
-    .eq("appointment_id", appointmentId)
-    .maybeSingle();
-
-  if (existingHistoryError) {
-    throw existingHistoryError;
-  }
-
-  if (!existingHistory) {
-    const { error: historyError } = await supabase
+  for (const patientId of sessionPatientIds) {
+    const { data: existingHistory, error: existingHistoryError } = await supabase
       .from("patient_session_history")
-      .insert({
-        clinic_id: appointment.clinic_id,
-        patient_id: appointment.patient_id,
-        employee_id: appointment.employee_id,
-        service_id: appointment.service_id,
-        appointment_id: appointmentId,
-        session_date: appointment.appointment_date,
-        status: "realizado",
-        notes: appointment.notes,
-        finance_integration_status: "pending",
-        commission_integration_status: "pending",
-        package_session_status: "not_applied"
-      });
+      .select("id")
+      .eq("appointment_id", appointmentId)
+      .eq("patient_id", patientId)
+      .maybeSingle();
 
-    if (historyError) {
-      throw historyError;
+    if (existingHistoryError) {
+      throw existingHistoryError;
+    }
+
+    if (!existingHistory) {
+      const { error: historyError } = await supabase
+        .from("patient_session_history")
+        .insert({
+          clinic_id: appointment.clinic_id,
+          patient_id: patientId,
+          employee_id: appointment.employee_id,
+          service_id: appointment.service_id,
+          appointment_id: appointmentId,
+          session_date: appointment.appointment_date,
+          status: "realizado",
+          notes: appointment.notes,
+          finance_integration_status: "pending",
+          commission_integration_status: "pending",
+          package_session_status: "not_applied"
+        });
+
+      if (historyError) {
+        throw historyError;
+      }
     }
   }
+
+  const sessionsContracted = appointment.sessions_contracted ?? 1;
+  const sessionsCompleted =
+    appointment.sessions_completed > 0
+      ? appointment.sessions_completed
+      : Math.min(sessionsContracted, 1);
 
   const { error: updateError } = await supabase
     .from("appointments")
@@ -296,7 +401,8 @@ async function completeAppointmentSideEffects(
       performed_at: new Date().toISOString(),
       finance_integration_status: "pending",
       commission_integration_status: "pending",
-      package_session_status: "not_applied"
+      package_session_status: "not_applied",
+      sessions_completed: sessionsCompleted
     })
     .eq("id", appointmentId);
 
@@ -312,7 +418,9 @@ export async function createAppointment(
     await assertCan("agenda", "create");
     const supabase = await createClient();
     const payload = getAppointmentPayload(input);
+    const patientIds = cleanPatientIds(input);
     payload.clinic_id = await resolveClinicId(input.clinic_id);
+    await assertServiceCapacity(payload.service_id, patientIds);
     await assertNoAppointmentConflict(payload);
 
     const { data, error } = await supabase
@@ -324,6 +432,8 @@ export async function createAppointment(
     if (error) {
       return { ok: false, message: getErrorMessage(error) };
     }
+
+    await syncAppointmentParticipants(data.id, patientIds);
 
     if (data.status === "realizado") {
       await completeAppointmentSideEffects(data.id, data);
@@ -344,7 +454,9 @@ export async function updateAppointment(
     await assertCan("agenda", "edit");
     const supabase = await createClient();
     const payload = getAppointmentPayload(input) satisfies AppointmentUpdate;
+    const patientIds = cleanPatientIds(input);
     payload.clinic_id = await resolveClinicId(input.clinic_id);
+    await assertServiceCapacity(String(payload.service_id), patientIds);
     await assertNoAppointmentConflict(payload, id);
 
     const { data, error } = await supabase
@@ -358,12 +470,43 @@ export async function updateAppointment(
       return { ok: false, message: getErrorMessage(error) };
     }
 
+    await syncAppointmentParticipants(data.id, patientIds);
+
     if (data.status === "realizado") {
       await completeAppointmentSideEffects(data.id, data);
     }
 
     revalidatePath("/agenda");
     return { ok: true, message: "Agendamento atualizado com sucesso." };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
+}
+
+export async function setAppointmentStatus(
+  id: string,
+  status: AppointmentStatus
+): Promise<AgendaActionResult> {
+  try {
+    await assertCan("agenda", "edit");
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("appointments")
+      .update({ status })
+      .eq("id", id)
+      .select("*")
+      .single();
+
+    if (error) {
+      return { ok: false, message: getErrorMessage(error) };
+    }
+
+    if (data.status === "realizado") {
+      await completeAppointmentSideEffects(data.id, data);
+    }
+
+    revalidatePath("/agenda");
+    return { ok: true, message: "Status do agendamento atualizado." };
   } catch (error) {
     return { ok: false, message: getErrorMessage(error) };
   }
