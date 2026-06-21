@@ -90,7 +90,7 @@ export default async function FuncionariosPage({
       .select("*")
       .order("created_at", { ascending: false });
 
-    if (!clinicScope.isAdmMaster && clinicScope.clinicId) {
+    if (clinicScope.clinicId) {
       query = query.eq("clinic_id", clinicScope.clinicId);
     }
 
@@ -112,9 +112,9 @@ export default async function FuncionariosPage({
     const [servicesResult, commissionsResult, historyResult] = await Promise.all([
       readSupabaseList<Service>(
         "services",
-        (clinicScope.isAdmMaster || !clinicScope.clinicId
-          ? supabase.from("services").select("*")
-          : supabase.from("services").select("*").eq("clinic_id", clinicScope.clinicId)
+        (clinicScope.clinicId
+          ? supabase.from("services").select("*").eq("clinic_id", clinicScope.clinicId)
+          : supabase.from("services").select("*")
         ).order("name", { ascending: true })
       ),
       readSupabaseList<

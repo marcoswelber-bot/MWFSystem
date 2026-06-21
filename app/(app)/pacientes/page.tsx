@@ -54,7 +54,7 @@ export default async function PacientesPage({
       .select("*")
       .order("created_at", { ascending: false });
 
-    if (!clinicScope.isAdmMaster && clinicScope.clinicId) {
+    if (clinicScope.clinicId) {
       query = query.eq("clinic_id", clinicScope.clinicId);
     }
 

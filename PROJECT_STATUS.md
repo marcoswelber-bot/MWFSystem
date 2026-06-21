@@ -6,6 +6,8 @@
 
 ✅ Identificação de usuário e clínica ativa no layout
 
+✅ Filtro por clínica ativa nas telas com dados reais
+
 ✅ Estrutura inicial
 
 ✅ Autenticação

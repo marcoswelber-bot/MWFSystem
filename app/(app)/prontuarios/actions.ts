@@ -62,7 +62,7 @@ async function resolveClinicIdForMedicalRecord(
 ) {
   const clinicScope = await getCurrentClinicScope();
 
-  if (!clinicScope.isAdmMaster && clinicScope.clinicId) {
+  if (clinicScope.clinicId) {
     return clinicScope.clinicId;
   }
 

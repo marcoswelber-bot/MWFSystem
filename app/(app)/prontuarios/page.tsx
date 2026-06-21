@@ -49,7 +49,7 @@ export default async function ProntuariosPage({
       .select("*")
       .order("created_at", { ascending: false });
 
-    if (!clinicScope.isAdmMaster && clinicScope.clinicId) {
+    if (clinicScope.clinicId) {
       recordsQuery = recordsQuery.eq("clinic_id", clinicScope.clinicId);
     }
 
@@ -66,7 +66,7 @@ export default async function ProntuariosPage({
       .select("*")
       .order("full_name", { ascending: true });
 
-    if (!clinicScope.isAdmMaster && clinicScope.clinicId) {
+    if (clinicScope.clinicId) {
       patientsQuery = patientsQuery.eq("clinic_id", clinicScope.clinicId);
     }
 
@@ -83,7 +83,7 @@ export default async function ProntuariosPage({
       .select("*")
       .order("name", { ascending: true });
 
-    if (!clinicScope.isAdmMaster && clinicScope.clinicId) {
+    if (clinicScope.clinicId) {
       employeesQuery = employeesQuery.eq("clinic_id", clinicScope.clinicId);
     }
 

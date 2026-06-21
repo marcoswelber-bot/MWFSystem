@@ -121,7 +121,7 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
       .select("*")
       .order("created_at", { ascending: false });
 
-    if (!clinicScope.isAdmMaster && clinicScope.clinicId) {
+    if (clinicScope.clinicId) {
       servicesQuery = servicesQuery.eq("clinic_id", clinicScope.clinicId);
     }
 
@@ -157,9 +157,9 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
       ),
       readSupabaseList<Employee>(
         "employees",
-        (clinicScope.isAdmMaster || !clinicScope.clinicId
-          ? supabase.from("employees").select("*")
-          : supabase.from("employees").select("*").eq("clinic_id", clinicScope.clinicId)
+        (clinicScope.clinicId
+          ? supabase.from("employees").select("*").eq("clinic_id", clinicScope.clinicId)
+          : supabase.from("employees").select("*")
         ).order("name", { ascending: true })
       ),
       readSupabaseList<Database["public"]["Tables"]["service_professionals"]["Row"]>(
@@ -171,23 +171,26 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
       ),
       readSupabaseList<ServicePackage>(
         "service_packages",
-        supabase
-          .from("service_packages")
-          .select("*")
+        (clinicScope.clinicId
+          ? supabase.from("service_packages").select("*").eq("clinic_id", clinicScope.clinicId)
+          : supabase.from("service_packages").select("*")
+        )
           .order("created_at", { ascending: false })
       ),
       readSupabaseList<Database["public"]["Tables"]["service_discounts"]["Row"]>(
         "service_discounts",
-        supabase
-          .from("service_discounts")
-          .select("*")
+        (clinicScope.clinicId
+          ? supabase.from("service_discounts").select("*").eq("clinic_id", clinicScope.clinicId)
+          : supabase.from("service_discounts").select("*")
+        )
           .order("created_at", { ascending: false })
       ),
       readSupabaseList<CommercialRule>(
         "commercial_rules",
-        supabase
-          .from("commercial_rules")
-          .select("*")
+        (clinicScope.clinicId
+          ? supabase.from("commercial_rules").select("*").eq("clinic_id", clinicScope.clinicId)
+          : supabase.from("commercial_rules").select("*")
+        )
           .order("created_at", { ascending: false })
       ),
       readSupabaseList<TreatmentGoal>(
@@ -196,9 +199,10 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
       ),
       readSupabaseList<Database["public"]["Tables"]["treatment_protocols"]["Row"]>(
         "treatment_protocols",
-        supabase
-          .from("treatment_protocols")
-          .select("*")
+        (clinicScope.clinicId
+          ? supabase.from("treatment_protocols").select("*").eq("clinic_id", clinicScope.clinicId)
+          : supabase.from("treatment_protocols").select("*")
+        )
           .order("created_at", { ascending: false })
       ),
       readSupabaseList<Database["public"]["Tables"]["service_resources"]["Row"]>(
@@ -210,9 +214,10 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
       ),
       readSupabaseList<Database["public"]["Tables"]["internal_notifications"]["Row"]>(
         "internal_notifications",
-        supabase
-          .from("internal_notifications")
-          .select("*")
+        (clinicScope.clinicId
+          ? supabase.from("internal_notifications").select("*").eq("clinic_id", clinicScope.clinicId)
+          : supabase.from("internal_notifications").select("*")
+        )
           .order("created_at", { ascending: false })
       ),
       readSupabaseList<Database["public"]["Tables"]["service_audit_logs"]["Row"]>(
