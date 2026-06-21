@@ -146,9 +146,13 @@ export function AppShell({
         {visibleNavigation.map((item) => {
           const Icon = item.icon;
           const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-          const visibleChildren = item.children?.filter((child) =>
-            visibleModuleSet.has(child.moduleKey)
-          );
+          const visibleChildren = item.children?.filter((child) => {
+            if (child.moduleKey === "tipos_servico" && !isAdmMaster) {
+              return false;
+            }
+
+            return visibleModuleSet.has(child.moduleKey);
+          });
 
           return (
             <div key={item.href}>

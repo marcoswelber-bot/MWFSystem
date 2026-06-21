@@ -67,7 +67,14 @@ export const appNavigation: NavigationItem[] = [
     title: "Servicos",
     href: "/servicos",
     icon: BriefcaseMedical,
-    moduleKey: "servicos"
+    moduleKey: "servicos",
+    children: [
+      {
+        title: "Tipos de Servico",
+        href: "/servicos?tab=serviceTypes",
+        moduleKey: "tipos_servico"
+      }
+    ]
   },
   {
     title: "Prontuarios",

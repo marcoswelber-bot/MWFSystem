@@ -95,6 +95,7 @@ type ServicesManagerProps = {
   notifications: InternalNotification[];
   auditLogs: AuditLog[];
   initialSearch: string;
+  initialTab?: Tab;
   loadError?: string;
   isAdmMaster: boolean;
   currentClinicId: string | null;
@@ -301,6 +302,7 @@ export function ServicesManager({
   notifications,
   auditLogs,
   initialSearch,
+  initialTab = "basicServices",
   loadError,
   isAdmMaster,
   currentClinicId,
@@ -308,7 +310,9 @@ export function ServicesManager({
 }: ServicesManagerProps) {
   const router = useRouter();
   const [isPending, startTransition] = React.useTransition();
-  const [tab, setTab] = React.useState<Tab>("basicServices");
+  const [tab, setTab] = React.useState<Tab>(
+    initialTab === "serviceTypes" && !isAdmMaster ? "basicServices" : initialTab
+  );
   const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("all");
   const [search, setSearch] = React.useState(initialSearch);
   const [serviceFormOpen, setServiceFormOpen] = React.useState(false);
@@ -559,8 +563,7 @@ export function ServicesManager({
   }
 
   const tabs: Array<[Tab, string]> = [
-    ["basicServices", "Servicos Basicos"],
-    ["advancedServices", "Servicos Avancados"],
+    ["basicServices", "Servicos"],
     ["serviceTypes", "Tipos de servico"],
     ["professionals", "Profissionais"],
     ["packages", "Pacotes"],
@@ -571,8 +574,7 @@ export function ServicesManager({
     ["notifications", "Notificacoes"],
     ["history", "Historico"]
   ];
-  const isServicesTab = tab === "basicServices" || tab === "advancedServices";
-  const isAdvancedServices = tab === "advancedServices";
+  const isServicesTab = tab === "basicServices";
   const activeCategories = categories.filter(
     (category) => category.status === "active"
   );
@@ -592,6 +594,10 @@ export function ServicesManager({
       notifications: "notificacoes",
       history: "servicos"
     };
+
+    if (value === "serviceTypes" && !isAdmMaster) {
+      return false;
+    }
 
     return can(moduleByTab[value], "view");
   });
@@ -722,11 +728,7 @@ export function ServicesManager({
                   <h2 style={{ fontSize: "20px", fontWeight: 700 }}>
                     {editingService ? "Editar servico" : "Novo servico"}
                   </h2>
-                  <p>
-                    {isAdvancedServices
-                      ? "Configuracoes completas para agenda, financeiro e comissoes."
-                      : "Cadastro rapido com os dados essenciais do servico."}
-                  </p>
+                  <p>Cadastro com os dados principais do servico.</p>
                 </div>
                 <button type="button" onClick={closeServiceForm} style={buttonStyle}>
                   Fechar
@@ -834,152 +836,6 @@ export function ServicesManager({
                     <option value="inactive">Inativo</option>
                   </select>
                 </label>
-                {isAdvancedServices ? (
-                  <>
-                    <label>
-                      Codigo interno
-                      <input
-                        value={serviceForm.internal_code}
-                        onChange={(event) =>
-                          setServiceForm((current) => ({
-                            ...current,
-                            internal_code: event.target.value
-                          }))
-                        }
-                        style={inputStyle}
-                      />
-                    </label>
-                    <label>
-                      Tipo de atendimento
-                      <select
-                        value={serviceForm.is_group ? "grupo" : "individual"}
-                        onChange={(event) =>
-                          setServiceForm((current) => ({
-                            ...current,
-                            is_group: event.target.value === "grupo",
-                            classification:
-                              event.target.value === "grupo"
-                                ? "grupo"
-                                : current.classification
-                          }))
-                        }
-                        style={inputStyle}
-                      >
-                        <option value="individual">Individual</option>
-                        <option value="grupo">Grupo</option>
-                      </select>
-                    </label>
-                    <label>
-                      Limite de participantes
-                      <input
-                        inputMode="numeric"
-                        disabled={!serviceForm.is_group}
-                        value={serviceForm.participant_limit}
-                        onChange={(event) =>
-                          setServiceForm((current) => ({
-                            ...current,
-                            participant_limit: event.target.value
-                          }))
-                        }
-                        style={inputStyle}
-                      />
-                    </label>
-                    <label>
-                      Intervalo apos atendimento
-                      <input
-                        inputMode="numeric"
-                        value={serviceForm.break_minutes}
-                        onChange={(event) =>
-                          setServiceForm((current) => ({
-                            ...current,
-                            break_minutes: event.target.value
-                          }))
-                        }
-                        style={inputStyle}
-                      />
-                    </label>
-                    <label>
-                      Preco promocional
-                      <input
-                        inputMode="decimal"
-                        value={serviceForm.promotional_price}
-                        onChange={(event) =>
-                          setServiceForm((current) => ({
-                            ...current,
-                            promotional_price: event.target.value
-                          }))
-                        }
-                        style={inputStyle}
-                      />
-                    </label>
-                    <label>
-                      Comissao padrao opcional
-                      <select
-                        value={serviceForm.commission_type}
-                        onChange={(event) =>
-                          setServiceForm((current) => ({
-                            ...current,
-                            commission_type: event.target.value
-                          }))
-                        }
-                        style={inputStyle}
-                      >
-                        <option value="">Sem padrao</option>
-                        <option value="percentual">Percentual</option>
-                        <option value="valor_fixo">Valor fixo</option>
-                      </select>
-                    </label>
-                    <label>
-                      Valor da comissao padrao
-                      <input
-                        inputMode="decimal"
-                        value={serviceForm.commission_value}
-                        onChange={(event) =>
-                          setServiceForm((current) => ({
-                            ...current,
-                            commission_value: event.target.value
-                          }))
-                        }
-                        style={inputStyle}
-                      />
-                    </label>
-                    <label style={{ gridColumn: "1 / -1" }}>
-                      Observacoes internas
-                      <textarea
-                        value={serviceForm.description ?? ""}
-                        onChange={(event) =>
-                          setServiceForm((current) => ({
-                            ...current,
-                            description: event.target.value
-                          }))
-                        }
-                        rows={3}
-                        style={inputStyle}
-                      />
-                    </label>
-                    <label style={{ gridColumn: "1 / -1" }}>
-                      Regras especiais do servico
-                      <textarea
-                        value={serviceForm.pre_service_instructions ?? ""}
-                        onChange={(event) =>
-                          setServiceForm((current) => ({
-                            ...current,
-                            pre_service_instructions: event.target.value
-                          }))
-                        }
-                        rows={3}
-                        style={inputStyle}
-                      />
-                    </label>
-                    <div style={{ gridColumn: "1 / -1" }}>
-                      <p style={{ fontWeight: 700 }}>Comissao por profissional</p>
-                      <p>
-                        Use a aba Profissionais para vincular profissionais e a aba
-                        Servicos e Comissoes em Funcionarios para regras por modalidade.
-                      </p>
-                    </div>
-                  </>
-                ) : null}
                 <div
                   style={{
                     display: "flex",
@@ -1008,10 +864,9 @@ export function ServicesManager({
           ) : null}
 
           <DataTable
-            headers={["Nome", "Codigo", "Tipo", "Valor", "Duracao", "Status", "Acoes"]}
+            headers={["Nome", "Tipo", "Valor", "Duracao", "Status", "Acoes"]}
             rows={filteredServices.map((service) => [
               service.name,
-              service.internal_code ?? "-",
               service.category ?? "-",
               money(service.default_price),
               service.default_duration_minutes
@@ -1055,7 +910,7 @@ export function ServicesManager({
         </>
       ) : null}
 
-      {tab === "serviceTypes" ? (
+      {tab === "serviceTypes" && isAdmMaster ? (
         <SupportSection
           title="Tipos de servico"
           form={

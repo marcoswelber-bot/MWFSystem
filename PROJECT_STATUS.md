@@ -8,6 +8,8 @@
 
 ✅ Filtro por clínica ativa nas telas com dados reais
 
+✅ Tipos de Serviço separados do cadastro de Serviços
+
 ✅ Estrutura inicial
 
 ✅ Autenticação

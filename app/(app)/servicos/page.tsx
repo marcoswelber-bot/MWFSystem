@@ -39,6 +39,7 @@ type AuditLog = Database["public"]["Tables"]["service_audit_logs"]["Row"] & {
 type ServicosPageProps = {
   searchParams: Promise<{
     q?: string;
+    tab?: string;
   }>;
 };
 
@@ -80,6 +81,8 @@ async function readSupabaseList<T>(
 export default async function ServicosPage({ searchParams }: ServicosPageProps) {
   const params = await searchParams;
   const search = params.q?.trim() ?? "";
+  const initialTab =
+    params.tab === "serviceTypes" ? "serviceTypes" : "basicServices";
   let services: Service[] = [];
   let clinics: Clinic[] = [];
   let categories: Category[] = [];
@@ -343,6 +346,7 @@ export default async function ServicosPage({ searchParams }: ServicosPageProps) 
         notifications={notifications}
         auditLogs={auditLogs}
         initialSearch={search}
+        initialTab={initialTab}
         loadError={loadError}
         isAdmMaster={isAdmMaster}
         currentClinicId={clinicScope.clinicId}
