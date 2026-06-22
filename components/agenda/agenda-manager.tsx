@@ -37,7 +37,9 @@ import {
   updateAppointment,
   type AgendaActionResult,
   type AppointmentFormInput,
+  type AppointmentOrigin,
   type AppointmentStatus,
+  type AppointmentType,
   type ScheduleBlockFormInput
 } from "@/app/(app)/agenda/actions";
 
@@ -49,6 +51,7 @@ type Appointment = Database["public"]["Tables"]["appointments"]["Row"] & {
   service_name: string;
   service_is_group: boolean;
   participant_limit: number | null;
+  original_appointment_label: string | null;
 };
 
 type ScheduleBlock = Database["public"]["Tables"]["schedule_blocks"]["Row"] & {
@@ -83,12 +86,51 @@ const calendarEndHour = 21;
 const hourHeight = 92;
 
 const statusOptions: Array<[AppointmentStatus, string]> = [
-  ["agendado", "Agendado"],
-  ["confirmado", "Confirmado"],
-  ["realizado", "Realizado"],
+  ["agendado", "Agendada"],
+  ["confirmado", "Confirmada"],
+  ["realizado", "Realizada"],
   ["cancelado", "Cancelado"],
   ["faltou", "Faltou"]
 ];
+
+const appointmentTypeOptions: Array<[AppointmentType, string]> = [
+  ["avulso", "Avulso"],
+  ["pacote", "Pacote"],
+  ["grupo", "Grupo"],
+  ["avaliacao", "Avaliação"],
+  ["retorno", "Retorno"],
+  ["encaixe", "Encaixe"],
+  ["cortesia", "Cortesia"],
+  ["convenio", "Convênio"],
+  ["particular", "Particular"],
+  ["reposicao", "Reposição"],
+  ["experimental", "Experimental"],
+  ["reposicao_extra", "Reposição extra"]
+];
+
+const appointmentOriginOptions: Array<[AppointmentOrigin, string]> = [
+  ["pacote", "Pacote"],
+  ["avulso", "Avulso"],
+  ["grupo", "Grupo"],
+  ["convenio", "Convênio"],
+  ["cortesia", "Cortesia"],
+  ["reposicao", "Reposição"],
+  ["avaliacao", "Avaliação"],
+  ["retorno", "Retorno"],
+  ["encaixe", "Encaixe"],
+  ["experimental", "Experimental"],
+  ["reposicao_extra", "Reposição extra"]
+];
+
+const appointmentTypeLabels = Object.fromEntries(appointmentTypeOptions) as Record<
+  AppointmentType,
+  string
+>;
+
+const appointmentOriginLabels = Object.fromEntries(appointmentOriginOptions) as Record<
+  AppointmentOrigin,
+  string
+>;
 
 const statusStyles: Record<
   VisualStatus,
@@ -102,7 +144,7 @@ const statusStyles: Record<
   }
 > = {
   agendado: {
-    label: "Agendado",
+    label: "Agendada",
     chip: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200",
     border: "border-slate-300 dark:border-slate-600",
     surface: "bg-slate-50 dark:bg-slate-900/70",
@@ -110,7 +152,7 @@ const statusStyles: Record<
     dot: "bg-slate-400"
   },
   confirmado: {
-    label: "Confirmado",
+    label: "Confirmada",
     chip: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200",
     border: "border-emerald-500",
     surface: "bg-emerald-50 dark:bg-emerald-950/40",
@@ -126,7 +168,7 @@ const statusStyles: Record<
     dot: "bg-orange-500"
   },
   realizado: {
-    label: "Realizado",
+    label: "Realizada",
     chip: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-200",
     border: "border-blue-500",
     surface: "bg-blue-50 dark:bg-blue-950/40",
@@ -171,7 +213,10 @@ const emptyAppointmentForm: AppointmentFormInput = {
   notes: "",
   status: "agendado",
   sessions_contracted: "1",
-  sessions_completed: "0"
+  sessions_completed: "0",
+  appointment_type: "avulso",
+  appointment_origin: "avulso",
+  original_appointment_id: ""
 };
 
 const emptyBlockForm: ScheduleBlockFormInput = {
@@ -305,6 +350,44 @@ function getVisualStatus(appointment: Appointment): VisualStatus {
   return normalizeStatus(appointment.status);
 }
 
+function getAppointmentType(appointment: Appointment): AppointmentType {
+  return appointmentTypeOptions.some(([value]) => value === appointment.appointment_type)
+    ? (appointment.appointment_type as AppointmentType)
+    : "avulso";
+}
+
+function getAppointmentOrigin(appointment: Appointment): AppointmentOrigin {
+  return appointmentOriginOptions.some(
+    ([value]) => value === appointment.appointment_origin
+  )
+    ? (appointment.appointment_origin as AppointmentOrigin)
+    : "avulso";
+}
+
+function isReplacementAppointment(appointment: Appointment) {
+  return (
+    getAppointmentType(appointment) === "reposicao" ||
+    getAppointmentType(appointment) === "reposicao_extra" ||
+    getAppointmentOrigin(appointment) === "reposicao_extra" ||
+    getAppointmentOrigin(appointment) === "reposicao"
+  );
+}
+
+function getStatusLabel(appointment: Appointment) {
+  const status = normalizeStatus(appointment.status);
+  const replacementLabels: Record<AppointmentStatus, string> = {
+    agendado: "Agendada",
+    confirmado: "Confirmada",
+    realizado: "Realizada",
+    faltou: "Faltou",
+    cancelado: "Cancelada"
+  };
+
+  return isReplacementAppointment(appointment)
+    ? replacementLabels[status]
+    : statusStyles[getVisualStatus(appointment)].label;
+}
+
 function appointmentToForm(appointment: Appointment): AppointmentFormInput {
   return {
     clinic_id: appointment.clinic_id,
@@ -318,7 +401,10 @@ function appointmentToForm(appointment: Appointment): AppointmentFormInput {
     notes: appointment.notes ?? "",
     status: normalizeStatus(appointment.status),
     sessions_contracted: String(appointment.sessions_contracted ?? 1),
-    sessions_completed: String(appointment.sessions_completed ?? 0)
+    sessions_completed: String(appointment.sessions_completed ?? 0),
+    appointment_type: getAppointmentType(appointment),
+    appointment_origin: getAppointmentOrigin(appointment),
+    original_appointment_id: appointment.original_appointment_id ?? ""
   };
 }
 
@@ -561,6 +647,32 @@ export function AgendaManager({
   function openRescheduleAppointment(appointment: Appointment) {
     openEditAppointment(appointment);
     setMessage({ ok: true, message: "Ajuste data e horário para reagendar." });
+  }
+
+  function openReplacementAppointment(appointment: Appointment) {
+    setEditingAppointment(null);
+    setAppointmentForm({
+      ...emptyAppointmentForm,
+      clinic_id: appointment.clinic_id,
+      patient_id: appointment.patient_id,
+      patient_ids: appointment.patient_ids,
+      employee_id: appointment.employee_id,
+      service_id: appointment.service_id,
+      appointment_date: appointment.appointment_date,
+      start_time: "",
+      end_time: "",
+      notes: appointment.notes
+        ? `Reposição do atendimento ${appointment.appointment_date} ${formatTime(appointment.start_time)}. ${appointment.notes}`
+        : `Reposição do atendimento ${appointment.appointment_date} ${formatTime(appointment.start_time)}.`,
+      status: "agendado",
+      sessions_contracted: String(appointment.sessions_contracted ?? 1),
+      sessions_completed: String(appointment.sessions_completed ?? 0),
+      appointment_type: "reposicao",
+      appointment_origin: "reposicao",
+      original_appointment_id: appointment.id
+    });
+    setMessage(null);
+    setAppointmentFormOpen(true);
   }
 
   function closeAppointmentForm() {
@@ -871,6 +983,7 @@ export function AgendaManager({
                     onStatus={changeStatus}
                     onEdit={openEditAppointment}
                     onReschedule={openRescheduleAppointment}
+                    onReplacement={openReplacementAppointment}
                     onDelete={removeAppointment}
                     onDeleteBlock={removeBlock}
                   />
@@ -899,6 +1012,7 @@ export function AgendaManager({
           editingAppointment={editingAppointment}
           form={appointmentForm}
           setForm={setAppointmentForm}
+          appointments={appointments}
           clinics={clinics}
           patients={patients}
           employees={employees}
@@ -993,6 +1107,7 @@ function DayTimeline({
   onStatus,
   onEdit,
   onReschedule,
+  onReplacement,
   onDelete,
   onDeleteBlock
 }: {
@@ -1008,6 +1123,7 @@ function DayTimeline({
   onStatus: (appointment: Appointment, status: AppointmentStatus) => void;
   onEdit: (appointment: Appointment) => void;
   onReschedule: (appointment: Appointment) => void;
+  onReplacement: (appointment: Appointment) => void;
   onDelete: (appointment: Appointment) => void;
   onDeleteBlock: (block: ScheduleBlock) => void;
 }) {
@@ -1137,6 +1253,7 @@ function DayTimeline({
                       onStatus={(status) => onStatus(appointment, status)}
                       onEdit={() => onEdit(appointment)}
                       onReschedule={() => onReschedule(appointment)}
+                      onReplacement={() => onReplacement(appointment)}
                       onDelete={() => onDelete(appointment)}
                     />
                   ))}
@@ -1173,6 +1290,7 @@ function TimelineAppointment({
   onStatus,
   onEdit,
   onReschedule,
+  onReplacement,
   onDelete
 }: {
   appointment: Appointment;
@@ -1183,6 +1301,7 @@ function TimelineAppointment({
   onStatus: (status: AppointmentStatus) => void;
   onEdit: () => void;
   onReschedule: () => void;
+  onReplacement: () => void;
   onDelete: () => void;
 }) {
   const visualStatus = getVisualStatus(appointment);
@@ -1190,6 +1309,9 @@ function TimelineAppointment({
   const sessionsContracted = appointment.sessions_contracted ?? 1;
   const sessionsCompleted = appointment.sessions_completed ?? 0;
   const sessionsRemaining = Math.max(sessionsContracted - sessionsCompleted, 0);
+  const appointmentType = getAppointmentType(appointment);
+  const appointmentOrigin = getAppointmentOrigin(appointment);
+  const isReplacement = isReplacementAppointment(appointment);
 
   return (
     <article
@@ -1214,13 +1336,33 @@ function TimelineAppointment({
           </h3>
         </div>
         <span className={cn("rounded-md px-2 py-1 text-[11px] font-semibold", style.chip)}>
-          {style.label}
+          {getStatusLabel(appointment)}
         </span>
       </div>
 
       <div className="grid gap-1 text-xs">
         <p className="truncate">{appointment.service_name}</p>
         <p className="truncate text-muted-foreground">{appointment.employee_name}</p>
+        <div className="flex flex-wrap gap-1">
+          <span
+            className={cn(
+              "rounded-md px-2 py-1 text-[11px] font-semibold",
+              isReplacement
+                ? "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-200"
+                : "bg-background/80 text-muted-foreground"
+            )}
+          >
+            {appointmentTypeLabels[appointmentType]}
+          </span>
+          <span className="rounded-md bg-background/80 px-2 py-1 text-[11px] font-semibold text-muted-foreground">
+            Origem: {appointmentOriginLabels[appointmentOrigin]}
+          </span>
+        </div>
+        {appointment.original_appointment_label ? (
+          <p className="truncate text-[11px] text-muted-foreground">
+            Original: {appointment.original_appointment_label}
+          </p>
+        ) : null}
       </div>
 
       <div className="grid grid-cols-3 gap-1 text-center text-[11px]">
@@ -1251,6 +1393,14 @@ function TimelineAppointment({
               icon={Ban}
             />
             <IconAction label="Reagendar" onClick={onReschedule} icon={RotateCw} />
+            {normalizeStatus(appointment.status) === "faltou" ? (
+              <IconAction
+                label="Reposição"
+                disabled={isPending}
+                onClick={onReplacement}
+                icon={CalendarPlus}
+              />
+            ) : null}
             <IconAction label="Editar" onClick={onEdit} icon={Edit3} />
           </>
         ) : null}
@@ -1372,7 +1522,9 @@ function MonthGrid({
                         style.chip
                       )}
                     >
-                      {formatTime(appointment.start_time)} {appointment.patient_name}
+                      {formatTime(appointment.start_time)}{" "}
+                      {isReplacementAppointment(appointment) ? "Reposição · " : ""}
+                      {appointment.patient_name}
                     </span>
                   );
                 })}
@@ -1518,6 +1670,9 @@ function AppointmentSummary({
   compact?: boolean;
 }) {
   const style = statusStyles[getVisualStatus(appointment)];
+  const appointmentType = getAppointmentType(appointment);
+  const appointmentOrigin = getAppointmentOrigin(appointment);
+  const isReplacement = isReplacementAppointment(appointment);
 
   return (
     <div className="rounded-md border bg-background p-3">
@@ -1532,13 +1687,31 @@ function AppointmentSummary({
           </p>
         </div>
         <span className={cn("rounded-md px-2 py-1 text-[10px] font-semibold", style.chip)}>
-          {style.label}
+          {getStatusLabel(appointment)}
+        </span>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1">
+        <span
+          className={cn(
+            "rounded-md px-2 py-1 text-[10px] font-semibold",
+            isReplacement
+              ? "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-200"
+              : "bg-muted text-muted-foreground"
+          )}
+        >
+          {appointmentTypeLabels[appointmentType]}
+        </span>
+        <span className="rounded-md bg-muted px-2 py-1 text-[10px] font-semibold text-muted-foreground">
+          {appointmentOriginLabels[appointmentOrigin]}
         </span>
       </div>
       {!compact ? (
         <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
           <p>{appointment.service_name}</p>
           <p>{appointment.employee_name}</p>
+          {appointment.original_appointment_label ? (
+            <p>Original: {appointment.original_appointment_label}</p>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -1597,6 +1770,7 @@ function AppointmentFormModal({
   editingAppointment,
   form,
   setForm,
+  appointments,
   clinics,
   patients,
   employees,
@@ -1610,6 +1784,7 @@ function AppointmentFormModal({
   editingAppointment: Appointment | null;
   form: AppointmentFormInput;
   setForm: React.Dispatch<React.SetStateAction<AppointmentFormInput>>;
+  appointments: Appointment[];
   clinics: Clinic[];
   patients: Patient[];
   employees: Employee[];
@@ -1621,6 +1796,11 @@ function AppointmentFormModal({
   onClose: () => void;
 }) {
   const selectedPatients = form.patient_ids ?? [];
+  const isReplacement =
+    form.appointment_type === "reposicao" ||
+    form.appointment_type === "reposicao_extra" ||
+    form.appointment_origin === "reposicao" ||
+    form.appointment_origin === "reposicao_extra";
 
   return (
     <ModalShell
@@ -1650,6 +1830,64 @@ function AppointmentFormModal({
             }}
             options={services.map((service) => [service.id, service.name])}
             required
+          />
+          <SelectField
+            label="Tipo de atendimento"
+            value={form.appointment_type ?? "avulso"}
+            onChange={(value) =>
+              setForm((current) => {
+                const appointmentType = value as AppointmentType;
+                const replacement =
+                  appointmentType === "reposicao" ||
+                  appointmentType === "reposicao_extra";
+                return {
+                  ...current,
+                  appointment_type: appointmentType,
+                  appointment_origin: replacement
+                    ? appointmentType
+                    : current.appointment_origin ?? "avulso"
+                };
+              })
+            }
+            options={appointmentTypeOptions}
+          />
+          <SelectField
+            label="Origem do atendimento"
+            value={form.appointment_origin ?? "avulso"}
+            onChange={(value) =>
+              setForm((current) => {
+                const appointmentOrigin = value as AppointmentOrigin;
+                const replacement =
+                  appointmentOrigin === "reposicao" ||
+                  appointmentOrigin === "reposicao_extra";
+                return {
+                  ...current,
+                  appointment_origin: appointmentOrigin,
+                  appointment_type: replacement
+                    ? appointmentOrigin
+                    : current.appointment_type ?? "avulso"
+                };
+              })
+            }
+            options={appointmentOriginOptions}
+          />
+          <SelectField
+            label="Atendimento original"
+            value={form.original_appointment_id ?? ""}
+            onChange={(value) =>
+              setForm((current) => ({ ...current, original_appointment_id: value }))
+            }
+            options={appointments
+              .filter((appointment) => appointment.id !== editingAppointment?.id)
+              .map((appointment) => [
+                appointment.id,
+                `${appointment.patient_name} - ${appointment.appointment_date} ${formatTime(appointment.start_time)}`
+              ])}
+            placeholder={
+              isReplacement
+                ? "Selecione a falta original"
+                : "Opcional para vínculo futuro"
+            }
           />
           {selectedService?.is_group ? (
             <MultiSelectField
@@ -1715,6 +1953,12 @@ function AppointmentFormModal({
             value={form.sessions_contracted ?? "1"}
             onChange={(value) =>
               setForm((current) => ({ ...current, sessions_contracted: value }))
+            }
+            disabled={isReplacement}
+            helper={
+              isReplacement
+                ? "Reposição não aumenta a quantidade contratada."
+                : undefined
             }
           />
           <TextField
@@ -1899,13 +2143,17 @@ function TextField({
   value,
   onChange,
   type = "text",
-  required = false
+  required = false,
+  disabled = false,
+  helper
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   type?: string;
   required?: boolean;
+  disabled?: boolean;
+  helper?: string;
 }) {
   return (
     <FieldShell label={label}>
@@ -1913,10 +2161,14 @@ function TextField({
         type={type}
         min={type === "number" ? "0" : undefined}
         required={required}
+        disabled={disabled}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="agenda-input"
+        className="agenda-input disabled:cursor-not-allowed disabled:opacity-70"
       />
+      {helper ? (
+        <span className="text-xs normal-case text-muted-foreground">{helper}</span>
+      ) : null}
     </FieldShell>
   );
 }

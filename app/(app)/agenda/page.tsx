@@ -14,6 +14,7 @@ type Appointment = Database["public"]["Tables"]["appointments"]["Row"] & {
   service_name: string;
   service_is_group: boolean;
   participant_limit: number | null;
+  original_appointment_label: string | null;
 };
 type ScheduleBlock = Database["public"]["Tables"]["schedule_blocks"]["Row"] & {
   employee_name: string;
@@ -197,6 +198,9 @@ export default async function AgendaPage() {
     },
     new Map<string, string[]>()
   );
+  const rawAppointmentsById = new Map(
+    rawAppointments.map((appointment) => [appointment.id, appointment])
+  );
   const appointments: Appointment[] = rawAppointments.map((appointment) => ({
     ...appointment,
     patient_ids:
@@ -210,7 +214,17 @@ export default async function AgendaPage() {
     service_name: servicesById.get(appointment.service_id) ?? "Servico nao encontrado",
     service_is_group: serviceDetailsById.get(appointment.service_id)?.is_group ?? false,
     participant_limit:
-      serviceDetailsById.get(appointment.service_id)?.participant_limit ?? null
+      serviceDetailsById.get(appointment.service_id)?.participant_limit ?? null,
+    original_appointment_label: appointment.original_appointment_id
+      ? (() => {
+          const original = rawAppointmentsById.get(appointment.original_appointment_id);
+          if (!original) {
+            return "Atendimento original nao encontrado";
+          }
+
+          return `${patientsById.get(original.patient_id) ?? "Paciente"} - ${original.appointment_date} ${original.start_time.slice(0, 5)}`;
+        })()
+      : null
   }));
   const blocks: ScheduleBlock[] = rawBlocks.map((block) => ({
     ...block,

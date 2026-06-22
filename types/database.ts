@@ -960,6 +960,11 @@ export type Database = {
           package_session_status: string;
           sessions_contracted: number;
           sessions_completed: number;
+          appointment_type: string;
+          appointment_origin: string;
+          original_appointment_id: string | null;
+          is_billable: boolean;
+          consumes_package_session: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -981,6 +986,11 @@ export type Database = {
           package_session_status?: string;
           sessions_contracted?: number;
           sessions_completed?: number;
+          appointment_type?: string;
+          appointment_origin?: string;
+          original_appointment_id?: string | null;
+          is_billable?: boolean;
+          consumes_package_session?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -1002,6 +1012,11 @@ export type Database = {
           package_session_status?: string;
           sessions_contracted?: number;
           sessions_completed?: number;
+          appointment_type?: string;
+          appointment_origin?: string;
+          original_appointment_id?: string | null;
+          is_billable?: boolean;
+          consumes_package_session?: boolean;
           created_at?: string;
           updated_at?: string;
         };

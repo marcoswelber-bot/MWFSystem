@@ -21,6 +21,33 @@ export type AppointmentStatus =
   | "cancelado"
   | "faltou";
 
+export type AppointmentType =
+  | "avulso"
+  | "pacote"
+  | "grupo"
+  | "avaliacao"
+  | "retorno"
+  | "encaixe"
+  | "cortesia"
+  | "convenio"
+  | "particular"
+  | "reposicao"
+  | "experimental"
+  | "reposicao_extra";
+
+export type AppointmentOrigin =
+  | "pacote"
+  | "avulso"
+  | "grupo"
+  | "convenio"
+  | "cortesia"
+  | "reposicao"
+  | "avaliacao"
+  | "retorno"
+  | "encaixe"
+  | "experimental"
+  | "reposicao_extra";
+
 export type AppointmentFormInput = {
   clinic_id?: string;
   patient_id: string;
@@ -34,6 +61,9 @@ export type AppointmentFormInput = {
   status?: AppointmentStatus;
   sessions_contracted?: string;
   sessions_completed?: string;
+  appointment_type?: AppointmentType;
+  appointment_origin?: AppointmentOrigin;
+  original_appointment_id?: string;
 };
 
 export type ScheduleBlockFormInput = {
@@ -76,6 +106,47 @@ function cleanOptionalInteger(value?: string) {
 
   const parsedValue = Number.parseInt(cleanValue, 10);
   return Number.isFinite(parsedValue) && parsedValue >= 0 ? parsedValue : undefined;
+}
+
+function normalizeAppointmentType(value?: string): AppointmentType {
+  const allowedTypes: AppointmentType[] = [
+    "avulso",
+    "pacote",
+    "grupo",
+    "avaliacao",
+    "retorno",
+    "encaixe",
+    "cortesia",
+    "convenio",
+    "particular",
+    "reposicao",
+    "experimental",
+    "reposicao_extra"
+  ];
+
+  return allowedTypes.includes(value as AppointmentType)
+    ? (value as AppointmentType)
+    : "avulso";
+}
+
+function normalizeAppointmentOrigin(value?: string): AppointmentOrigin {
+  const allowedOrigins: AppointmentOrigin[] = [
+    "pacote",
+    "avulso",
+    "grupo",
+    "convenio",
+    "cortesia",
+    "reposicao",
+    "avaliacao",
+    "retorno",
+    "encaixe",
+    "experimental",
+    "reposicao_extra"
+  ];
+
+  return allowedOrigins.includes(value as AppointmentOrigin)
+    ? (value as AppointmentOrigin)
+    : "avulso";
 }
 
 function normalizeTime(value?: string | null) {
@@ -146,6 +217,17 @@ async function resolveClinicId(inputClinicId?: string): Promise<string> {
 
 function getAppointmentPayload(input: AppointmentFormInput): AppointmentInsert {
   const patientIds = cleanPatientIds(input);
+  const appointmentType = normalizeAppointmentType(input.appointment_type);
+  const appointmentOrigin = normalizeAppointmentOrigin(input.appointment_origin);
+  const isReplacement =
+    appointmentType === "reposicao" ||
+    appointmentType === "reposicao_extra" ||
+    appointmentOrigin === "reposicao" ||
+    appointmentOrigin === "reposicao_extra";
+  const originalAppointmentId = cleanOptionalValue(input.original_appointment_id);
+  const sessionsContracted = isReplacement
+    ? 0
+    : cleanOptionalInteger(input.sessions_contracted) ?? 1;
 
   if (patientIds.length === 0) {
     throw new Error("Selecione pelo menos um paciente.");
@@ -155,6 +237,10 @@ function getAppointmentPayload(input: AppointmentFormInput): AppointmentInsert {
   assertRequired(input.service_id, "Selecione o servico.");
   assertRequired(input.appointment_date, "Informe a data.");
   assertRequired(input.start_time, "Informe o horario.");
+
+  if (isReplacement && !originalAppointmentId) {
+    throw new Error("Selecione o atendimento original da reposicao.");
+  }
 
   return {
     clinic_id: "",
@@ -166,8 +252,13 @@ function getAppointmentPayload(input: AppointmentFormInput): AppointmentInsert {
     end_time: normalizeTime(input.end_time),
     notes: cleanOptionalValue(input.notes),
     status: input.status ?? "agendado",
-    sessions_contracted: cleanOptionalInteger(input.sessions_contracted) ?? 1,
-    sessions_completed: cleanOptionalInteger(input.sessions_completed) ?? 0
+    sessions_contracted: sessionsContracted,
+    sessions_completed: cleanOptionalInteger(input.sessions_completed) ?? 0,
+    appointment_type: appointmentType,
+    appointment_origin: appointmentOrigin,
+    original_appointment_id: originalAppointmentId,
+    is_billable: !isReplacement && appointmentOrigin !== "cortesia",
+    consumes_package_session: isReplacement || appointmentOrigin === "pacote"
   };
 }
 
@@ -333,6 +424,12 @@ async function completeAppointmentSideEffects(
 ) {
   const supabase = await createClient();
   let medicalRecordId = appointment.medical_record_id;
+  const financeIntegrationStatus = appointment.is_billable
+    ? "pending"
+    : "not_billable";
+  const packageSessionStatus = appointment.consumes_package_session
+    ? "consume_pending"
+    : "not_applied";
   const { data: participants, error: participantsError } = await supabase
     .from("appointment_participants")
     .select("patient_id")
@@ -405,9 +502,9 @@ async function completeAppointmentSideEffects(
           session_date: appointment.appointment_date,
           status: "realizado",
           notes: appointment.notes,
-          finance_integration_status: "pending",
+          finance_integration_status: financeIntegrationStatus,
           commission_integration_status: "pending",
-          package_session_status: "not_applied"
+          package_session_status: packageSessionStatus
         });
 
       if (historyError) {
@@ -427,9 +524,9 @@ async function completeAppointmentSideEffects(
     .update({
       medical_record_id: medicalRecordId,
       performed_at: new Date().toISOString(),
-      finance_integration_status: "pending",
+      finance_integration_status: financeIntegrationStatus,
       commission_integration_status: "pending",
-      package_session_status: "not_applied",
+      package_session_status: packageSessionStatus,
       sessions_completed: sessionsCompleted
     })
     .eq("id", appointmentId);
