@@ -18,6 +18,8 @@
 
 ✅ Agenda com agendamentos e bloqueios
 
+✅ Bloqueios da Agenda impedem agendamentos conflitantes por clínica, profissional, dia, período e horário
+
 ✅ Agenda profissional com visualização diária, semanal, mensal e por profissional
 
 ✅ Estrutura inicial

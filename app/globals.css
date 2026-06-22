@@ -56,3 +56,9 @@
     @apply bg-background text-foreground antialiased;
   }
 }
+
+@layer components {
+  .agenda-input {
+    @apply h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20;
+  }
+}

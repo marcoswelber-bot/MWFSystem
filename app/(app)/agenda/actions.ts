@@ -90,6 +90,36 @@ function compareTime(value?: string | null, other?: string | null) {
   return (normalizeTime(value) ?? "").localeCompare(normalizeTime(other) ?? "");
 }
 
+function timeIntervalsOverlap(
+  startTime?: string | null,
+  endTime?: string | null,
+  otherStartTime?: string | null,
+  otherEndTime?: string | null
+) {
+  const start = normalizeTime(startTime);
+  const end = normalizeTime(endTime) ?? start;
+  const otherStart = normalizeTime(otherStartTime);
+  const otherEnd = normalizeTime(otherEndTime) ?? otherStart;
+
+  if (!start || !end || !otherStart || !otherEnd) {
+    return false;
+  }
+
+  if (start === end && otherStart === otherEnd) {
+    return start === otherStart;
+  }
+
+  if (start === end) {
+    return compareTime(start, otherStart) >= 0 && compareTime(start, otherEnd) < 0;
+  }
+
+  if (otherStart === otherEnd) {
+    return compareTime(otherStart, start) >= 0 && compareTime(otherStart, end) < 0;
+  }
+
+  return compareTime(start, otherEnd) < 0 && compareTime(end, otherStart) > 0;
+}
+
 async function resolveClinicId(inputClinicId?: string): Promise<string> {
   const clinicScope = await getCurrentClinicScope();
 
@@ -217,6 +247,7 @@ async function assertNoAppointmentConflict(
   }
 
   const startTime = normalizeTime(String(payload.start_time));
+  const endTime = normalizeTime(payload.end_time ?? null) ?? startTime;
   const employeeId = String(payload.employee_id);
   const conflictingBlock = (blocks ?? []).find((block) => {
     if (block.employee_id && block.employee_id !== employeeId) {
@@ -228,17 +259,14 @@ async function assertNoAppointmentConflict(
     }
 
     if (block.block_type === "horario") {
-      return normalizeTime(block.start_time) === startTime;
+      return timeIntervalsOverlap(startTime, endTime, block.start_time, block.end_time);
     }
 
-    return (
-      compareTime(startTime, block.start_time) >= 0 &&
-      compareTime(startTime, block.end_time) < 0
-    );
+    return timeIntervalsOverlap(startTime, endTime, block.start_time, block.end_time);
   });
 
   if (conflictingBlock) {
-    throw new Error("Existe um bloqueio na agenda para este horario.");
+    throw new Error("Não é possível agendar: horário bloqueado.");
   }
 }
 
