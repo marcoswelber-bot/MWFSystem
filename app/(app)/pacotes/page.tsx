@@ -107,7 +107,7 @@ export default async function PacotesPage() {
         employeesResult
       ] = await Promise.all([
         readSupabaseList<PatientPackage>(
-          "patient_packages",
+          "pacotes",
           packagesQuery.order("created_at", { ascending: false })
         ),
         readSupabaseList<Clinic>(
