@@ -22,7 +22,7 @@ export const permissionModules = [
   { key: "servicos_basicos", label: "Servicos Basicos", href: "/servicos" },
   { key: "servicos_avancados", label: "Servicos Avancados", href: "/servicos" },
   { key: "comissoes", label: "Comissoes", href: "/funcionarios" },
-  { key: "pacotes", label: "Pacotes", href: "/servicos" },
+  { key: "pacotes", label: "Pacotes", href: "/pacotes" },
   { key: "descontos", label: "Descontos", href: "/servicos" },
   { key: "regras", label: "Regras", href: "/servicos" },
   { key: "protocolos", label: "Protocolos", href: "/servicos" },

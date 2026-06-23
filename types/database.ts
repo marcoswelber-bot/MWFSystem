@@ -401,6 +401,72 @@ export type Database = {
         };
         Relationships: [];
       };
+      patient_packages: {
+        Row: {
+          id: string;
+          clinic_id: string;
+          patient_id: string;
+          service_id: string;
+          employee_id: string | null;
+          contracted_sessions: number;
+          completed_sessions: number;
+          remaining_sessions: number;
+          total_value: number;
+          purchase_date: string;
+          expiration_date: string | null;
+          payment_method: string;
+          status: string;
+          notes: string | null;
+          agenda_integration_status: string;
+          finance_integration_status: string;
+          future_revenue_status: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          clinic_id: string;
+          patient_id: string;
+          service_id: string;
+          employee_id?: string | null;
+          contracted_sessions?: number;
+          completed_sessions?: number;
+          remaining_sessions?: number;
+          total_value?: number;
+          purchase_date?: string;
+          expiration_date?: string | null;
+          payment_method?: string;
+          status?: string;
+          notes?: string | null;
+          agenda_integration_status?: string;
+          finance_integration_status?: string;
+          future_revenue_status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          clinic_id?: string;
+          patient_id?: string;
+          service_id?: string;
+          employee_id?: string | null;
+          contracted_sessions?: number;
+          completed_sessions?: number;
+          remaining_sessions?: number;
+          total_value?: number;
+          purchase_date?: string;
+          expiration_date?: string | null;
+          payment_method?: string;
+          status?: string;
+          notes?: string | null;
+          agenda_integration_status?: string;
+          finance_integration_status?: string;
+          future_revenue_status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       service_package_items: {
         Row: {
           id: string;

@@ -6,6 +6,7 @@ import {
   ClipboardList,
   CreditCard,
   LayoutDashboard,
+  PackageCheck,
   Settings,
   Stethoscope,
   UsersRound,
@@ -58,12 +59,6 @@ export const appNavigation: NavigationItem[] = [
     moduleKey: "funcionarios"
   },
   {
-    title: "Financeiro",
-    href: "/financeiro",
-    icon: WalletCards,
-    moduleKey: "financeiro"
-  },
-  {
     title: "Servicos",
     href: "/servicos",
     icon: BriefcaseMedical,
@@ -75,6 +70,18 @@ export const appNavigation: NavigationItem[] = [
         moduleKey: "tipos_servico"
       }
     ]
+  },
+  {
+    title: "Pacotes",
+    href: "/pacotes",
+    icon: PackageCheck,
+    moduleKey: "pacotes"
+  },
+  {
+    title: "Financeiro",
+    href: "/financeiro",
+    icon: WalletCards,
+    moduleKey: "financeiro"
   },
   {
     title: "Prontuarios",
