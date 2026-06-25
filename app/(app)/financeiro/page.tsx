@@ -1,21 +1,178 @@
-import { ArrowDownRight, ArrowUpRight, CircleDollarSign } from "lucide-react";
-import { ModuleCard } from "@/components/module-card";
+import { FinanceManager } from "@/components/finance/finance-manager";
 import { PageHeader } from "@/components/page-header";
+import { getCurrentClinicScope } from "@/lib/access-control";
+import { getCurrentPermissionMap, isCurrentUserAdmMaster } from "@/lib/permissions";
+import { getErrorMessage } from "@/lib/supabase/env";
+import { createClient } from "@/lib/supabase/server";
+import type { FinancialStatus } from "@/app/(app)/financeiro/actions";
+import type { Database } from "@/types/database";
 
-export default function FinanceiroPage() {
+type FinancialTransaction =
+  Database["public"]["Tables"]["financial_transactions"]["Row"];
+type Clinic = Database["public"]["Tables"]["clinics"]["Row"];
+type Patient = Database["public"]["Tables"]["patients"]["Row"];
+type Service = Database["public"]["Tables"]["services"]["Row"];
+
+type HydratedFinancialTransaction = FinancialTransaction & {
+  clinic_name: string;
+  patient_name: string;
+  service_name: string;
+  derived_status: FinancialStatus;
+};
+
+function appendLoadError(currentError: string | undefined, nextError: unknown) {
+  const message = getErrorMessage(nextError);
+  return currentError ? `${currentError} ${message}` : message;
+}
+
+async function readSupabaseList<T>(
+  label: string,
+  query: PromiseLike<{ data: T[] | null; error: unknown }>
+) {
+  try {
+    const { data, error } = await query;
+
+    if (error) {
+      return {
+        data: [],
+        error: `[${label}] ${getErrorMessage(error)}`
+      };
+    }
+
+    return {
+      data: data ?? [],
+      error: undefined
+    };
+  } catch (error) {
+    return {
+      data: [],
+      error: `[${label}] ${getErrorMessage(error)}`
+    };
+  }
+}
+
+function getDerivedStatus(item: FinancialTransaction): FinancialStatus {
+  if (item.status === "pendente" && item.due_date < new Date().toISOString().slice(0, 10)) {
+    return "vencido";
+  }
+
+  return item.status as FinancialStatus;
+}
+
+export default async function FinanceiroPage() {
+  const permissions = await getCurrentPermissionMap();
+  const isAdmMaster = await isCurrentUserAdmMaster();
+  const clinicScope = await getCurrentClinicScope();
+  let transactions: FinancialTransaction[] = [];
+  let clinics: Clinic[] = [];
+  let patients: Patient[] = [];
+  let services: Service[] = [];
+  let loadError: string | undefined;
+
+  if (!clinicScope.isAdmMaster && !clinicScope.clinicId) {
+    loadError = "Usuario sem clinica vinculada.";
+  } else {
+    try {
+      const supabase = await createClient();
+      const clinicFilter = clinicScope.clinicId;
+
+      const clinicsQuery = clinicFilter
+        ? supabase.from("clinics").select("*").eq("id", clinicFilter)
+        : supabase.from("clinics").select("*");
+
+      const transactionsQuery = clinicFilter
+        ? supabase
+            .from("financial_transactions")
+            .select("*")
+            .eq("clinic_id", clinicFilter)
+        : supabase.from("financial_transactions").select("*");
+
+      const patientsQuery = clinicFilter
+        ? supabase.from("patients").select("*").eq("clinic_id", clinicFilter)
+        : supabase.from("patients").select("*");
+
+      const servicesQuery = clinicFilter
+        ? supabase.from("services").select("*").eq("clinic_id", clinicFilter)
+        : supabase.from("services").select("*");
+
+      const [transactionsResult, clinicsResult, patientsResult, servicesResult] =
+        await Promise.all([
+          readSupabaseList<FinancialTransaction>(
+            "financial_transactions",
+            transactionsQuery.order("due_date", { ascending: false })
+          ),
+          readSupabaseList<Clinic>(
+            "clinics",
+            clinicsQuery.order("name", { ascending: true })
+          ),
+          readSupabaseList<Patient>(
+            "patients",
+            patientsQuery.order("full_name", { ascending: true })
+          ),
+          readSupabaseList<Service>(
+            "services",
+            servicesQuery.order("name", { ascending: true })
+          )
+        ]);
+
+      transactions = transactionsResult.data;
+      clinics = clinicsResult.data;
+      patients = patientsResult.data;
+      services = servicesResult.data;
+
+      [
+        transactionsResult.error,
+        clinicsResult.error,
+        patientsResult.error,
+        servicesResult.error
+      ].forEach((error) => {
+        if (error) {
+          loadError = appendLoadError(loadError, error);
+        }
+      });
+    } catch (error) {
+      loadError = appendLoadError(loadError, error);
+    }
+  }
+
+  const clinicsById = new Map(clinics.map((clinic) => [clinic.id, clinic.name]));
+  const patientsById = new Map(
+    patients.map((patient) => [patient.id, patient.full_name])
+  );
+  const servicesById = new Map(services.map((service) => [service.id, service.name]));
+
+  const hydratedTransactions: HydratedFinancialTransaction[] = transactions.map(
+    (item) => ({
+      ...item,
+      clinic_name: clinicsById.get(item.clinic_id) ?? "Clinica nao encontrada",
+      patient_name: item.patient_id
+        ? patientsById.get(item.patient_id) ?? "Paciente nao encontrado"
+        : "-",
+      service_name: item.service_id
+        ? servicesById.get(item.service_id) ?? "Servico nao encontrado"
+        : "-",
+      derived_status: getDerivedStatus(item)
+    })
+  );
+
   return (
     <div>
       <PageHeader
-        eyebrow="Gestão financeira"
+        eyebrow="Gestao financeira"
         title="Financeiro"
-        description="Prepare contas a receber, despesas, repasses, formas de pagamento, caixa por unidade e visão consolidada para ADM Master."
+        description="Controle receitas, despesas e movimentacoes da clinica com estrutura preparada para Agenda e Pacotes futuros."
       />
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <ModuleCard title="Receitas" description="Entrada prevista" icon={ArrowUpRight} value="R$ 86,4k" />
-        <ModuleCard title="Despesas" description="Saída prevista" icon={ArrowDownRight} value="R$ 21,9k" />
-        <ModuleCard title="Saldo" description="Resultado do mês" icon={CircleDollarSign} value="R$ 64,5k" />
-      </section>
+      <FinanceManager
+        transactions={hydratedTransactions}
+        clinics={clinics}
+        patients={patients}
+        services={services}
+        currentClinicId={clinicScope.clinicId}
+        isAdmMaster={isAdmMaster}
+        loadError={loadError}
+        permissions={permissions.financeiro}
+      />
     </div>
   );
 }

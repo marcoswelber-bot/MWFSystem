@@ -18,6 +18,8 @@
 
 ✅ Módulo Pacotes independente criado
 
+✅ Módulo Financeiro básico criado para receitas, despesas e movimentações
+
 ✅ Agenda com agendamentos e bloqueios
 
 ✅ Bloqueios da Agenda impedem agendamentos conflitantes por clínica, profissional, dia, período e horário
@@ -47,6 +49,5 @@
 ## Próximas Etapas
 
 - Comissão por profissional e serviço
-- Financeiro
 - WhatsApp automático
 - Relatórios
