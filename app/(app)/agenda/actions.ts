@@ -63,6 +63,7 @@ export type AppointmentFormInput = {
   sessions_completed?: string;
   appointment_type?: AppointmentType;
   appointment_origin?: AppointmentOrigin;
+  patient_package_id?: string;
   original_appointment_id?: string;
 };
 
@@ -225,6 +226,9 @@ function getAppointmentPayload(input: AppointmentFormInput): AppointmentInsert {
     appointmentOrigin === "reposicao" ||
     appointmentOrigin === "reposicao_extra";
   const originalAppointmentId = cleanOptionalValue(input.original_appointment_id);
+  const patientPackageId = cleanOptionalValue(input.patient_package_id);
+  const isPackageAppointment =
+    appointmentType === "pacote" || appointmentOrigin === "pacote";
   const sessionsContracted = isReplacement
     ? 0
     : cleanOptionalInteger(input.sessions_contracted) ?? 1;
@@ -242,6 +246,10 @@ function getAppointmentPayload(input: AppointmentFormInput): AppointmentInsert {
     throw new Error("Selecione o atendimento original da reposicao.");
   }
 
+  if (isPackageAppointment && !patientPackageId) {
+    throw new Error("Selecione um pacote ativo do paciente.");
+  }
+
   return {
     clinic_id: "",
     patient_id: patientIds[0],
@@ -256,9 +264,11 @@ function getAppointmentPayload(input: AppointmentFormInput): AppointmentInsert {
     sessions_completed: cleanOptionalInteger(input.sessions_completed) ?? 0,
     appointment_type: appointmentType,
     appointment_origin: appointmentOrigin,
+    patient_package_id: isPackageAppointment ? patientPackageId : null,
     original_appointment_id: originalAppointmentId,
     is_billable: !isReplacement && appointmentOrigin !== "cortesia",
-    consumes_package_session: isReplacement || appointmentOrigin === "pacote"
+    consumes_package_session: isPackageAppointment || isReplacement,
+    package_session_status: isPackageAppointment ? "consume_pending" : "not_applied"
   };
 }
 
@@ -386,6 +396,79 @@ async function assertServiceCapacity(serviceId: string, patientIds: string[]) {
   }
 }
 
+async function assertActivePatientPackage(
+  payload: AppointmentInsert | AppointmentUpdate
+) {
+  if (!payload.patient_package_id) {
+    return;
+  }
+
+  const supabase = await createClient();
+  const { data: patientPackage, error } = await supabase
+    .from("patient_packages")
+    .select("id")
+    .eq("id", String(payload.patient_package_id))
+    .eq("clinic_id", String(payload.clinic_id))
+    .eq("patient_id", String(payload.patient_id))
+    .eq("service_id", String(payload.service_id))
+    .eq("status", "active")
+    .gt("remaining_sessions", 0)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!patientPackage) {
+    throw new Error("Selecione um pacote ativo do paciente.");
+  }
+}
+
+async function consumePatientPackageSession(
+  appointment: Database["public"]["Tables"]["appointments"]["Row"]
+) {
+  if (
+    !appointment.patient_package_id ||
+    !appointment.consumes_package_session ||
+    appointment.package_session_status === "consumed"
+  ) {
+    return "not_applied";
+  }
+
+  const supabase = await createClient();
+  const { data: patientPackage, error: packageError } = await supabase
+    .from("patient_packages")
+    .select("completed_sessions, remaining_sessions")
+    .eq("id", appointment.patient_package_id)
+    .eq("clinic_id", appointment.clinic_id)
+    .eq("patient_id", appointment.patient_id)
+    .eq("service_id", appointment.service_id)
+    .eq("status", "active")
+    .maybeSingle();
+
+  if (packageError) {
+    throw packageError;
+  }
+
+  if (!patientPackage || patientPackage.remaining_sessions <= 0) {
+    throw new Error("Pacote sem sessoes restantes.");
+  }
+
+  const { error: updateError } = await supabase
+    .from("patient_packages")
+    .update({
+      completed_sessions: patientPackage.completed_sessions + 1,
+      remaining_sessions: Math.max(patientPackage.remaining_sessions - 1, 0)
+    })
+    .eq("id", appointment.patient_package_id);
+
+  if (updateError) {
+    throw updateError;
+  }
+
+  return "consumed";
+}
+
 async function syncAppointmentParticipants(
   appointmentId: string,
   patientIds: string[]
@@ -427,7 +510,7 @@ async function completeAppointmentSideEffects(
   const financeIntegrationStatus = appointment.is_billable
     ? "pending"
     : "not_billable";
-  const packageSessionStatus = appointment.consumes_package_session
+  let packageSessionStatus = appointment.consumes_package_session
     ? "consume_pending"
     : "not_applied";
   const { data: participants, error: participantsError } = await supabase
@@ -519,6 +602,10 @@ async function completeAppointmentSideEffects(
       ? appointment.sessions_completed
       : Math.min(sessionsContracted, 1);
 
+  if (appointment.patient_package_id && appointment.package_session_status !== "consumed") {
+    packageSessionStatus = await consumePatientPackageSession(appointment);
+  }
+
   const { error: updateError } = await supabase
     .from("appointments")
     .update({
@@ -546,6 +633,7 @@ export async function createAppointment(
     const patientIds = cleanPatientIds(input);
     payload.clinic_id = await resolveClinicId(input.clinic_id);
     await assertServiceCapacity(payload.service_id, patientIds);
+    await assertActivePatientPackage(payload);
     await assertNoAppointmentConflict(payload);
 
     const { data, error } = await supabase
@@ -582,6 +670,7 @@ export async function updateAppointment(
     const patientIds = cleanPatientIds(input);
     payload.clinic_id = await resolveClinicId(input.clinic_id);
     await assertServiceCapacity(String(payload.service_id), patientIds);
+    await assertActivePatientPackage(payload);
     await assertNoAppointmentConflict(payload, id);
 
     const { data, error } = await supabase

@@ -1044,6 +1044,7 @@ export type Database = {
           appointment_type: string;
           appointment_origin: string;
           original_appointment_id: string | null;
+          patient_package_id: string | null;
           is_billable: boolean;
           consumes_package_session: boolean;
           created_at: string;
@@ -1070,6 +1071,7 @@ export type Database = {
           appointment_type?: string;
           appointment_origin?: string;
           original_appointment_id?: string | null;
+          patient_package_id?: string | null;
           is_billable?: boolean;
           consumes_package_session?: boolean;
           created_at?: string;
@@ -1096,6 +1098,7 @@ export type Database = {
           appointment_type?: string;
           appointment_origin?: string;
           original_appointment_id?: string | null;
+          patient_package_id?: string | null;
           is_billable?: boolean;
           consumes_package_session?: boolean;
           created_at?: string;

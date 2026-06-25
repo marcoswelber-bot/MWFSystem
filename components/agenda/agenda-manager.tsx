@@ -62,6 +62,7 @@ type Clinic = Database["public"]["Tables"]["clinics"]["Row"];
 type Patient = Database["public"]["Tables"]["patients"]["Row"];
 type Employee = Database["public"]["Tables"]["employees"]["Row"];
 type Service = Database["public"]["Tables"]["services"]["Row"];
+type PatientPackage = Database["public"]["Tables"]["patient_packages"]["Row"];
 type ViewMode = "day" | "week" | "month";
 type VisualStatus =
   | AppointmentStatus
@@ -75,6 +76,7 @@ type AgendaManagerProps = {
   patients: Patient[];
   employees: Employee[];
   services: Service[];
+  patientPackages: PatientPackage[];
   currentClinicId: string | null;
   isAdmMaster: boolean;
   loadError?: string;
@@ -216,6 +218,7 @@ const emptyAppointmentForm: AppointmentFormInput = {
   sessions_completed: "0",
   appointment_type: "avulso",
   appointment_origin: "avulso",
+  patient_package_id: "",
   original_appointment_id: ""
 };
 
@@ -404,6 +407,7 @@ function appointmentToForm(appointment: Appointment): AppointmentFormInput {
     sessions_completed: String(appointment.sessions_completed ?? 0),
     appointment_type: getAppointmentType(appointment),
     appointment_origin: getAppointmentOrigin(appointment),
+    patient_package_id: appointment.patient_package_id ?? "",
     original_appointment_id: appointment.original_appointment_id ?? ""
   };
 }
@@ -513,6 +517,7 @@ export function AgendaManager({
   patients,
   employees,
   services,
+  patientPackages,
   currentClinicId,
   isAdmMaster,
   loadError,
@@ -658,6 +663,7 @@ export function AgendaManager({
       patient_ids: appointment.patient_ids,
       employee_id: appointment.employee_id,
       service_id: appointment.service_id,
+      patient_package_id: appointment.patient_package_id ?? "",
       appointment_date: appointment.appointment_date,
       start_time: "",
       end_time: "",
@@ -1017,6 +1023,7 @@ export function AgendaManager({
           patients={patients}
           employees={employees}
           services={visibleServices}
+          patientPackages={patientPackages}
           selectedService={selectedService}
           isAdmMaster={isAdmMaster}
           isPending={isPending}
@@ -1775,6 +1782,7 @@ function AppointmentFormModal({
   patients,
   employees,
   services,
+  patientPackages,
   selectedService,
   isAdmMaster,
   isPending,
@@ -1789,6 +1797,7 @@ function AppointmentFormModal({
   patients: Patient[];
   employees: Employee[];
   services: Service[];
+  patientPackages: PatientPackage[];
   selectedService?: Service;
   isAdmMaster: boolean;
   isPending: boolean;
@@ -1796,6 +1805,19 @@ function AppointmentFormModal({
   onClose: () => void;
 }) {
   const selectedPatients = form.patient_ids ?? [];
+  const isPackageAppointment =
+    form.appointment_type === "pacote" || form.appointment_origin === "pacote";
+  const availablePatientPackages = patientPackages.filter(
+    (patientPackage) =>
+      patientPackage.clinic_id === form.clinic_id &&
+      patientPackage.patient_id === form.patient_id &&
+      patientPackage.service_id === form.service_id &&
+      patientPackage.status === "active" &&
+      patientPackage.remaining_sessions > 0
+  );
+  const selectedPatientPackage = patientPackages.find(
+    (patientPackage) => patientPackage.id === form.patient_package_id
+  );
   const isReplacement =
     form.appointment_type === "reposicao" ||
     form.appointment_type === "reposicao_extra" ||
@@ -1825,7 +1847,8 @@ function AppointmentFormModal({
               setForm((current) => ({
                 ...current,
                 service_id: value,
-                patient_ids: service?.is_group ? current.patient_ids : []
+                patient_ids: service?.is_group ? current.patient_ids : [],
+                patient_package_id: ""
               }));
             }}
             options={services.map((service) => [service.id, service.name])}
@@ -1843,6 +1866,8 @@ function AppointmentFormModal({
                 return {
                   ...current,
                   appointment_type: appointmentType,
+                  patient_package_id:
+                    appointmentType === "pacote" ? current.patient_package_id : "",
                   appointment_origin: replacement
                     ? appointmentType
                     : current.appointment_origin ?? "avulso"
@@ -1863,6 +1888,8 @@ function AppointmentFormModal({
                 return {
                   ...current,
                   appointment_origin: appointmentOrigin,
+                  patient_package_id:
+                    appointmentOrigin === "pacote" ? current.patient_package_id : "",
                   appointment_type: replacement
                     ? appointmentOrigin
                     : current.appointment_type ?? "avulso"
@@ -1897,7 +1924,8 @@ function AppointmentFormModal({
                 setForm((current) => ({
                   ...current,
                   patient_id: value[0] ?? "",
-                  patient_ids: value
+                  patient_ids: value,
+                  patient_package_id: ""
                 }))
               }
               options={patients.map((patient) => [patient.id, patient.full_name])}
@@ -1911,7 +1939,8 @@ function AppointmentFormModal({
                 setForm((current) => ({
                   ...current,
                   patient_id: value,
-                  patient_ids: value ? [value] : []
+                  patient_ids: value ? [value] : [],
+                  patient_package_id: ""
                 }))
               }
               options={patients.map((patient) => [patient.id, patient.full_name])}
@@ -1925,6 +1954,47 @@ function AppointmentFormModal({
             options={employees.map((employee) => [employee.id, employee.name])}
             required
           />
+          {isPackageAppointment ? (
+            <div className="grid gap-3 md:col-span-2">
+              <SelectField
+                label="Pacote do paciente"
+                value={form.patient_package_id ?? ""}
+                onChange={(value) =>
+                  setForm((current) => ({ ...current, patient_package_id: value }))
+                }
+                options={availablePatientPackages.map((patientPackage) => [
+                  patientPackage.id,
+                  `${patientPackage.completed_sessions}/${patientPackage.contracted_sessions} realizadas - validade ${patientPackage.expiration_date ?? "sem validade"}`
+                ])}
+                required
+                placeholder={
+                  form.patient_id && form.service_id
+                    ? "Selecione um pacote ativo"
+                    : "Selecione paciente e servico"
+                }
+              />
+              {selectedPatientPackage ? (
+                <div className="grid gap-2 rounded-md border bg-muted/30 p-3 text-sm md:grid-cols-4">
+                  <PackageDetail
+                    label="Contratadas"
+                    value={selectedPatientPackage.contracted_sessions}
+                  />
+                  <PackageDetail
+                    label="Realizadas"
+                    value={selectedPatientPackage.completed_sessions}
+                  />
+                  <PackageDetail
+                    label="Restantes"
+                    value={selectedPatientPackage.remaining_sessions}
+                  />
+                  <PackageDetail
+                    label="Validade"
+                    value={selectedPatientPackage.expiration_date ?? "-"}
+                  />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <TextField
             label="Data"
             type="date"
@@ -1993,6 +2063,23 @@ function AppointmentFormModal({
         </div>
       </form>
     </ModalShell>
+  );
+}
+
+function PackageDetail({
+  label,
+  value
+}: {
+  label: string;
+  value: string | number;
+}) {
+  return (
+    <div className="rounded-md bg-background/70 px-3 py-2">
+      <span className="block text-xs font-semibold uppercase text-muted-foreground">
+        {label}
+      </span>
+      <strong className="text-sm">{value}</strong>
+    </div>
   );
 }
 

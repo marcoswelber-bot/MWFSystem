@@ -23,6 +23,7 @@ type Clinic = Database["public"]["Tables"]["clinics"]["Row"];
 type Patient = Database["public"]["Tables"]["patients"]["Row"];
 type Employee = Database["public"]["Tables"]["employees"]["Row"];
 type Service = Database["public"]["Tables"]["services"]["Row"];
+type PatientPackage = Database["public"]["Tables"]["patient_packages"]["Row"];
 
 function appendLoadError(currentError: string | undefined, nextError: unknown) {
   const message = getErrorMessage(nextError);
@@ -62,6 +63,7 @@ export default async function AgendaPage() {
   let patients: Patient[] = [];
   let employees: Employee[] = [];
   let services: Service[] = [];
+  let patientPackages: PatientPackage[] = [];
   let rawAppointments: Database["public"]["Tables"]["appointments"]["Row"][] = [];
   let rawParticipants: Database["public"]["Tables"]["appointment_participants"]["Row"][] =
     [];
@@ -80,6 +82,7 @@ export default async function AgendaPage() {
         patientsResult,
         employeesResult,
         servicesResult,
+        patientPackagesResult,
         appointmentsResult,
         blocksResult
       ] = await Promise.all([
@@ -116,6 +119,16 @@ export default async function AgendaPage() {
             .eq("clinic_id", clinicScope.clinicId)
             .order("name", { ascending: true })
         ),
+        readSupabaseList<PatientPackage>(
+          "patient_packages",
+          supabase
+            .from("patient_packages")
+            .select("*")
+            .eq("clinic_id", clinicScope.clinicId)
+            .eq("status", "active")
+            .gt("remaining_sessions", 0)
+            .order("expiration_date", { ascending: true })
+        ),
         readSupabaseList<Database["public"]["Tables"]["appointments"]["Row"]>(
           "appointments",
           supabase
@@ -141,6 +154,7 @@ export default async function AgendaPage() {
       patients = patientsResult.data;
       employees = employeesResult.data;
       services = servicesResult.data;
+      patientPackages = patientPackagesResult.data;
       rawAppointments = appointmentsResult.data;
       rawBlocks = blocksResult.data;
 
@@ -169,6 +183,7 @@ export default async function AgendaPage() {
         patientsResult.error,
         employeesResult.error,
         servicesResult.error,
+        patientPackagesResult.error,
         appointmentsResult.error,
         blocksResult.error
       ].forEach((error) => {
@@ -248,6 +263,7 @@ export default async function AgendaPage() {
         patients={patients}
         employees={employees}
         services={services}
+        patientPackages={patientPackages}
         currentClinicId={clinicScope.clinicId}
         isAdmMaster={clinicScope.isAdmMaster}
         loadError={loadError}
