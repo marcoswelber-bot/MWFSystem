@@ -324,6 +324,111 @@ function formatTime(value?: string | null) {
   return value ? value.slice(0, 5) : "--:--";
 }
 
+function nowTimeValue() {
+  return new Date().toTimeString().slice(0, 5);
+}
+
+function isPastDate(value: string) {
+  return value < today();
+}
+
+function isSameOrFutureTime(value: string) {
+  return value >= nowTimeValue();
+}
+
+function timeSlotOptions() {
+  const slots: Array<[string, string]> = [];
+
+  for (let hour = calendarStartHour; hour <= calendarEndHour; hour += 1) {
+    for (const minute of [0, 30]) {
+      if (hour === calendarEndHour && minute > 0) {
+        continue;
+      }
+
+      const value = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+      slots.push([value, value]);
+    }
+  }
+
+  return slots;
+}
+
+function blockAppliesToEmployee(block: ScheduleBlock, employeeId?: string) {
+  return !block.employee_id || (!!employeeId && block.employee_id === employeeId);
+}
+
+function compareTime(value?: string | null, other?: string | null) {
+  return (value ?? "").slice(0, 5).localeCompare((other ?? "").slice(0, 5));
+}
+
+function timeIntervalsOverlap(
+  startTime?: string | null,
+  endTime?: string | null,
+  otherStartTime?: string | null,
+  otherEndTime?: string | null
+) {
+  const start = startTime?.slice(0, 5);
+  const end = endTime?.slice(0, 5) || start;
+  const otherStart = otherStartTime?.slice(0, 5);
+  const otherEnd = otherEndTime?.slice(0, 5) || otherStart;
+
+  if (!start || !end || !otherStart || !otherEnd) {
+    return false;
+  }
+
+  if (start === end && otherStart === otherEnd) {
+    return start === otherStart;
+  }
+
+  if (start === end) {
+    return compareTime(start, otherStart) >= 0 && compareTime(start, otherEnd) < 0;
+  }
+
+  if (otherStart === otherEnd) {
+    return compareTime(otherStart, start) >= 0 && compareTime(otherStart, end) < 0;
+  }
+
+  return compareTime(start, otherEnd) < 0 && compareTime(end, otherStart) > 0;
+}
+
+function isFullDayBlocked(
+  date: string,
+  blocks: ScheduleBlock[],
+  employeeId?: string
+) {
+  return blocks.some(
+    (block) =>
+      block.block_date === date &&
+      block.block_type === "dia_inteiro" &&
+      blockAppliesToEmployee(block, employeeId)
+  );
+}
+
+function isTimeBlocked(
+  date: string,
+  startTime: string,
+  endTime: string | undefined,
+  blocks: ScheduleBlock[],
+  employeeId?: string
+) {
+  return blocks.some((block) => {
+    if (block.block_date !== date || !blockAppliesToEmployee(block, employeeId)) {
+      return false;
+    }
+
+    if (block.block_type === "dia_inteiro") {
+      return true;
+    }
+
+    return timeIntervalsOverlap(
+      startTime,
+      endTime || startTime,
+      block.start_time,
+      block.end_time || block.start_time
+    );
+  });
+}
+
 function isInProgress(appointment: Appointment, now = new Date()) {
   if (appointment.appointment_date !== today()) {
     return false;
@@ -553,6 +658,11 @@ export function AgendaManager({
     [selectedDate, viewMode]
   );
   const visibleDaySet = React.useMemo(() => new Set(visibleDays), [visibleDays]);
+  const scopedBlocks = React.useMemo(
+    () =>
+      blocks.filter((block) => clinicFilter === "all" || block.clinic_id === clinicFilter),
+    [blocks, clinicFilter]
+  );
 
   const filteredEmployees = React.useMemo(() => {
     const byClinic =
@@ -587,12 +697,8 @@ export function AgendaManager({
       )
     );
 
-  const visibleBlocks = blocks
+  const visibleBlocks = scopedBlocks
     .filter((block) => {
-      if (clinicFilter !== "all" && block.clinic_id !== clinicFilter) {
-        return false;
-      }
-
       if (
         employeeFilter !== "all" &&
         block.employee_id &&
@@ -626,11 +732,26 @@ export function AgendaManager({
     return appointmentDateTime >= new Date();
   });
 
+  function selectAgendaDate(date: string) {
+    if (isPastDate(date) || isFullDayBlocked(date, scopedBlocks)) {
+      setMessage({ ok: false, message: "Data bloqueada para agendamento" });
+      return false;
+    }
+
+    setSelectedDate(date);
+    return true;
+  }
+
   function refresh() {
     router.refresh();
   }
 
   function openCreateAppointment(date = selectedDate, employeeId = "") {
+    if (isPastDate(date) || isFullDayBlocked(date, scopedBlocks, employeeId)) {
+      setMessage({ ok: false, message: "Data bloqueada para agendamento" });
+      return;
+    }
+
     setEditingAppointment(null);
     setAppointmentForm({
       ...emptyAppointmentForm,
@@ -710,6 +831,25 @@ export function AgendaManager({
     const patientIds = selectedService?.is_group
       ? appointmentForm.patient_ids ?? []
       : [appointmentForm.patient_id].filter(Boolean);
+
+    if (
+      isPastDate(appointmentForm.appointment_date) ||
+      isFullDayBlocked(
+        appointmentForm.appointment_date,
+        scopedBlocks,
+        appointmentForm.employee_id
+      ) ||
+      isTimeBlocked(
+        appointmentForm.appointment_date,
+        appointmentForm.start_time,
+        appointmentForm.end_time,
+        scopedBlocks,
+        appointmentForm.employee_id
+      )
+    ) {
+      setMessage({ ok: false, message: "Data bloqueada para agendamento" });
+      return;
+    }
 
     startTransition(async () => {
       const result = editingAppointment
@@ -822,9 +962,7 @@ export function AgendaManager({
               size="icon"
               title="Periodo anterior"
               onClick={() =>
-                setSelectedDate((current) =>
-                  shiftSelectedDate(current, viewMode, -1)
-                )
+                selectAgendaDate(shiftSelectedDate(selectedDate, viewMode, -1))
               }
             >
               <ChevronLeft className="h-4 w-4" />
@@ -835,9 +973,7 @@ export function AgendaManager({
               size="icon"
               title="Proximo periodo"
               onClick={() =>
-                setSelectedDate((current) =>
-                  shiftSelectedDate(current, viewMode, 1)
-                )
+                selectAgendaDate(shiftSelectedDate(selectedDate, viewMode, 1))
               }
             >
               <ChevronRight className="h-4 w-4" />
@@ -845,7 +981,7 @@ export function AgendaManager({
             <Button
               type="button"
               variant="secondary"
-              onClick={() => setSelectedDate(today())}
+              onClick={() => selectAgendaDate(today())}
             >
               Hoje
             </Button>
@@ -857,7 +993,8 @@ export function AgendaManager({
             <input
               type="date"
               value={selectedDate}
-              onChange={(event) => setSelectedDate(event.target.value)}
+              min={today()}
+              onChange={(event) => selectAgendaDate(event.target.value)}
               className="agenda-input"
             />
           </FieldShell>
@@ -965,8 +1102,9 @@ export function AgendaManager({
               appointments={visibleAppointments}
               blocks={visibleBlocks}
               onSelectDate={(date) => {
-                setSelectedDate(date);
-                setViewMode("day");
+                if (selectAgendaDate(date)) {
+                  setViewMode("day");
+                }
               }}
             />
           ) : (
@@ -1002,7 +1140,8 @@ export function AgendaManager({
         <aside className="grid gap-4 self-start">
           <MiniMonthCalendar
             selectedDate={selectedDate}
-            onSelectDate={setSelectedDate}
+            blocks={scopedBlocks}
+            onSelectDate={selectAgendaDate}
           />
           <SidePanel
             selectedDate={selectedDate}
@@ -1024,6 +1163,7 @@ export function AgendaManager({
           employees={employees}
           services={visibleServices}
           patientPackages={patientPackages}
+          blocks={scopedBlocks}
           selectedService={selectedService}
           isAdmMaster={isAdmMaster}
           isPending={isPending}
@@ -1491,15 +1631,22 @@ function MonthGrid({
           );
           const dayBlocks = blocks.filter((block) => block.block_date === day);
           const muted = day.slice(0, 7) !== selectedMonth;
+          const hasBlock = dayBlocks.length > 0;
+          const blockedDay = isPastDate(day) || isFullDayBlocked(day, blocks);
 
           return (
             <button
               key={day}
               type="button"
               onClick={() => onSelectDate(day)}
+              aria-disabled={blockedDay}
               className={cn(
                 "min-h-[138px] bg-card p-3 text-left transition-colors hover:bg-secondary/50",
-                muted && "bg-muted/30 text-muted-foreground"
+                muted && "bg-muted/30 text-muted-foreground",
+                hasBlock &&
+                  "bg-red-50/80 ring-1 ring-inset ring-red-900/15 dark:bg-red-950/20",
+                blockedDay &&
+                  "cursor-not-allowed text-muted-foreground hover:bg-red-50/80 dark:hover:bg-red-950/20"
               )}
             >
               <div className="mb-2 flex items-center justify-between">
@@ -1551,9 +1698,11 @@ function MonthGrid({
 
 function MiniMonthCalendar({
   selectedDate,
+  blocks,
   onSelectDate
 }: {
   selectedDate: string;
+  blocks: ScheduleBlock[];
   onSelectDate: (date: string) => void;
 }) {
   const days = getDaysForMode("month", selectedDate);
@@ -1576,20 +1725,32 @@ function MiniMonthCalendar({
             {day}
           </span>
         ))}
-        {days.map((day) => (
-          <button
-            key={day}
-            type="button"
-            onClick={() => onSelectDate(day)}
-            className={cn(
-              "h-9 rounded-md text-sm font-medium transition-colors hover:bg-secondary",
-              day === selectedDate && "bg-primary text-primary-foreground hover:bg-primary",
-              day.slice(0, 7) !== selectedMonth && "text-muted-foreground/50"
-            )}
-          >
-            {toDate(day).getDate()}
-          </button>
-        ))}
+        {days.map((day) => {
+          const dayBlocks = blocks.filter((block) => block.block_date === day);
+          const hasBlock = dayBlocks.length > 0;
+          const blockedDay = isPastDate(day) || isFullDayBlocked(day, blocks);
+
+          return (
+            <button
+              key={day}
+              type="button"
+              onClick={() => onSelectDate(day)}
+              aria-disabled={blockedDay}
+              title={hasBlock ? "Data com bloqueio" : undefined}
+              className={cn(
+                "h-9 rounded-md text-sm font-medium transition-colors hover:bg-secondary",
+                day === selectedDate &&
+                  "bg-primary text-primary-foreground hover:bg-primary",
+                day.slice(0, 7) !== selectedMonth && "text-muted-foreground/50",
+                hasBlock &&
+                  "bg-red-100 text-red-900 ring-1 ring-inset ring-red-900/20 hover:bg-red-100 dark:bg-red-950/50 dark:text-red-100",
+                blockedDay && "cursor-not-allowed opacity-70"
+              )}
+            >
+              {toDate(day).getDate()}
+            </button>
+          );
+        })}
       </div>
     </Card>
   );
@@ -1783,6 +1944,7 @@ function AppointmentFormModal({
   employees,
   services,
   patientPackages,
+  blocks,
   selectedService,
   isAdmMaster,
   isPending,
@@ -1798,6 +1960,7 @@ function AppointmentFormModal({
   employees: Employee[];
   services: Service[];
   patientPackages: PatientPackage[];
+  blocks: ScheduleBlock[];
   selectedService?: Service;
   isAdmMaster: boolean;
   isPending: boolean;
@@ -1823,6 +1986,38 @@ function AppointmentFormModal({
     form.appointment_type === "reposicao_extra" ||
     form.appointment_origin === "reposicao" ||
     form.appointment_origin === "reposicao_extra";
+  const dateBlocked =
+    !form.appointment_date ||
+    isPastDate(form.appointment_date) ||
+    isFullDayBlocked(form.appointment_date, blocks, form.employee_id);
+  const startTimeOptions = timeSlotOptions().filter(([time]) => {
+    if (dateBlocked) {
+      return false;
+    }
+
+    if (form.appointment_date === today() && !isSameOrFutureTime(time)) {
+      return false;
+    }
+
+    return !isTimeBlocked(
+      form.appointment_date,
+      time,
+      form.end_time,
+      blocks,
+      form.employee_id
+    );
+  });
+  const selectedTimeBlocked =
+    !!form.appointment_date &&
+    !!form.start_time &&
+    isTimeBlocked(
+      form.appointment_date,
+      form.start_time,
+      form.end_time,
+      blocks,
+      form.employee_id
+    );
+  const schedulingBlocked = dateBlocked || selectedTimeBlocked;
 
   return (
     <ModalShell
@@ -2000,15 +2195,27 @@ function AppointmentFormModal({
             type="date"
             value={form.appointment_date}
             onChange={(value) =>
-              setForm((current) => ({ ...current, appointment_date: value }))
+              setForm((current) => ({
+                ...current,
+                appointment_date: value,
+                start_time: "",
+                end_time: ""
+              }))
             }
+            minValue={today()}
             required
           />
-          <TextField
+          <SelectField
             label="Horário inicial"
-            type="time"
             value={form.start_time}
             onChange={(value) => setForm((current) => ({ ...current, start_time: value }))}
+            options={startTimeOptions}
+            placeholder={
+              dateBlocked
+                ? "Data bloqueada para agendamento"
+                : "Selecione um horario"
+            }
+            disabled={dateBlocked || startTimeOptions.length === 0}
             required
           />
           <TextField
@@ -2048,6 +2255,11 @@ function AppointmentFormModal({
             options={statusOptions}
           />
         </div>
+        {schedulingBlocked ? (
+          <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-100">
+            Data bloqueada para agendamento
+          </p>
+        ) : null}
         <TextAreaField
           label="Observações"
           value={form.notes ?? ""}
@@ -2057,7 +2269,7 @@ function AppointmentFormModal({
           <Button type="button" variant="outline" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit" disabled={isPending}>
+          <Button type="submit" disabled={isPending || schedulingBlocked}>
             {isPending ? "Salvando..." : "Salvar"}
           </Button>
         </div>
@@ -2232,6 +2444,7 @@ function TextField({
   type = "text",
   required = false,
   disabled = false,
+  minValue,
   helper
 }: {
   label: string;
@@ -2240,13 +2453,14 @@ function TextField({
   type?: string;
   required?: boolean;
   disabled?: boolean;
+  minValue?: string;
   helper?: string;
 }) {
   return (
     <FieldShell label={label}>
       <input
         type={type}
-        min={type === "number" ? "0" : undefined}
+        min={minValue ?? (type === "number" ? "0" : undefined)}
         required={required}
         disabled={disabled}
         value={value}

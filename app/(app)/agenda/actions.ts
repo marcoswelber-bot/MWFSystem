@@ -242,6 +242,10 @@ function getAppointmentPayload(input: AppointmentFormInput): AppointmentInsert {
   assertRequired(input.appointment_date, "Informe a data.");
   assertRequired(input.start_time, "Informe o horario.");
 
+  if (input.appointment_date < new Date().toISOString().slice(0, 10)) {
+    throw new Error("Nao e possivel agendar em datas passadas.");
+  }
+
   if (isReplacement && !originalAppointmentId) {
     throw new Error("Selecione o atendimento original da reposicao.");
   }
