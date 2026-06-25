@@ -19,8 +19,11 @@ export type PatientPackageFormInput = {
   patient_id: string;
   service_id: string;
   employee_id?: string;
+  sale_responsible_id?: string;
   contracted_sessions: string;
   completed_sessions: string;
+  unit_session_value: string;
+  discount_percent: string;
   total_value: string;
   purchase_date: string;
   expiration_date?: string;
@@ -62,7 +65,17 @@ function cleanMoney(value?: string) {
   }
 
   const parsedValue = Number.parseFloat(cleanValue);
-  return Number.isFinite(parsedValue) && parsedValue >= 0 ? parsedValue : 0;
+  return Number.isFinite(parsedValue) ? parsedValue : 0;
+}
+
+function cleanPercent(value?: string) {
+  const cleanValue = value?.replace(",", ".").trim();
+  if (!cleanValue) {
+    return 0;
+  }
+
+  const parsedValue = Number.parseFloat(cleanValue);
+  return Number.isFinite(parsedValue) ? parsedValue : 0;
 }
 
 async function resolveClinicId(inputClinicId?: string): Promise<string> {
@@ -89,11 +102,17 @@ function getPackagePayload(input: PatientPackageFormInput): PatientPackageInsert
   assertRequired(input.patient_id, "Selecione o paciente.");
   assertRequired(input.service_id, "Selecione o servico.");
   assertRequired(input.contracted_sessions, "Informe a quantidade contratada.");
+  assertRequired(input.unit_session_value, "Informe o valor unitario da sessao.");
   assertRequired(input.purchase_date, "Informe a data da compra.");
 
   const contractedSessions = cleanInteger(input.contracted_sessions);
   const completedSessions = cleanInteger(input.completed_sessions);
   const remainingSessions = contractedSessions - completedSessions;
+  const unitSessionValue = cleanMoney(input.unit_session_value);
+  const discountPercent = cleanPercent(input.discount_percent);
+  const subtotalValue = contractedSessions * unitSessionValue;
+  const discountValue = subtotalValue * (discountPercent / 100);
+  const totalValue = subtotalValue - discountValue;
 
   if (contractedSessions <= 0) {
     throw new Error("A quantidade contratada deve ser maior que zero.");
@@ -103,15 +122,36 @@ function getPackagePayload(input: PatientPackageFormInput): PatientPackageInsert
     throw new Error("A quantidade restante nao pode ser negativa.");
   }
 
+  if (unitSessionValue < 0) {
+    throw new Error("O valor unitario nao pode ser negativo.");
+  }
+
+  if (discountPercent < 0) {
+    throw new Error("O desconto nao pode ser negativo.");
+  }
+
+  if (discountPercent > 100) {
+    throw new Error("O desconto nao pode ser maior que 100%.");
+  }
+
+  if (totalValue < 0) {
+    throw new Error("O valor total nao pode ser negativo.");
+  }
+
   return {
     clinic_id: "",
     patient_id: input.patient_id,
     service_id: input.service_id,
     employee_id: cleanOptionalValue(input.employee_id),
+    sale_responsible_id: cleanOptionalValue(input.sale_responsible_id),
     contracted_sessions: contractedSessions,
     completed_sessions: completedSessions,
     remaining_sessions: remainingSessions,
-    total_value: cleanMoney(input.total_value),
+    unit_session_value: unitSessionValue,
+    discount_percent: discountPercent,
+    subtotal_value: subtotalValue,
+    discount_value: discountValue,
+    total_value: totalValue,
     purchase_date: input.purchase_date,
     expiration_date: cleanOptionalValue(input.expiration_date),
     payment_method: input.payment_method || "pix",

@@ -58,6 +58,12 @@ const paymentMethodOptions = [
   ["parcelado", "Parcelado"]
 ] as const;
 
+const quantityDiscountTiers = [
+  { minSessions: 20, discountPercent: 15 },
+  { minSessions: 10, discountPercent: 10 },
+  { minSessions: 5, discountPercent: 5 }
+] as const;
+
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -67,8 +73,11 @@ const emptyForm: PatientPackageFormInput = {
   patient_id: "",
   service_id: "",
   employee_id: "",
+  sale_responsible_id: "",
   contracted_sessions: "1",
   completed_sessions: "0",
+  unit_session_value: "0",
+  discount_percent: "0",
   total_value: "0",
   purchase_date: today(),
   expiration_date: "",
@@ -83,8 +92,11 @@ function packageToForm(item: PatientPackage): PatientPackageFormInput {
     patient_id: item.patient_id,
     service_id: item.service_id,
     employee_id: item.employee_id ?? "",
+    sale_responsible_id: item.sale_responsible_id ?? "",
     contracted_sessions: String(item.contracted_sessions),
     completed_sessions: String(item.completed_sessions),
+    unit_session_value: String(item.unit_session_value ?? 0),
+    discount_percent: String(item.discount_percent ?? 0),
     total_value: String(item.total_value ?? 0),
     purchase_date: item.purchase_date,
     expiration_date: item.expiration_date ?? "",
@@ -99,6 +111,45 @@ function money(value: number) {
     style: "currency",
     currency: "BRL"
   }).format(value);
+}
+
+function numberFromForm(value?: string) {
+  const parsedValue = Number.parseFloat(value?.replace(",", ".") ?? "0");
+  return Number.isFinite(parsedValue) ? parsedValue : 0;
+}
+
+function integerFromForm(value?: string) {
+  const parsedValue = Number.parseInt(value ?? "0", 10);
+  return Number.isFinite(parsedValue) ? parsedValue : 0;
+}
+
+function moneyFormValue(value: number) {
+  return Math.max(value, 0).toFixed(2);
+}
+
+function getServiceDefaultValue(service?: Service) {
+  return Number(service?.default_price ?? service?.price ?? 0);
+}
+
+function getPricingValues(form: PatientPackageFormInput) {
+  const quantity = Math.max(integerFromForm(form.contracted_sessions), 0);
+  const unitValue = Math.max(numberFromForm(form.unit_session_value), 0);
+  const discountPercent = Math.min(
+    Math.max(numberFromForm(form.discount_percent), 0),
+    100
+  );
+  const subtotal = quantity * unitValue;
+  const discountValue = subtotal * (discountPercent / 100);
+  const total = Math.max(subtotal - discountValue, 0);
+
+  return { quantity, unitValue, discountPercent, subtotal, discountValue, total };
+}
+
+function getPreparedQuantityDiscount(quantity: number) {
+  return (
+    quantityDiscountTiers.find((tier) => quantity >= tier.minSessions)
+      ?.discountPercent ?? 0
+  );
 }
 
 function statusLabel(status: PackageStatus) {
@@ -169,11 +220,7 @@ export function PackagesManager({
     { active: 0, expired: 0, finished: 0, contracted: 0, completed: 0, remaining: 0 }
   );
 
-  const remainingSessions = Math.max(
-    Number.parseInt(form.contracted_sessions || "0", 10) -
-      Number.parseInt(form.completed_sessions || "0", 10),
-    0
-  );
+  const pricing = getPricingValues(form);
 
   function refresh() {
     router.refresh();
@@ -200,6 +247,40 @@ export function PackagesManager({
     setEditingPackage(null);
     setForm(emptyForm);
     setFormOpen(false);
+  }
+
+  function updateFormWithPricing(
+    nextValues: Partial<PatientPackageFormInput>,
+    baseForm = form
+  ) {
+    const nextForm = { ...baseForm, ...nextValues };
+    const shouldSuggestQuantityDiscount =
+      nextValues.contracted_sessions !== undefined &&
+      numberFromForm(baseForm.discount_percent) === 0;
+
+    if (shouldSuggestQuantityDiscount) {
+      nextForm.discount_percent = String(
+        getPreparedQuantityDiscount(integerFromForm(nextForm.contracted_sessions))
+      );
+    }
+
+    const nextPricing = getPricingValues(nextForm);
+
+    setForm({
+      ...nextForm,
+      discount_percent: String(nextPricing.discountPercent),
+      total_value: moneyFormValue(nextPricing.total)
+    });
+  }
+
+  function updateSelectedService(serviceId: string) {
+    const selectedService = services.find((service) => service.id === serviceId);
+    const unitValue = getServiceDefaultValue(selectedService);
+
+    updateFormWithPricing({
+      service_id: serviceId,
+      unit_session_value: moneyFormValue(unitValue)
+    });
   }
 
   function submitPackage(event: React.FormEvent<HTMLFormElement>) {
@@ -366,14 +447,16 @@ export function PackagesManager({
               <SelectField
                 label="Serviço"
                 value={form.service_id}
-                onChange={(value) => setForm((current) => ({ ...current, service_id: value }))}
+                onChange={updateSelectedService}
                 options={services.map((service) => [service.id, service.name])}
                 required
               />
               <SelectField
-                label="Profissional responsável"
-                value={form.employee_id ?? ""}
-                onChange={(value) => setForm((current) => ({ ...current, employee_id: value }))}
+                label="Responsavel pela venda"
+                value={form.sale_responsible_id ?? ""}
+                onChange={(value) =>
+                  setForm((current) => ({ ...current, sale_responsible_id: value }))
+                }
                 options={employees.map((employee) => [employee.id, employee.name])}
               />
               <TextField
@@ -381,30 +464,31 @@ export function PackagesManager({
                 type="number"
                 value={form.contracted_sessions}
                 onChange={(value) =>
-                  setForm((current) => ({ ...current, contracted_sessions: value }))
+                  updateFormWithPricing({ contracted_sessions: value })
                 }
                 required
               />
               <TextField
-                label="Quantidade realizada"
+                label="Valor unitario"
                 type="number"
-                value={form.completed_sessions}
+                value={form.unit_session_value}
                 onChange={(value) =>
-                  setForm((current) => ({ ...current, completed_sessions: value }))
+                  updateFormWithPricing({ unit_session_value: value })
                 }
+                required
               />
               <TextField
-                label="Quantidade restante"
+                label="Desconto (%)"
                 type="number"
-                value={String(remainingSessions)}
-                onChange={() => undefined}
-                disabled
+                value={form.discount_percent}
+                onChange={(value) => updateFormWithPricing({ discount_percent: value })}
               />
               <TextField
                 label="Valor total"
                 type="number"
-                value={form.total_value}
-                onChange={(value) => setForm((current) => ({ ...current, total_value: value }))}
+                value={moneyFormValue(pricing.total)}
+                onChange={() => undefined}
+                disabled
               />
               <TextField
                 label="Data da compra"
@@ -651,6 +735,7 @@ function TextField({
       <input
         type={type}
         min={type === "number" ? "0" : undefined}
+        step={type === "number" ? "any" : undefined}
         required={required}
         disabled={disabled}
         value={value}
