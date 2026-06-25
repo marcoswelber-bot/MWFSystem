@@ -45,6 +45,7 @@ export type AppointmentOrigin =
   | "avaliacao"
   | "retorno"
   | "encaixe"
+  | "particular"
   | "experimental"
   | "reposicao_extra";
 
@@ -141,6 +142,7 @@ function normalizeAppointmentOrigin(value?: string): AppointmentOrigin {
     "avaliacao",
     "retorno",
     "encaixe",
+    "particular",
     "experimental",
     "reposicao_extra"
   ];

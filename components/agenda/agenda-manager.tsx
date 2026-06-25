@@ -120,6 +120,7 @@ const appointmentOriginOptions: Array<[AppointmentOrigin, string]> = [
   ["avaliacao", "Avaliação"],
   ["retorno", "Retorno"],
   ["encaixe", "Encaixe"],
+  ["particular", "Particular"],
   ["experimental", "Experimental"],
   ["reposicao_extra", "Reposição extra"]
 ];
@@ -334,6 +335,10 @@ function isPastDate(value: string) {
 
 function isSameOrFutureTime(value: string) {
   return value >= nowTimeValue();
+}
+
+function isTimeAfter(value?: string | null, other?: string | null) {
+  return compareTime(value, other) > 0;
 }
 
 function timeSlotOptions() {
@@ -845,24 +850,26 @@ export function AgendaManager({
         appointmentForm.end_time,
         scopedBlocks,
         appointmentForm.employee_id
-      )
+      ) ||
+      (!!appointmentForm.end_time &&
+        !isTimeAfter(appointmentForm.end_time, appointmentForm.start_time))
     ) {
       setMessage({ ok: false, message: "Data bloqueada para agendamento" });
       return;
     }
 
+    const appointmentType = appointmentForm.appointment_type ?? "avulso";
+    const appointmentPayload = {
+      ...appointmentForm,
+      appointment_origin: appointmentType,
+      patient_id: patientIds[0] ?? "",
+      patient_ids: patientIds
+    };
+
     startTransition(async () => {
       const result = editingAppointment
-        ? await updateAppointment(editingAppointment.id, {
-            ...appointmentForm,
-            patient_id: patientIds[0] ?? "",
-            patient_ids: patientIds
-          })
-        : await createAppointment({
-            ...appointmentForm,
-            patient_id: patientIds[0] ?? "",
-            patient_ids: patientIds
-          });
+        ? await updateAppointment(editingAppointment.id, appointmentPayload)
+        : await createAppointment(appointmentPayload);
 
       setMessage(
         getAppointmentMessage(result, editingAppointment ? "update" : "create")
@@ -1968,8 +1975,8 @@ function AppointmentFormModal({
   onClose: () => void;
 }) {
   const selectedPatients = form.patient_ids ?? [];
-  const isPackageAppointment =
-    form.appointment_type === "pacote" || form.appointment_origin === "pacote";
+  const appointmentType = form.appointment_type ?? "avulso";
+  const isPackageAppointment = appointmentType === "pacote";
   const availablePatientPackages = patientPackages.filter(
     (patientPackage) =>
       patientPackage.clinic_id === form.clinic_id &&
@@ -1982,10 +1989,9 @@ function AppointmentFormModal({
     (patientPackage) => patientPackage.id === form.patient_package_id
   );
   const isReplacement =
-    form.appointment_type === "reposicao" ||
-    form.appointment_type === "reposicao_extra" ||
-    form.appointment_origin === "reposicao" ||
-    form.appointment_origin === "reposicao_extra";
+    appointmentType === "reposicao" || appointmentType === "reposicao_extra";
+  const shouldShowOriginalAppointment =
+    appointmentType === "reposicao" || appointmentType === "retorno";
   const dateBlocked =
     !form.appointment_date ||
     isPastDate(form.appointment_date) ||
@@ -2007,6 +2013,27 @@ function AppointmentFormModal({
       form.employee_id
     );
   });
+  const endTimeOptions = timeSlotOptions().filter(([time]) => {
+    if (dateBlocked || !form.start_time) {
+      return false;
+    }
+
+    if (form.appointment_date === today() && !isSameOrFutureTime(time)) {
+      return false;
+    }
+
+    if (!isTimeAfter(time, form.start_time)) {
+      return false;
+    }
+
+    return !isTimeBlocked(
+      form.appointment_date,
+      form.start_time,
+      time,
+      blocks,
+      form.employee_id
+    );
+  });
   const selectedTimeBlocked =
     !!form.appointment_date &&
     !!form.start_time &&
@@ -2017,7 +2044,17 @@ function AppointmentFormModal({
       blocks,
       form.employee_id
     );
-  const schedulingBlocked = dateBlocked || selectedTimeBlocked;
+  const selectedEndTimeBlocked =
+    !!form.end_time &&
+    (!isTimeAfter(form.end_time, form.start_time) ||
+      isTimeBlocked(
+        form.appointment_date,
+        form.start_time,
+        form.end_time,
+        blocks,
+        form.employee_id
+      ));
+  const schedulingBlocked = dateBlocked || selectedTimeBlocked || selectedEndTimeBlocked;
 
   return (
     <ModalShell
@@ -2055,62 +2092,42 @@ function AppointmentFormModal({
             onChange={(value) =>
               setForm((current) => {
                 const appointmentType = value as AppointmentType;
-                const replacement =
-                  appointmentType === "reposicao" ||
-                  appointmentType === "reposicao_extra";
+                const keepOriginal =
+                  appointmentType === "reposicao" || appointmentType === "retorno";
                 return {
                   ...current,
                   appointment_type: appointmentType,
+                  appointment_origin: appointmentType,
+                  original_appointment_id: keepOriginal
+                    ? current.original_appointment_id
+                    : "",
                   patient_package_id:
-                    appointmentType === "pacote" ? current.patient_package_id : "",
-                  appointment_origin: replacement
-                    ? appointmentType
-                    : current.appointment_origin ?? "avulso"
+                    appointmentType === "pacote" ? current.patient_package_id : ""
                 };
               })
             }
             options={appointmentTypeOptions}
           />
-          <SelectField
-            label="Origem do atendimento"
-            value={form.appointment_origin ?? "avulso"}
-            onChange={(value) =>
-              setForm((current) => {
-                const appointmentOrigin = value as AppointmentOrigin;
-                const replacement =
-                  appointmentOrigin === "reposicao" ||
-                  appointmentOrigin === "reposicao_extra";
-                return {
-                  ...current,
-                  appointment_origin: appointmentOrigin,
-                  patient_package_id:
-                    appointmentOrigin === "pacote" ? current.patient_package_id : "",
-                  appointment_type: replacement
-                    ? appointmentOrigin
-                    : current.appointment_type ?? "avulso"
-                };
-              })
-            }
-            options={appointmentOriginOptions}
-          />
-          <SelectField
-            label="Atendimento original"
-            value={form.original_appointment_id ?? ""}
-            onChange={(value) =>
-              setForm((current) => ({ ...current, original_appointment_id: value }))
-            }
-            options={appointments
-              .filter((appointment) => appointment.id !== editingAppointment?.id)
-              .map((appointment) => [
-                appointment.id,
-                `${appointment.patient_name} - ${appointment.appointment_date} ${formatTime(appointment.start_time)}`
-              ])}
-            placeholder={
-              isReplacement
-                ? "Selecione a falta original"
-                : "Opcional para vínculo futuro"
-            }
-          />
+          {shouldShowOriginalAppointment ? (
+            <SelectField
+              label="Atendimento original"
+              value={form.original_appointment_id ?? ""}
+              onChange={(value) =>
+                setForm((current) => ({ ...current, original_appointment_id: value }))
+              }
+              options={appointments
+                .filter((appointment) => appointment.id !== editingAppointment?.id)
+                .map((appointment) => [
+                  appointment.id,
+                  `${appointment.patient_name} - ${appointment.appointment_date} ${formatTime(appointment.start_time)}`
+                ])}
+              placeholder={
+                isReplacement
+                  ? "Selecione a falta original"
+                  : "Selecione o atendimento original"
+              }
+            />
+          ) : null}
           {selectedService?.is_group ? (
             <MultiSelectField
               label="Pacientes do grupo"
@@ -2208,7 +2225,9 @@ function AppointmentFormModal({
           <SelectField
             label="Horário inicial"
             value={form.start_time}
-            onChange={(value) => setForm((current) => ({ ...current, start_time: value }))}
+            onChange={(value) =>
+              setForm((current) => ({ ...current, start_time: value, end_time: "" }))
+            }
             options={startTimeOptions}
             placeholder={
               dateBlocked
@@ -2218,11 +2237,15 @@ function AppointmentFormModal({
             disabled={dateBlocked || startTimeOptions.length === 0}
             required
           />
-          <TextField
+          <SelectField
             label="Horário final"
-            type="time"
             value={form.end_time ?? ""}
             onChange={(value) => setForm((current) => ({ ...current, end_time: value }))}
+            options={endTimeOptions}
+            placeholder={
+              form.start_time ? "Selecione um horario" : "Selecione o horario inicial"
+            }
+            disabled={dateBlocked || !form.start_time || endTimeOptions.length === 0}
           />
           <TextField
             label="Quantidade contratada"
