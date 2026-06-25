@@ -75,6 +75,25 @@ const paymentMethodOptions: Array<[PaymentMethod, string]> = [
   ["parcelado", "Parcelado"]
 ];
 
+const expenseCategoryOptions = [
+  "ADM / Funcionarios",
+  "Comissoes",
+  "Aluguel",
+  "Energia",
+  "Agua",
+  "Internet / Telefone",
+  "Sistema / Software",
+  "Material de escritorio",
+  "Material clinico",
+  "Limpeza",
+  "Manutencao",
+  "Impostos / Taxas",
+  "Salarios",
+  "Terceirizados",
+  "Marketing",
+  "Outros"
+].map((category) => [category, category] as [string, string]);
+
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -233,7 +252,8 @@ export function FinanceManager({
       transaction_type: type,
       clinic_id: currentClinicId ?? "",
       origin: type === "receita" ? "manual" : undefined,
-      payment_method: type === "receita" ? "pix" : undefined
+      payment_method: type === "receita" ? "pix" : undefined,
+      payment_date: type === "receita" ? today() : ""
     });
     setMessage(null);
     setFormOpen(true);
@@ -563,6 +583,7 @@ function FinanceFormModal({
   onClose: () => void;
 }) {
   const isRevenue = form.transaction_type === "receita";
+  const isManualRevenue = isRevenue && form.origin === "manual";
   const amount = numberFromForm(form.amount);
 
   return (
@@ -621,7 +642,15 @@ function FinanceFormModal({
                   label="Origem"
                   value={form.origin ?? "manual"}
                   onChange={(value) =>
-                    setForm((current) => ({ ...current, origin: value as FinancialOrigin }))
+                    setForm((current) => ({
+                      ...current,
+                      origin: value as FinancialOrigin,
+                      due_date: value === "manual" ? "" : current.due_date || today(),
+                      payment_date:
+                        value === "manual"
+                          ? current.payment_date || today()
+                          : current.payment_date
+                    }))
                   }
                   options={originOptions}
                   required
@@ -648,12 +677,13 @@ function FinanceFormModal({
               </>
             ) : (
               <>
-                <TextField
+                <SelectField
                   label="Categoria"
                   value={form.category ?? ""}
                   onChange={(value) =>
                     setForm((current) => ({ ...current, category: value }))
                   }
+                  options={expenseCategoryOptions}
                   required
                 />
                 <TextField
@@ -674,20 +704,25 @@ function FinanceFormModal({
               onChange={(value) => setForm((current) => ({ ...current, amount: value }))}
               required
             />
+            {!isManualRevenue ? (
+              <TextField
+                label="Data de vencimento"
+                type="date"
+                value={form.due_date}
+                onChange={(value) =>
+                  setForm((current) => ({ ...current, due_date: value }))
+                }
+                required
+              />
+            ) : null}
             <TextField
-              label="Data de vencimento"
-              type="date"
-              value={form.due_date}
-              onChange={(value) => setForm((current) => ({ ...current, due_date: value }))}
-              required
-            />
-            <TextField
-              label="Data de pagamento"
+              label="Data de recebimento/pagamento"
               type="date"
               value={form.payment_date ?? ""}
               onChange={(value) =>
                 setForm((current) => ({ ...current, payment_date: value }))
               }
+              required={isManualRevenue}
             />
           </div>
           <TextAreaField

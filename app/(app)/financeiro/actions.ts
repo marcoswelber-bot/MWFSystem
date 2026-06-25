@@ -59,6 +59,10 @@ function cleanMoney(value?: string) {
   return Number.isFinite(parsedValue) ? parsedValue : 0;
 }
 
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 async function resolveClinicId(inputClinicId?: string): Promise<string> {
   const clinicScope = await getCurrentClinicScope();
 
@@ -83,10 +87,11 @@ function getFinancialPayload(
   input: FinancialTransactionFormInput
 ): FinancialTransactionInsert {
   assertRequired(input.amount, "Informe o valor.");
-  assertRequired(input.due_date, "Informe a data de vencimento.");
 
   const transactionType = input.transaction_type;
   const amount = cleanMoney(input.amount);
+  const isManualRevenue =
+    transactionType === "receita" && input.origin === "manual";
 
   if (transactionType !== "receita" && transactionType !== "despesa") {
     throw new Error("Tipo financeiro invalido.");
@@ -100,10 +105,20 @@ function getFinancialPayload(
     assertRequired(input.origin, "Selecione a origem da receita.");
   }
 
+  if (isManualRevenue) {
+    assertRequired(input.payment_date, "Informe a data de recebimento/pagamento.");
+  } else {
+    assertRequired(input.due_date, "Informe a data de vencimento.");
+  }
+
   if (transactionType === "despesa") {
     assertRequired(input.category, "Informe a categoria da despesa.");
     assertRequired(input.description, "Informe a descricao da despesa.");
   }
+
+  const dueDate = isManualRevenue
+    ? cleanOptionalValue(input.payment_date) ?? today()
+    : input.due_date;
 
   return {
     clinic_id: "",
@@ -118,7 +133,7 @@ function getFinancialPayload(
     amount,
     payment_method:
       transactionType === "receita" ? input.payment_method ?? "pix" : null,
-    due_date: input.due_date,
+    due_date: dueDate,
     payment_date: cleanOptionalValue(input.payment_date),
     status: input.status ?? "pendente",
     notes: cleanOptionalValue(input.notes),
