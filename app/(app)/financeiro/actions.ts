@@ -21,6 +21,7 @@ export type FinancialTransactionFormInput = {
   clinic_id?: string;
   transaction_type: FinancialTransactionType;
   patient_id?: string;
+  employee_id?: string;
   service_id?: string;
   origin?: FinancialOrigin;
   category?: string;
@@ -29,6 +30,10 @@ export type FinancialTransactionFormInput = {
   payment_method?: PaymentMethod;
   due_date: string;
   payment_date?: string;
+  appointment_date?: string;
+  base_amount?: string;
+  commission_type?: string;
+  commission_rule_id?: string;
   status?: FinancialStatus;
   notes?: string;
 };
@@ -125,8 +130,11 @@ function getFinancialPayload(
     transaction_type: transactionType,
     patient_id:
       transactionType === "receita" ? cleanOptionalValue(input.patient_id) : null,
+    employee_id: cleanOptionalValue(input.employee_id),
     service_id:
-      transactionType === "receita" ? cleanOptionalValue(input.service_id) : null,
+      transactionType === "receita" || input.category === "Comissões"
+        ? cleanOptionalValue(input.service_id)
+        : null,
     origin: transactionType === "receita" ? input.origin ?? "manual" : null,
     category: transactionType === "despesa" ? cleanOptionalValue(input.category) : null,
     description: cleanOptionalValue(input.description),
@@ -135,6 +143,10 @@ function getFinancialPayload(
       transactionType === "receita" ? input.payment_method ?? "pix" : null,
     due_date: dueDate,
     payment_date: cleanOptionalValue(input.payment_date),
+    appointment_date: cleanOptionalValue(input.appointment_date),
+    base_amount: input.base_amount ? cleanMoney(input.base_amount) : null,
+    commission_type: cleanOptionalValue(input.commission_type),
+    commission_rule_id: cleanOptionalValue(input.commission_rule_id),
     status: input.status ?? "pendente",
     notes: cleanOptionalValue(input.notes),
     future_agenda_source_id: null,

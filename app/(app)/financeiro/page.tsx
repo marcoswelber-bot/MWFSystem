@@ -12,10 +12,12 @@ type FinancialTransaction =
 type Clinic = Database["public"]["Tables"]["clinics"]["Row"];
 type Patient = Database["public"]["Tables"]["patients"]["Row"];
 type Service = Database["public"]["Tables"]["services"]["Row"];
+type Employee = Database["public"]["Tables"]["employees"]["Row"];
 
 type HydratedFinancialTransaction = FinancialTransaction & {
   clinic_name: string;
   patient_name: string;
+  employee_name: string;
   service_name: string;
   derived_status: FinancialStatus;
 };
@@ -52,6 +54,10 @@ async function readSupabaseList<T>(
 }
 
 function getDerivedStatus(item: FinancialTransaction): FinancialStatus {
+  if (item.commission_status === "generated" && item.status === "pendente") {
+    return "pendente";
+  }
+
   if (item.status === "pendente" && item.due_date < new Date().toISOString().slice(0, 10)) {
     return "vencido";
   }
@@ -67,6 +73,7 @@ export default async function FinanceiroPage() {
   let clinics: Clinic[] = [];
   let patients: Patient[] = [];
   let services: Service[] = [];
+  let employees: Employee[] = [];
   let loadError: string | undefined;
 
   if (!clinicScope.isAdmMaster && !clinicScope.clinicId) {
@@ -95,7 +102,11 @@ export default async function FinanceiroPage() {
         ? supabase.from("services").select("*").eq("clinic_id", clinicFilter)
         : supabase.from("services").select("*");
 
-      const [transactionsResult, clinicsResult, patientsResult, servicesResult] =
+      const employeesQuery = clinicFilter
+        ? supabase.from("employees").select("*").eq("clinic_id", clinicFilter)
+        : supabase.from("employees").select("*");
+
+      const [transactionsResult, clinicsResult, patientsResult, servicesResult, employeesResult] =
         await Promise.all([
           readSupabaseList<FinancialTransaction>(
             "financial_transactions",
@@ -112,6 +123,10 @@ export default async function FinanceiroPage() {
           readSupabaseList<Service>(
             "services",
             servicesQuery.order("name", { ascending: true })
+          ),
+          readSupabaseList<Employee>(
+            "employees",
+            employeesQuery.order("name", { ascending: true })
           )
         ]);
 
@@ -119,12 +134,14 @@ export default async function FinanceiroPage() {
       clinics = clinicsResult.data;
       patients = patientsResult.data;
       services = servicesResult.data;
+      employees = employeesResult.data;
 
       [
         transactionsResult.error,
         clinicsResult.error,
         patientsResult.error,
-        servicesResult.error
+        servicesResult.error,
+        employeesResult.error
       ].forEach((error) => {
         if (error) {
           loadError = appendLoadError(loadError, error);
@@ -140,6 +157,9 @@ export default async function FinanceiroPage() {
     patients.map((patient) => [patient.id, patient.full_name])
   );
   const servicesById = new Map(services.map((service) => [service.id, service.name]));
+  const employeesById = new Map(
+    employees.map((employee) => [employee.id, employee.name])
+  );
 
   const hydratedTransactions: HydratedFinancialTransaction[] = transactions.map(
     (item) => ({
@@ -147,6 +167,9 @@ export default async function FinanceiroPage() {
       clinic_name: clinicsById.get(item.clinic_id) ?? "Clinica nao encontrada",
       patient_name: item.patient_id
         ? patientsById.get(item.patient_id) ?? "Paciente nao encontrado"
+        : "-",
+      employee_name: item.employee_id
+        ? employeesById.get(item.employee_id) ?? "Funcionario nao encontrado"
         : "-",
       service_name: item.service_id
         ? servicesById.get(item.service_id) ?? "Servico nao encontrado"

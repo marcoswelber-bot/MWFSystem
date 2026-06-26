@@ -36,6 +36,7 @@ type FinancialTransaction =
   Database["public"]["Tables"]["financial_transactions"]["Row"] & {
     clinic_name: string;
     patient_name: string;
+    employee_name: string;
     service_name: string;
     derived_status: FinancialStatus;
   };
@@ -53,6 +54,13 @@ type FinanceManagerProps = {
   loadError?: string;
   permissions?: PermissionSet;
 };
+
+type FinanceTab =
+  | "receitas"
+  | "despesas"
+  | "comissoes"
+  | "pacientes"
+  | "fluxo";
 
 const statusOptions: Array<[FinancialStatus, string]> = [
   ["pendente", "Pendente"],
@@ -114,6 +122,7 @@ const emptyForm: FinancialTransactionFormInput = {
   clinic_id: "",
   transaction_type: "receita",
   patient_id: "",
+  employee_id: "",
   service_id: "",
   origin: "manual",
   category: "",
@@ -122,6 +131,10 @@ const emptyForm: FinancialTransactionFormInput = {
   payment_method: "pix",
   due_date: today(),
   payment_date: "",
+  appointment_date: "",
+  base_amount: "",
+  commission_type: "",
+  commission_rule_id: "",
   status: "pendente",
   notes: ""
 };
@@ -133,6 +146,7 @@ function transactionToForm(
     clinic_id: item.clinic_id,
     transaction_type: item.transaction_type as FinancialTransactionType,
     patient_id: item.patient_id ?? "",
+    employee_id: item.employee_id ?? "",
     service_id: item.service_id ?? "",
     origin: (item.origin as FinancialOrigin | null) ?? "manual",
     category: item.category ?? "",
@@ -141,6 +155,10 @@ function transactionToForm(
     payment_method: (item.payment_method as PaymentMethod | null) ?? "pix",
     due_date: item.due_date,
     payment_date: item.payment_date ?? "",
+    appointment_date: item.appointment_date ?? "",
+    base_amount: item.base_amount === null ? "" : String(item.base_amount),
+    commission_type: item.commission_type ?? "",
+    commission_rule_id: item.commission_rule_id ?? "",
     status: item.status as FinancialStatus,
     notes: item.notes ?? ""
   };
@@ -205,6 +223,7 @@ export function FinanceManager({
     React.useState<FinancialTransactionType | "all">("all");
   const [periodStart, setPeriodStart] = React.useState(monthStart());
   const [periodEnd, setPeriodEnd] = React.useState(monthEnd());
+  const [activeTab, setActiveTab] = React.useState<FinanceTab>("receitas");
 
   const canCreate = permissions?.create ?? true;
   const canEdit = permissions?.edit ?? true;
@@ -240,6 +259,78 @@ export function FinanceManager({
     { revenue: 0, expense: 0, receivable: 0, paid: 0, overdue: 0 }
   );
   const balance = totals.revenue - totals.expense;
+  const revenues = filteredTransactions.filter(
+    (item) => item.transaction_type === "receita"
+  );
+  const commissionsPayable = filteredTransactions.filter(
+    (item) =>
+      item.transaction_type === "despesa" &&
+      (item.category === "Comissões" || item.category === "Comissoes") &&
+      item.commission_status === "generated"
+  );
+  const expenses = filteredTransactions.filter(
+    (item) =>
+      item.transaction_type === "despesa" &&
+      !commissionsPayable.some((commission) => commission.id === item.id)
+  );
+  const openPatientRows = revenues.filter((item) =>
+    ["pendente", "vencido"].includes(item.derived_status)
+  );
+  const cashFlowTotals = filteredTransactions.reduce(
+    (accumulator, item) => {
+      const amount = Number(item.amount ?? 0);
+      const isCancelled = item.derived_status === "cancelado";
+      const isCommission = commissionsPayable.some(
+        (commission) => commission.id === item.id
+      );
+
+      if (item.transaction_type === "receita" && !isCancelled) {
+        accumulator.revenue += amount;
+      }
+
+      if (item.transaction_type === "despesa" && !isCancelled && !isCommission) {
+        accumulator.expense += amount;
+      }
+
+      if (isCommission && item.derived_status === "pendente") {
+        accumulator.pendingCommission += amount;
+      }
+
+      if (item.status === "pago" && item.transaction_type === "receita") {
+        accumulator.realized += amount;
+      }
+
+      if (item.status === "pago" && item.transaction_type === "despesa") {
+        accumulator.realized -= amount;
+      }
+
+      return accumulator;
+    },
+    { revenue: 0, expense: 0, pendingCommission: 0, realized: 0 }
+  );
+  const predictedBalance =
+    cashFlowTotals.revenue -
+    cashFlowTotals.expense -
+    cashFlowTotals.pendingCommission;
+  const tabOptions: Array<[FinanceTab, string]> = [
+    ["receitas", "Receitas"],
+    ["despesas", "Despesas"],
+    ["comissoes", "Comissões a pagar"],
+    ["pacientes", "Pacientes em aberto"],
+    ["fluxo", "Fluxo de caixa"]
+  ];
+  const activeRows =
+    activeTab === "receitas"
+      ? revenues
+      : activeTab === "despesas"
+        ? expenses
+        : activeTab === "comissoes"
+          ? commissionsPayable
+          : activeTab === "pacientes"
+            ? openPatientRows
+            : filteredTransactions;
+  const activeTabTitle =
+    tabOptions.find(([value]) => value === activeTab)?.[1] ?? "Financeiro";
 
   function refresh() {
     router.refresh();
@@ -397,99 +488,140 @@ export function FinanceManager({
         </div>
       </Card>
 
-      <Card className="overflow-hidden border-none shadow-[0_18px_55px_rgba(15,23,42,0.08)] dark:shadow-none">
-        <div className="border-b p-4">
-          <h2 className="text-xl font-semibold tracking-normal">Movimentações</h2>
-          <p className="text-sm text-muted-foreground">
-            Receitas e despesas lançadas manualmente, prontas para integração futura.
-          </p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-left text-sm">
-            <thead className="bg-muted/60 text-xs uppercase text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3">Tipo</th>
-                <th className="px-4 py-3">Descrição</th>
-                <th className="px-4 py-3">Paciente</th>
-                <th className="px-4 py-3">Serviço</th>
-                <th className="px-4 py-3">Valor</th>
-                <th className="px-4 py-3">Vencimento</th>
-                <th className="px-4 py-3">Pagamento</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredTransactions.length > 0 ? (
-                filteredTransactions.map((item) => (
-                  <tr key={item.id} className="border-t">
-                    <td className="px-4 py-3 font-medium">{typeLabel(item.transaction_type)}</td>
-                    <td className="px-4 py-3">
-                      {item.transaction_type === "receita"
-                        ? originOptions.find(([value]) => value === item.origin)?.[1] ?? "Manual"
-                        : item.description ?? item.category ?? "-"}
-                    </td>
-                    <td className="px-4 py-3">{item.patient_name}</td>
-                    <td className="px-4 py-3">{item.service_name}</td>
-                    <td className="px-4 py-3 font-semibold">{money(Number(item.amount))}</td>
-                    <td className="px-4 py-3">{item.due_date}</td>
-                    <td className="px-4 py-3">{item.payment_date ?? "-"}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={cn(
-                          "rounded-md px-2 py-1 text-xs font-semibold",
-                          statusClass(item.derived_status)
-                        )}
-                      >
-                        {statusLabel(item.derived_status)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-1">
-                        {canEdit ? (
-                          <>
-                            <IconButton
-                              label="Editar"
-                              onClick={() => openEditForm(item)}
-                              icon={Edit3}
-                            />
-                            <IconButton
-                              label="Marcar como pago"
-                              onClick={() => markAsPaid(item)}
-                              icon={CheckCircle2}
-                              disabled={isPending || item.derived_status === "pago"}
-                            />
-                            <IconButton
-                              label="Cancelar"
-                              onClick={() => cancelTransaction(item)}
-                              icon={XCircle}
-                              disabled={isPending || item.derived_status === "cancelado"}
-                            />
-                          </>
-                        ) : null}
-                        {canDelete ? (
-                          <IconButton
-                            label="Excluir"
-                            onClick={() => removeTransaction(item)}
-                            icon={Trash2}
-                            danger
-                          />
-                        ) : null}
-                      </div>
+      <div className="flex flex-wrap gap-2 rounded-md border bg-muted/40 p-1">
+        {tabOptions.map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setActiveTab(value)}
+            className={cn(
+              "h-10 rounded-md px-3 text-sm font-semibold transition-colors",
+              activeTab === value
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:bg-background hover:text-foreground"
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "fluxo" ? (
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <MetricCard label="Total de receitas" value={money(cashFlowTotals.revenue)} icon={ArrowUpRight} />
+          <MetricCard label="Total de despesas" value={money(cashFlowTotals.expense)} icon={ArrowDownRight} />
+          <MetricCard label="Comissões pendentes" value={money(cashFlowTotals.pendingCommission)} icon={XCircle} />
+          <MetricCard label="Saldo previsto" value={money(predictedBalance)} icon={CircleDollarSign} />
+          <MetricCard label="Saldo realizado" value={money(cashFlowTotals.realized)} icon={CheckCircle2} />
+        </section>
+      ) : (
+        <Card className="overflow-hidden border-none shadow-[0_18px_55px_rgba(15,23,42,0.08)] dark:shadow-none">
+          <div className="border-b p-4">
+            <h2 className="text-xl font-semibold tracking-normal">{activeTabTitle}</h2>
+            <p className="text-sm text-muted-foreground">
+              Controle operacional financeiro por clínica, período e status.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[980px] text-left text-sm">
+              <thead className="bg-muted/60 text-xs uppercase text-muted-foreground">
+                {activeTab === "comissoes" ? (
+                  <tr>
+                    <th className="px-4 py-3">Clínica</th>
+                    <th className="px-4 py-3">Funcionário</th>
+                    <th className="px-4 py-3">Paciente</th>
+                    <th className="px-4 py-3">Serviço</th>
+                    <th className="px-4 py-3">Atendimento</th>
+                    <th className="px-4 py-3">Data</th>
+                    <th className="px-4 py-3">Valor base</th>
+                    <th className="px-4 py-3">Tipo</th>
+                    <th className="px-4 py-3">Comissão</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3 text-right">Ações</th>
+                  </tr>
+                ) : activeTab === "pacientes" ? (
+                  <tr>
+                    <th className="px-4 py-3">Paciente</th>
+                    <th className="px-4 py-3">Valor em aberto</th>
+                    <th className="px-4 py-3">Origem</th>
+                    <th className="px-4 py-3">Vencimento</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Clínica</th>
+                    <th className="px-4 py-3 text-right">Ações</th>
+                  </tr>
+                ) : (
+                  <tr>
+                    <th className="px-4 py-3">Tipo</th>
+                    <th className="px-4 py-3">Descrição</th>
+                    <th className="px-4 py-3">Paciente</th>
+                    <th className="px-4 py-3">Serviço</th>
+                    <th className="px-4 py-3">Valor</th>
+                    <th className="px-4 py-3">Vencimento</th>
+                    <th className="px-4 py-3">Pagamento</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3 text-right">Ações</th>
+                  </tr>
+                )}
+              </thead>
+              <tbody>
+                {activeRows.length > 0 ? (
+                  activeRows.map((item) => (
+                    <tr key={item.id} className="border-t">
+                      {activeTab === "comissoes" ? (
+                        <>
+                          <td className="px-4 py-3">{item.clinic_name}</td>
+                          <td className="px-4 py-3">{item.employee_name}</td>
+                          <td className="px-4 py-3">{item.patient_name}</td>
+                          <td className="px-4 py-3">{item.service_name}</td>
+                          <td className="px-4 py-3">{item.future_agenda_source_id ?? "-"}</td>
+                          <td className="px-4 py-3">{item.appointment_date ?? item.due_date}</td>
+                          <td className="px-4 py-3">{money(Number(item.base_amount ?? 0))}</td>
+                          <td className="px-4 py-3">{item.commission_type === "valor_fixo" ? "Valor fixo" : "Percentual"}</td>
+                          <td className="px-4 py-3 font-semibold">{money(Number(item.amount))}</td>
+                          <StatusCell status={item.derived_status} />
+                          <ActionCell item={item} canEdit={canEdit} canDelete={canDelete} isPending={isPending} onEdit={openEditForm} onPaid={markAsPaid} onCancel={cancelTransaction} onDelete={removeTransaction} />
+                        </>
+                      ) : activeTab === "pacientes" ? (
+                        <>
+                          <td className="px-4 py-3">{item.patient_name}</td>
+                          <td className="px-4 py-3 font-semibold">{money(Number(item.amount))}</td>
+                          <td className="px-4 py-3">{originOptions.find(([value]) => value === item.origin)?.[1] ?? "Manual"}</td>
+                          <td className="px-4 py-3">{item.due_date}</td>
+                          <StatusCell status={item.derived_status} />
+                          <td className="px-4 py-3">{item.clinic_name}</td>
+                          <ActionCell item={item} canEdit={canEdit} canDelete={canDelete} isPending={isPending} onEdit={openEditForm} onPaid={markAsPaid} onCancel={cancelTransaction} onDelete={removeTransaction} />
+                        </>
+                      ) : (
+                        <>
+                          <td className="px-4 py-3 font-medium">{typeLabel(item.transaction_type)}</td>
+                          <td className="px-4 py-3">
+                            {item.transaction_type === "receita"
+                              ? originOptions.find(([value]) => value === item.origin)?.[1] ?? "Manual"
+                              : item.description ?? item.category ?? "-"}
+                          </td>
+                          <td className="px-4 py-3">{item.patient_name}</td>
+                          <td className="px-4 py-3">{item.service_name}</td>
+                          <td className="px-4 py-3 font-semibold">{money(Number(item.amount))}</td>
+                          <td className="px-4 py-3">{item.due_date}</td>
+                          <td className="px-4 py-3">{item.payment_date ?? "-"}</td>
+                          <StatusCell status={item.derived_status} />
+                          <ActionCell item={item} canEdit={canEdit} canDelete={canDelete} isPending={isPending} onEdit={openEditForm} onPaid={markAsPaid} onCancel={cancelTransaction} onDelete={removeTransaction} />
+                        </>
+                      )}
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td className="px-4 py-8 text-center text-muted-foreground" colSpan={activeTab === "comissoes" ? 11 : activeTab === "pacientes" ? 7 : 9}>
+                      Nenhum registro encontrado.
                     </td>
                   </tr>
-                ))
-              ) : (
-                <tr>
-                  <td className="px-4 py-8 text-center text-muted-foreground" colSpan={9}>
-                    Nenhuma movimentação encontrada.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
       {formOpen ? (
         <FinanceFormModal
@@ -530,6 +662,63 @@ function SystemMessage({
         <X className="h-4 w-4" />
       </button>
     </div>
+  );
+}
+
+function StatusCell({ status }: { status: FinancialStatus }) {
+  return (
+    <td className="px-4 py-3">
+      <span className={cn("rounded-md px-2 py-1 text-xs font-semibold", statusClass(status))}>
+        {statusLabel(status)}
+      </span>
+    </td>
+  );
+}
+
+function ActionCell({
+  item,
+  canEdit,
+  canDelete,
+  isPending,
+  onEdit,
+  onPaid,
+  onCancel,
+  onDelete
+}: {
+  item: FinancialTransaction;
+  canEdit: boolean;
+  canDelete: boolean;
+  isPending: boolean;
+  onEdit: (item: FinancialTransaction) => void;
+  onPaid: (item: FinancialTransaction) => void;
+  onCancel: (item: FinancialTransaction) => void;
+  onDelete: (item: FinancialTransaction) => void;
+}) {
+  return (
+    <td className="px-4 py-3">
+      <div className="flex justify-end gap-1">
+        {canEdit ? (
+          <>
+            <IconButton label="Editar" onClick={() => onEdit(item)} icon={Edit3} />
+            <IconButton
+              label="Marcar como pago"
+              onClick={() => onPaid(item)}
+              icon={CheckCircle2}
+              disabled={isPending || item.derived_status === "pago"}
+            />
+            <IconButton
+              label="Cancelar"
+              onClick={() => onCancel(item)}
+              icon={XCircle}
+              disabled={isPending || item.derived_status === "cancelado"}
+            />
+          </>
+        ) : null}
+        {canDelete ? (
+          <IconButton label="Excluir" onClick={() => onDelete(item)} icon={Trash2} danger />
+        ) : null}
+      </div>
+    </td>
   );
 }
 

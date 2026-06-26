@@ -519,6 +519,116 @@ function calculateCommissionAmount(rule: ProfessionalCommission, baseValue: numb
   return (baseValue * Number(rule.commission_value ?? 0)) / 100;
 }
 
+function calculateCommissionValue(
+  commissionType: string | null | undefined,
+  commissionValue: number | null | undefined,
+  baseValue: number
+) {
+  if (commissionType === "valor_fixo") {
+    return Number(commissionValue ?? 0);
+  }
+
+  return (baseValue * Number(commissionValue ?? 0)) / 100;
+}
+
+function isPackageAppointment(
+  appointment: Database["public"]["Tables"]["appointments"]["Row"]
+) {
+  return appointment.appointment_type === "pacote" || appointment.appointment_origin === "pacote";
+}
+
+function isSingleRevenueAppointment(
+  appointment: Database["public"]["Tables"]["appointments"]["Row"]
+) {
+  return appointment.appointment_type === "avulso" || appointment.appointment_origin === "avulso";
+}
+
+async function generateSingleRevenueFinancialTransaction(
+  appointmentId: string,
+  appointment: Database["public"]["Tables"]["appointments"]["Row"]
+) {
+  if (!appointment.is_billable || isPackageAppointment(appointment) || !isSingleRevenueAppointment(appointment)) {
+    return isPackageAppointment(appointment) ? "package_session" : "not_applicable";
+  }
+
+  const supabase = await createClient();
+  const { data: existingRevenue, error: existingRevenueError } = await supabase
+    .from("financial_transactions")
+    .select("id")
+    .eq("future_agenda_source_id", appointmentId)
+    .eq("transaction_type", "receita")
+    .eq("origin", "avulso")
+    .limit(1)
+    .maybeSingle();
+
+  if (existingRevenueError) {
+    throw existingRevenueError;
+  }
+
+  if (existingRevenue) {
+    return "generated";
+  }
+
+  const { data: service, error: serviceError } = await supabase
+    .from("services")
+    .select("name,price,default_price")
+    .eq("id", appointment.service_id)
+    .maybeSingle();
+
+  if (serviceError) {
+    throw serviceError;
+  }
+
+  const amount = Number(service?.default_price ?? service?.price ?? 0);
+
+  if (amount <= 0) {
+    return "missing_value";
+  }
+
+  const payload: FinancialTransactionInsert = {
+    clinic_id: appointment.clinic_id,
+    transaction_type: "receita",
+    patient_id: appointment.patient_id,
+    employee_id: appointment.employee_id,
+    service_id: appointment.service_id,
+    origin: "avulso",
+    category: null,
+    description: `Receita do atendimento avulso - ${service?.name ?? "Servico"} - ${appointment.appointment_date}`,
+    amount,
+    payment_method: null,
+    due_date: appointment.appointment_date,
+    payment_date: null,
+    appointment_date: appointment.appointment_date,
+    base_amount: amount,
+    commission_type: null,
+    commission_rule_id: null,
+    status: "pendente",
+    notes: `Gerado automaticamente pelo atendimento ${appointmentId}.`,
+    future_agenda_source_id: appointmentId,
+    future_package_source_id: null,
+    commission_status: "not_applicable",
+    whatsapp_status: "not_applicable",
+    report_visibility: "ready"
+  };
+
+  const { error: insertError } = await supabase
+    .from("financial_transactions")
+    .insert(payload);
+
+  if (insertError) {
+    if (
+      (insertError as { code?: string }).code === "23505" ||
+      getErrorMessage(insertError).includes("duplicate key")
+    ) {
+      return "generated";
+    }
+
+    throw insertError;
+  }
+
+  return "generated";
+}
+
 async function generateCommissionFinancialTransaction(
   appointmentId: string,
   appointment: Database["public"]["Tables"]["appointments"]["Row"]
@@ -557,7 +667,7 @@ async function generateCommissionFinancialTransaction(
   ] = await Promise.all([
     supabase
       .from("employees")
-      .select("name")
+      .select("name,commission_type,commission_value")
       .eq("id", appointment.employee_id)
       .maybeSingle(),
     supabase
@@ -594,10 +704,6 @@ async function generateCommissionFinancialTransaction(
     commissionRules?.find((rule) => rule.modality === modality) ??
     commissionRules?.[0];
 
-  if (!commissionRule) {
-    return "not_configured";
-  }
-
   let baseValue = Number(service?.default_price ?? service?.price ?? 0);
 
   if (appointment.patient_package_id) {
@@ -615,10 +721,14 @@ async function generateCommissionFinancialTransaction(
   }
 
   if (baseValue <= 0) {
-    baseValue = Number(commissionRule.base_price ?? 0);
+    baseValue = Number(commissionRule?.base_price ?? 0);
   }
 
-  const commissionAmount = calculateCommissionAmount(commissionRule, baseValue);
+  const commissionType = commissionRule?.commission_type ?? employee?.commission_type;
+  const commissionValue = commissionRule?.commission_value ?? employee?.commission_value;
+  const commissionAmount = commissionRule
+    ? calculateCommissionAmount(commissionRule, baseValue)
+    : calculateCommissionValue(commissionType, commissionValue, baseValue);
 
   if (commissionAmount <= 0) {
     return "not_configured";
@@ -636,6 +746,7 @@ async function generateCommissionFinancialTransaction(
     clinic_id: appointment.clinic_id,
     transaction_type: "despesa",
     patient_id: appointment.patient_id,
+    employee_id: appointment.employee_id,
     service_id: appointment.service_id,
     origin: null,
     category: "Comissões",
@@ -644,6 +755,10 @@ async function generateCommissionFinancialTransaction(
     payment_method: null,
     due_date: appointment.appointment_date,
     payment_date: null,
+    appointment_date: appointment.appointment_date,
+    base_amount: baseValue,
+    commission_type: commissionType ?? null,
+    commission_rule_id: commissionRule?.id ?? null,
     status: "pendente",
     notes: `Gerado automaticamente pelo atendimento ${appointmentId} realizado em ${appointment.appointment_date}.`,
     future_agenda_source_id: appointmentId,
@@ -677,7 +792,7 @@ async function completeAppointmentSideEffects(
 ) {
   const supabase = await createClient();
   let medicalRecordId = appointment.medical_record_id;
-  const financeIntegrationStatus = appointment.is_billable
+  let financeIntegrationStatus = appointment.is_billable
     ? "pending"
     : "not_billable";
   let packageSessionStatus = appointment.consumes_package_session
@@ -775,6 +890,13 @@ async function completeAppointmentSideEffects(
     appointmentId,
     appointment
   );
+
+  if (appointment.is_billable) {
+    financeIntegrationStatus = await generateSingleRevenueFinancialTransaction(
+      appointmentId,
+      appointment
+    );
+  }
 
   if (appointment.patient_package_id && appointment.package_session_status !== "consumed") {
     packageSessionStatus = await consumePatientPackageSession(appointment);

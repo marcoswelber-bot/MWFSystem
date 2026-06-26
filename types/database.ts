@@ -62,6 +62,7 @@ export type Database = {
           clinic_id: string;
           transaction_type: string;
           patient_id: string | null;
+          employee_id: string | null;
           service_id: string | null;
           origin: string | null;
           category: string | null;
@@ -70,6 +71,10 @@ export type Database = {
           payment_method: string | null;
           due_date: string;
           payment_date: string | null;
+          appointment_date: string | null;
+          base_amount: number | null;
+          commission_type: string | null;
+          commission_rule_id: string | null;
           status: string;
           notes: string | null;
           future_agenda_source_id: string | null;
@@ -85,6 +90,7 @@ export type Database = {
           clinic_id: string;
           transaction_type?: string;
           patient_id?: string | null;
+          employee_id?: string | null;
           service_id?: string | null;
           origin?: string | null;
           category?: string | null;
@@ -93,6 +99,10 @@ export type Database = {
           payment_method?: string | null;
           due_date?: string;
           payment_date?: string | null;
+          appointment_date?: string | null;
+          base_amount?: number | null;
+          commission_type?: string | null;
+          commission_rule_id?: string | null;
           status?: string;
           notes?: string | null;
           future_agenda_source_id?: string | null;
@@ -108,6 +118,7 @@ export type Database = {
           clinic_id?: string;
           transaction_type?: string;
           patient_id?: string | null;
+          employee_id?: string | null;
           service_id?: string | null;
           origin?: string | null;
           category?: string | null;
@@ -116,6 +127,10 @@ export type Database = {
           payment_method?: string | null;
           due_date?: string;
           payment_date?: string | null;
+          appointment_date?: string | null;
+          base_amount?: number | null;
+          commission_type?: string | null;
+          commission_rule_id?: string | null;
           status?: string;
           notes?: string | null;
           future_agenda_source_id?: string | null;
