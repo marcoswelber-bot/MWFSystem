@@ -77,7 +77,7 @@ const paymentMethodOptions: Array<[PaymentMethod, string]> = [
 
 const expenseCategoryOptions = [
   "ADM / Funcionarios",
-  "Comissoes",
+  "Comissões",
   "Aluguel",
   "Energia",
   "Agua",

@@ -11,6 +11,10 @@ type AppointmentInsert = Database["public"]["Tables"]["appointments"]["Insert"];
 type AppointmentUpdate = Database["public"]["Tables"]["appointments"]["Update"];
 type AppointmentParticipantInsert =
   Database["public"]["Tables"]["appointment_participants"]["Insert"];
+type FinancialTransactionInsert =
+  Database["public"]["Tables"]["financial_transactions"]["Insert"];
+type ProfessionalCommission =
+  Database["public"]["Tables"]["professional_service_commissions"]["Row"];
 type ScheduleBlockInsert =
   Database["public"]["Tables"]["schedule_blocks"]["Insert"];
 
@@ -507,6 +511,134 @@ async function syncAppointmentParticipants(
   }
 }
 
+function calculateCommissionAmount(rule: ProfessionalCommission, baseValue: number) {
+  if (rule.commission_type === "valor_fixo") {
+    return Number(rule.commission_value ?? 0);
+  }
+
+  return (baseValue * Number(rule.commission_value ?? 0)) / 100;
+}
+
+async function generateCommissionFinancialTransaction(
+  appointmentId: string,
+  appointment: Database["public"]["Tables"]["appointments"]["Row"]
+) {
+  const supabase = await createClient();
+  const { data: existingCommission, error: existingCommissionError } = await supabase
+    .from("financial_transactions")
+    .select("id")
+    .eq("future_agenda_source_id", appointmentId)
+    .eq("transaction_type", "despesa")
+    .in("category", ["Comissões", "Comissoes"])
+    .limit(1)
+    .maybeSingle();
+
+  if (existingCommissionError) {
+    throw existingCommissionError;
+  }
+
+  if (existingCommission) {
+    return "generated";
+  }
+
+  const { data: service, error: serviceError } = await supabase
+    .from("services")
+    .select("name,price,default_price,is_group")
+    .eq("id", appointment.service_id)
+    .maybeSingle();
+
+  if (serviceError) {
+    throw serviceError;
+  }
+
+  const modality = service?.is_group ? "grupo" : "individual";
+  const { data: commissionRules, error: commissionRuleError } = await supabase
+    .from("professional_service_commissions")
+    .select("*")
+    .eq("professional_id", appointment.employee_id)
+    .eq("service_id", appointment.service_id)
+    .eq("active", true);
+
+  if (commissionRuleError) {
+    throw commissionRuleError;
+  }
+
+  const commissionRule =
+    commissionRules?.find(
+      (rule) => rule.modality === modality && rule.attendance_type === "presencial"
+    ) ??
+    commissionRules?.find((rule) => rule.modality === modality) ??
+    commissionRules?.[0];
+
+  if (!commissionRule) {
+    return "not_configured";
+  }
+
+  let baseValue = Number(service?.default_price ?? service?.price ?? 0);
+
+  if (appointment.patient_package_id) {
+    const { data: patientPackage, error: patientPackageError } = await supabase
+      .from("patient_packages")
+      .select("unit_session_value")
+      .eq("id", appointment.patient_package_id)
+      .maybeSingle();
+
+    if (patientPackageError) {
+      throw patientPackageError;
+    }
+
+    baseValue = Number(patientPackage?.unit_session_value ?? baseValue);
+  }
+
+  if (baseValue <= 0) {
+    baseValue = Number(commissionRule.base_price ?? 0);
+  }
+
+  const commissionAmount = calculateCommissionAmount(commissionRule, baseValue);
+
+  if (commissionAmount <= 0) {
+    return "not_configured";
+  }
+
+  const payload: FinancialTransactionInsert = {
+    clinic_id: appointment.clinic_id,
+    transaction_type: "despesa",
+    patient_id: appointment.patient_id,
+    service_id: appointment.service_id,
+    origin: null,
+    category: "Comissões",
+    description: `Comissão a pagar - ${service?.name ?? "Serviço"} - ${appointment.appointment_date}`,
+    amount: commissionAmount,
+    payment_method: null,
+    due_date: appointment.appointment_date,
+    payment_date: null,
+    status: "pendente",
+    notes: `Gerado automaticamente pelo atendimento ${appointmentId}.`,
+    future_agenda_source_id: appointmentId,
+    future_package_source_id: null,
+    commission_status: "generated",
+    whatsapp_status: "not_applicable",
+    report_visibility: "ready"
+  };
+
+  const { error: insertError } = await supabase
+    .from("financial_transactions")
+    .insert(payload);
+
+  if (insertError) {
+    if (
+      (insertError as { code?: string }).code === "23505" ||
+      getErrorMessage(insertError).includes("duplicate key")
+    ) {
+      return "generated";
+    }
+
+    throw insertError;
+  }
+
+  return "generated";
+}
+
 async function completeAppointmentSideEffects(
   appointmentId: string,
   appointment: Database["public"]["Tables"]["appointments"]["Row"]
@@ -607,6 +739,10 @@ async function completeAppointmentSideEffects(
     appointment.sessions_completed > 0
       ? appointment.sessions_completed
       : Math.min(sessionsContracted, 1);
+  const commissionIntegrationStatus = await generateCommissionFinancialTransaction(
+    appointmentId,
+    appointment
+  );
 
   if (appointment.patient_package_id && appointment.package_session_status !== "consumed") {
     packageSessionStatus = await consumePatientPackageSession(appointment);
@@ -618,7 +754,7 @@ async function completeAppointmentSideEffects(
       medical_record_id: medicalRecordId,
       performed_at: new Date().toISOString(),
       finance_integration_status: financeIntegrationStatus,
-      commission_integration_status: "pending",
+      commission_integration_status: commissionIntegrationStatus,
       package_session_status: packageSessionStatus,
       sessions_completed: sessionsCompleted
     })
