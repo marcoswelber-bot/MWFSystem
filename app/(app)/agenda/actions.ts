@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getCurrentClinicScope } from "@/lib/access-control";
+import { syncRealizedAppointmentFinancials } from "@/lib/financial-integration-engine";
 import { assertCan } from "@/lib/permissions";
 import { getErrorMessage } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
@@ -11,10 +12,6 @@ type AppointmentInsert = Database["public"]["Tables"]["appointments"]["Insert"];
 type AppointmentUpdate = Database["public"]["Tables"]["appointments"]["Update"];
 type AppointmentParticipantInsert =
   Database["public"]["Tables"]["appointment_participants"]["Insert"];
-type FinancialTransactionInsert =
-  Database["public"]["Tables"]["financial_transactions"]["Insert"];
-type ProfessionalCommission =
-  Database["public"]["Tables"]["professional_service_commissions"]["Row"];
 type ScheduleBlockInsert =
   Database["public"]["Tables"]["schedule_blocks"]["Insert"];
 
@@ -516,51 +513,6 @@ async function assertActivePatientPackage(
   }
 }
 
-async function consumePatientPackageSession(
-  appointment: Database["public"]["Tables"]["appointments"]["Row"]
-) {
-  if (
-    !appointment.patient_package_id ||
-    !appointment.consumes_package_session ||
-    appointment.package_session_status === "consumed"
-  ) {
-    return "not_applied";
-  }
-
-  const supabase = await createClient();
-  const { data: patientPackage, error: packageError } = await supabase
-    .from("patient_packages")
-    .select("completed_sessions, remaining_sessions")
-    .eq("id", appointment.patient_package_id)
-    .eq("clinic_id", appointment.clinic_id)
-    .eq("patient_id", appointment.patient_id)
-    .eq("service_id", appointment.service_id)
-    .eq("status", "active")
-    .maybeSingle();
-
-  if (packageError) {
-    throw packageError;
-  }
-
-  if (!patientPackage || patientPackage.remaining_sessions <= 0) {
-    throw new Error("Pacote sem sessoes restantes.");
-  }
-
-  const { error: updateError } = await supabase
-    .from("patient_packages")
-    .update({
-      completed_sessions: patientPackage.completed_sessions + 1,
-      remaining_sessions: Math.max(patientPackage.remaining_sessions - 1, 0)
-    })
-    .eq("id", appointment.patient_package_id);
-
-  if (updateError) {
-    throw updateError;
-  }
-
-  return "consumed";
-}
-
 async function syncAppointmentParticipants(
   appointmentId: string,
   patientIds: string[]
@@ -591,323 +543,6 @@ async function syncAppointmentParticipants(
   if (insertError) {
     throw insertError;
   }
-}
-
-function calculateCommissionAmount(rule: ProfessionalCommission, baseValue: number) {
-  if (rule.commission_type === "valor_fixo") {
-    return Number(rule.commission_value ?? 0);
-  }
-
-  return (baseValue * Number(rule.commission_value ?? 0)) / 100;
-}
-
-function calculateCommissionValue(
-  commissionType: string | null | undefined,
-  commissionValue: number | null | undefined,
-  baseValue: number
-) {
-  if (commissionType === "valor_fixo") {
-    return Number(commissionValue ?? 0);
-  }
-
-  return (baseValue * Number(commissionValue ?? 0)) / 100;
-}
-
-function isPackageAppointment(
-  appointment: Database["public"]["Tables"]["appointments"]["Row"]
-) {
-  return (
-    normalizeIntegrationKind(appointment.appointment_type) === "pacote" ||
-    normalizeIntegrationKind(appointment.appointment_origin) === "pacote"
-  );
-}
-
-function isSingleRevenueAppointment(
-  appointment: Database["public"]["Tables"]["appointments"]["Row"]
-) {
-  return (
-    normalizeIntegrationKind(appointment.appointment_type) === "avulso" ||
-    normalizeIntegrationKind(appointment.appointment_origin) === "avulso"
-  );
-}
-
-async function insertFinancialTransaction(payload: FinancialTransactionInsert) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("financial_transactions").insert(payload);
-
-  if (!error) {
-    return;
-  }
-
-  const message = getErrorMessage(error);
-  const isSchemaCacheError =
-    message.includes("schema cache") ||
-    message.includes("Could not find") ||
-    message.includes("column");
-
-  if (!isSchemaCacheError) {
-    throw error;
-  }
-
-  const fallbackPayload = { ...payload };
-  delete fallbackPayload.employee_id;
-  delete fallbackPayload.appointment_date;
-  delete fallbackPayload.base_amount;
-  delete fallbackPayload.commission_type;
-  delete fallbackPayload.commission_rule_id;
-  const { error: fallbackError } = await supabase
-    .from("financial_transactions")
-    .insert(fallbackPayload);
-
-  if (fallbackError) {
-    throw fallbackError;
-  }
-}
-
-async function generateSingleRevenueFinancialTransaction(
-  appointmentId: string,
-  appointment: Database["public"]["Tables"]["appointments"]["Row"]
-) {
-  if (isPackageAppointment(appointment)) {
-    return "package_session";
-  }
-
-  if (!isSingleRevenueAppointment(appointment)) {
-    return "not_applicable";
-  }
-
-  if (normalizeIntegrationKind(appointment.appointment_origin) === "cortesia") {
-    return "not_applicable";
-  }
-
-  const supabase = await createClient();
-  const { data: existingRevenue, error: existingRevenueError } = await supabase
-    .from("financial_transactions")
-    .select("id")
-    .eq("future_agenda_source_id", appointmentId)
-    .eq("transaction_type", "receita")
-    .limit(1)
-    .maybeSingle();
-
-  if (existingRevenueError) {
-    throw existingRevenueError;
-  }
-
-  if (existingRevenue) {
-    return "generated";
-  }
-
-  const { data: service, error: serviceError } = await supabase
-    .from("services")
-    .select("name,price,default_price")
-    .eq("id", appointment.service_id)
-    .maybeSingle();
-
-  if (serviceError) {
-    throw serviceError;
-  }
-
-  const amount = Number(service?.default_price ?? service?.price ?? 0);
-
-  if (amount <= 0) {
-    return "missing_value";
-  }
-
-  const payload: FinancialTransactionInsert = {
-    clinic_id: appointment.clinic_id,
-    transaction_type: "receita",
-    patient_id: appointment.patient_id,
-    employee_id: appointment.employee_id,
-    service_id: appointment.service_id,
-    origin: "avulso",
-    category: null,
-    description: `Receita do atendimento avulso - ${service?.name ?? "Servico"} - ${appointment.appointment_date}`,
-    amount,
-    payment_method: null,
-    due_date: appointment.appointment_date,
-    payment_date: null,
-    appointment_date: appointment.appointment_date,
-    base_amount: amount,
-    commission_type: null,
-    commission_rule_id: null,
-    status: "pendente",
-    notes: `Gerado automaticamente pelo atendimento ${appointmentId}.`,
-    future_agenda_source_id: appointmentId,
-    future_package_source_id: null,
-    commission_status: "not_applicable",
-    whatsapp_status: "not_applicable",
-    report_visibility: "ready"
-  };
-
-  try {
-    await insertFinancialTransaction(payload);
-  } catch (insertError) {
-    if (
-      (insertError as { code?: string }).code === "23505" ||
-      getErrorMessage(insertError).includes("duplicate key")
-    ) {
-      return "generated";
-    }
-
-    throw insertError;
-  }
-
-  return "generated";
-}
-
-async function generateCommissionFinancialTransaction(
-  appointmentId: string,
-  appointment: Database["public"]["Tables"]["appointments"]["Row"]
-) {
-  const supabase = await createClient();
-  const { data: existingCommission, error: existingCommissionError } = await supabase
-    .from("financial_transactions")
-    .select("id")
-    .eq("future_agenda_source_id", appointmentId)
-    .eq("transaction_type", "despesa")
-    .eq("commission_status", "generated")
-    .limit(1)
-    .maybeSingle();
-
-  if (existingCommissionError) {
-    throw existingCommissionError;
-  }
-
-  if (existingCommission) {
-    return "generated";
-  }
-
-  const { data: service, error: serviceError } = await supabase
-    .from("services")
-    .select("name,price,default_price,is_group")
-    .eq("id", appointment.service_id)
-    .maybeSingle();
-
-  if (serviceError) {
-    throw serviceError;
-  }
-
-  const [
-    { data: employee, error: employeeError },
-    { data: patient, error: patientError }
-  ] = await Promise.all([
-    supabase
-      .from("employees")
-      .select("name,commission_type,commission_value")
-      .eq("id", appointment.employee_id)
-      .maybeSingle(),
-    supabase
-      .from("patients")
-      .select("full_name")
-      .eq("id", appointment.patient_id)
-      .maybeSingle()
-  ]);
-
-  if (employeeError) {
-    throw employeeError;
-  }
-
-  if (patientError) {
-    throw patientError;
-  }
-
-  const modality = service?.is_group ? "grupo" : "individual";
-  const { data: commissionRules, error: commissionRuleError } = await supabase
-    .from("professional_service_commissions")
-    .select("*")
-    .eq("professional_id", appointment.employee_id)
-    .eq("service_id", appointment.service_id)
-    .eq("active", true);
-
-  if (commissionRuleError) {
-    throw commissionRuleError;
-  }
-
-  const commissionRule =
-    commissionRules?.find(
-      (rule) => rule.modality === modality && rule.attendance_type === "presencial"
-    ) ??
-    commissionRules?.find((rule) => rule.modality === modality) ??
-    commissionRules?.[0];
-
-  let baseValue = Number(service?.default_price ?? service?.price ?? 0);
-
-  if (appointment.patient_package_id) {
-    const { data: patientPackage, error: patientPackageError } = await supabase
-      .from("patient_packages")
-      .select("unit_session_value")
-      .eq("id", appointment.patient_package_id)
-      .maybeSingle();
-
-    if (patientPackageError) {
-      throw patientPackageError;
-    }
-
-    baseValue = Number(patientPackage?.unit_session_value ?? baseValue);
-  }
-
-  if (baseValue <= 0) {
-    baseValue = Number(commissionRule?.base_price ?? 0);
-  }
-
-  const commissionType = commissionRule?.commission_type ?? employee?.commission_type;
-  const commissionValue = commissionRule?.commission_value ?? employee?.commission_value;
-  const commissionAmount = commissionRule
-    ? calculateCommissionAmount(commissionRule, baseValue)
-    : calculateCommissionValue(commissionType, commissionValue, baseValue);
-
-  if (commissionAmount <= 0) {
-    return "not_configured";
-  }
-
-  const formattedCommissionAmount = new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL"
-  }).format(commissionAmount);
-  const professionalName = employee?.name ?? "Profissional nao encontrado";
-  const patientName = patient?.full_name ?? "Paciente nao encontrado";
-  const serviceName = service?.name ?? "Servico nao encontrado";
-
-  const payload: FinancialTransactionInsert = {
-    clinic_id: appointment.clinic_id,
-    transaction_type: "despesa",
-    patient_id: appointment.patient_id,
-    employee_id: appointment.employee_id,
-    service_id: appointment.service_id,
-    origin: null,
-    category: "Comissões",
-    description: `Comissão do atendimento - Profissional: ${professionalName} - Paciente: ${patientName} - Serviço: ${serviceName} - Valor: ${formattedCommissionAmount}`,
-    amount: commissionAmount,
-    payment_method: null,
-    due_date: appointment.appointment_date,
-    payment_date: null,
-    appointment_date: appointment.appointment_date,
-    base_amount: baseValue,
-    commission_type: commissionType ?? null,
-    commission_rule_id: commissionRule?.id ?? null,
-    status: "pendente",
-    notes: `Gerado automaticamente pelo atendimento ${appointmentId} realizado em ${appointment.appointment_date}.`,
-    future_agenda_source_id: appointmentId,
-    future_package_source_id: null,
-    commission_status: "generated",
-    whatsapp_status: "not_applicable",
-    report_visibility: "ready"
-  };
-
-  try {
-    await insertFinancialTransaction(payload);
-  } catch (insertError) {
-    if (
-      (insertError as { code?: string }).code === "23505" ||
-      getErrorMessage(insertError).includes("duplicate key")
-    ) {
-      return "generated";
-    }
-
-    throw insertError;
-  }
-
-  return "generated";
 }
 
 async function completeAppointmentSideEffects(
@@ -1010,27 +645,9 @@ async function completeAppointmentSideEffects(
     appointment.sessions_completed > 0
       ? appointment.sessions_completed
       : Math.min(sessionsContracted, 1);
-  const commissionIntegrationStatus = await generateCommissionFinancialTransaction(
-    appointmentId,
-    appointment
-  );
-
-  financeIntegrationStatus = await generateSingleRevenueFinancialTransaction(
-    appointmentId,
-    appointment
-  );
-
-  if (
-    financeIntegrationStatus === "not_applicable" &&
-    !appointment.is_billable &&
-    !isSingleRevenueAppointment(appointment)
-  ) {
-    financeIntegrationStatus = "not_billable";
-  }
-
-  if (appointment.patient_package_id && appointment.package_session_status !== "consumed") {
-    packageSessionStatus = await consumePatientPackageSession(appointment);
-  }
+  const financialIntegration = await syncRealizedAppointmentFinancials(appointmentId);
+  financeIntegrationStatus = financialIntegration.financeIntegrationStatus;
+  packageSessionStatus = financialIntegration.packageSessionStatus;
 
   const { error: updateError } = await supabase
     .from("appointments")
@@ -1038,7 +655,8 @@ async function completeAppointmentSideEffects(
       medical_record_id: medicalRecordId,
       performed_at: new Date().toISOString(),
       finance_integration_status: financeIntegrationStatus,
-      commission_integration_status: commissionIntegrationStatus,
+      commission_integration_status:
+        financialIntegration.commissionIntegrationStatus,
       package_session_status: packageSessionStatus,
       sessions_completed: sessionsCompleted
     })
@@ -1047,6 +665,10 @@ async function completeAppointmentSideEffects(
   if (updateError) {
     throw updateError;
   }
+
+  revalidatePath("/financeiro");
+  revalidatePath("/dashboard");
+  revalidatePath("/relatorios");
 }
 
 export async function createAppointment(

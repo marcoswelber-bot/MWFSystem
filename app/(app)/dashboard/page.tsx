@@ -8,9 +8,68 @@ import {
   CardHeader,
   CardTitle
 } from "@/components/ui/card";
-import { dashboardStats } from "@/lib/navigation";
+import { getOperationalFinanceSnapshot } from "@/lib/financial-integration-engine";
 
-export default function DashboardPage() {
+function money(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL"
+  }).format(value);
+}
+
+export default async function DashboardPage() {
+  const snapshot = await getOperationalFinanceSnapshot();
+  const dashboardStats = [
+    {
+      label: "Receitas",
+      helper: "Faturamento mensal integrado",
+      value: money(snapshot.monthlyRevenue),
+      icon: CircleDollarSign
+    },
+    {
+      label: "Despesas",
+      helper: "Despesas e comissoes registradas",
+      value: money(snapshot.expenseTotal),
+      icon: CircleDollarSign
+    },
+    {
+      label: "Saldo",
+      helper: "Saldo realizado do caixa",
+      value: money(snapshot.realizedBalance),
+      icon: ShieldCheck
+    },
+    {
+      label: "Pacientes devendo",
+      helper: "Contas a receber pendentes",
+      value: String(snapshot.receivablesCount),
+      icon: CalendarClock
+    },
+    {
+      label: "Comissoes pendentes",
+      helper: "Lancamentos de comissao a pagar",
+      value: String(snapshot.pendingCommissionsCount),
+      icon: CircleDollarSign
+    },
+    {
+      label: "Atendimentos realizados",
+      helper: "Producao operacional realizada",
+      value: String(snapshot.realizedAppointments),
+      icon: CalendarClock
+    },
+    {
+      label: "Sessoes restantes",
+      helper: "Saldo de pacotes ativos",
+      value: String(snapshot.remainingSessions),
+      icon: Building2
+    },
+    {
+      label: "Faturamento diario",
+      helper: "Receitas do dia",
+      value: money(snapshot.dailyRevenue),
+      icon: CircleDollarSign
+    }
+  ];
+
   return (
     <div>
       <PageHeader

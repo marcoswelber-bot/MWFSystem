@@ -196,6 +196,17 @@ function typeLabel(type: string) {
   return type === "despesa" ? "Despesa" : "Receita";
 }
 
+function overdueDays(item: FinancialTransaction) {
+  if (item.derived_status !== "vencido") {
+    return 0;
+  }
+
+  const dueDate = new Date(`${item.due_date}T00:00:00`);
+  const currentDate = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00`);
+  const diff = currentDate.getTime() - dueDate.getTime();
+  return Math.max(Math.floor(diff / 86400000), 0);
+}
+
 export function FinanceManager({
   transactions,
   clinics,
@@ -542,9 +553,11 @@ export function FinanceManager({
                 ) : activeTab === "pacientes" ? (
                   <tr>
                     <th className="px-4 py-3">Paciente</th>
+                    <th className="px-4 py-3">ServiÃ§o</th>
                     <th className="px-4 py-3">Valor em aberto</th>
                     <th className="px-4 py-3">Origem</th>
                     <th className="px-4 py-3">Vencimento</th>
+                    <th className="px-4 py-3">Dias em atraso</th>
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3">Clínica</th>
                     <th className="px-4 py-3 text-right">Ações</th>
@@ -584,9 +597,11 @@ export function FinanceManager({
                       ) : activeTab === "pacientes" ? (
                         <>
                           <td className="px-4 py-3">{item.patient_name}</td>
+                          <td className="px-4 py-3">{item.service_name}</td>
                           <td className="px-4 py-3 font-semibold">{money(Number(item.amount))}</td>
                           <td className="px-4 py-3">{originOptions.find(([value]) => value === item.origin)?.[1] ?? "Manual"}</td>
                           <td className="px-4 py-3">{item.due_date}</td>
+                          <td className="px-4 py-3">{overdueDays(item)}</td>
                           <StatusCell status={item.derived_status} />
                           <td className="px-4 py-3">{item.clinic_name}</td>
                           <ActionCell item={item} canEdit={canEdit} canDelete={canDelete} isPending={isPending} onEdit={openEditForm} onPaid={markAsPaid} onCancel={cancelTransaction} onDelete={removeTransaction} />
@@ -612,7 +627,7 @@ export function FinanceManager({
                   ))
                 ) : (
                   <tr>
-                    <td className="px-4 py-8 text-center text-muted-foreground" colSpan={activeTab === "comissoes" ? 11 : activeTab === "pacientes" ? 7 : 9}>
+                    <td className="px-4 py-8 text-center text-muted-foreground" colSpan={activeTab === "comissoes" ? 11 : activeTab === "pacientes" ? 9 : 9}>
                       Nenhum registro encontrado.
                     </td>
                   </tr>

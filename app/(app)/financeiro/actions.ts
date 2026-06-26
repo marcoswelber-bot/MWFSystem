@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getCurrentClinicScope } from "@/lib/access-control";
+import { createFinancialMovement } from "@/lib/financial-integration-engine";
 import { assertCan } from "@/lib/permissions";
 import { getErrorMessage } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
@@ -162,17 +163,14 @@ export async function createFinancialTransaction(
 ): Promise<FinancialActionResult> {
   try {
     await assertCan("financeiro", "create");
-    const supabase = await createClient();
     const payload = getFinancialPayload(input);
     payload.clinic_id = await resolveClinicId(input.clinic_id);
 
-    const { error } = await supabase.from("financial_transactions").insert(payload);
-
-    if (error) {
-      return { ok: false, message: getErrorMessage(error) };
-    }
+    await createFinancialMovement(payload);
 
     revalidatePath("/financeiro");
+    revalidatePath("/dashboard");
+    revalidatePath("/relatorios");
     return {
       ok: true,
       message:
@@ -205,6 +203,8 @@ export async function updateFinancialTransaction(
     }
 
     revalidatePath("/financeiro");
+    revalidatePath("/dashboard");
+    revalidatePath("/relatorios");
     return { ok: true, message: "Movimentacao atualizada com sucesso." };
   } catch (error) {
     return { ok: false, message: getErrorMessage(error) };
@@ -230,6 +230,8 @@ export async function markFinancialTransactionAsPaid(
     }
 
     revalidatePath("/financeiro");
+    revalidatePath("/dashboard");
+    revalidatePath("/relatorios");
     return { ok: true, message: "Movimentacao marcada como paga." };
   } catch (error) {
     return { ok: false, message: getErrorMessage(error) };
@@ -252,6 +254,8 @@ export async function cancelFinancialTransaction(
     }
 
     revalidatePath("/financeiro");
+    revalidatePath("/dashboard");
+    revalidatePath("/relatorios");
     return { ok: true, message: "Movimentacao cancelada com sucesso." };
   } catch (error) {
     return { ok: false, message: getErrorMessage(error) };
@@ -274,6 +278,8 @@ export async function deleteFinancialTransaction(
     }
 
     revalidatePath("/financeiro");
+    revalidatePath("/dashboard");
+    revalidatePath("/relatorios");
     return { ok: true, message: "Movimentacao excluida com sucesso." };
   } catch (error) {
     return { ok: false, message: getErrorMessage(error) };
