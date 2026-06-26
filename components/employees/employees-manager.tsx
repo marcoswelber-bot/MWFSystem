@@ -58,7 +58,7 @@ const emptyForm: EmployeeFormInput = {
   login_email: "",
   temporary_password: "",
   role: "",
-  commission_type: "",
+  commission_type: "percentual",
   commission_value: "",
   status: "active"
 };
@@ -88,7 +88,7 @@ function employeeToForm(employee: Employee): EmployeeFormInput {
     login_email: employee.login_email ?? "",
     temporary_password: employee.temporary_password ?? "",
     role: employee.role ?? "",
-    commission_type: employee.commission_type ?? "",
+    commission_type: employee.commission_type ?? "percentual",
     commission_value:
       employee.commission_value === null ? "" : String(employee.commission_value),
     status: employee.status
@@ -209,7 +209,11 @@ export function EmployeesManager({
   );
 
   function updateForm(field: keyof EmployeeFormInput, value: string | boolean) {
-    setForm((currentForm) => ({ ...currentForm, [field]: value }));
+    setForm((currentForm) => ({
+      ...currentForm,
+      [field]: value,
+      ...(field === "commission_type" ? { commission_value: "" } : {})
+    }));
   }
 
   function updateCommissionForm(
@@ -698,25 +702,42 @@ export function EmployeesManager({
             </label>
             <label>
               Tipo de comissao
-              <input
+              <select
                 value={form.commission_type}
                 onChange={(event) =>
                   updateForm("commission_type", event.target.value)
                 }
                 style={inputStyle}
-              />
+              >
+                <option value="percentual">Percentual</option>
+                <option value="valor_fixo">Valor fixo</option>
+              </select>
             </label>
-            <label>
-              Valor da comissao
-              <input
-                inputMode="decimal"
-                value={form.commission_value}
-                onChange={(event) =>
-                  updateForm("commission_value", event.target.value)
-                }
-                style={inputStyle}
-              />
-            </label>
+            {form.commission_type === "valor_fixo" ? (
+              <label>
+                Valor fixo (R$)
+                <input
+                  inputMode="decimal"
+                  value={form.commission_value}
+                  onChange={(event) =>
+                    updateForm("commission_value", event.target.value)
+                  }
+                  style={inputStyle}
+                />
+              </label>
+            ) : (
+              <label>
+                Percentual (%)
+                <input
+                  inputMode="decimal"
+                  value={form.commission_value}
+                  onChange={(event) =>
+                    updateForm("commission_value", event.target.value)
+                  }
+                  style={inputStyle}
+                />
+              </label>
+            )}
             <div
               style={{
                 display: "flex",

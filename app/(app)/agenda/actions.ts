@@ -551,6 +551,30 @@ async function generateCommissionFinancialTransaction(
     throw serviceError;
   }
 
+  const [
+    { data: employee, error: employeeError },
+    { data: patient, error: patientError }
+  ] = await Promise.all([
+    supabase
+      .from("employees")
+      .select("name")
+      .eq("id", appointment.employee_id)
+      .maybeSingle(),
+    supabase
+      .from("patients")
+      .select("full_name")
+      .eq("id", appointment.patient_id)
+      .maybeSingle()
+  ]);
+
+  if (employeeError) {
+    throw employeeError;
+  }
+
+  if (patientError) {
+    throw patientError;
+  }
+
   const modality = service?.is_group ? "grupo" : "individual";
   const { data: commissionRules, error: commissionRuleError } = await supabase
     .from("professional_service_commissions")
@@ -600,6 +624,14 @@ async function generateCommissionFinancialTransaction(
     return "not_configured";
   }
 
+  const formattedCommissionAmount = new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL"
+  }).format(commissionAmount);
+  const professionalName = employee?.name ?? "Profissional nao encontrado";
+  const patientName = patient?.full_name ?? "Paciente nao encontrado";
+  const serviceName = service?.name ?? "Servico nao encontrado";
+
   const payload: FinancialTransactionInsert = {
     clinic_id: appointment.clinic_id,
     transaction_type: "despesa",
@@ -607,13 +639,13 @@ async function generateCommissionFinancialTransaction(
     service_id: appointment.service_id,
     origin: null,
     category: "Comissões",
-    description: `Comissão a pagar - ${service?.name ?? "Serviço"} - ${appointment.appointment_date}`,
+    description: `Comissão do atendimento - Profissional: ${professionalName} - Paciente: ${patientName} - Serviço: ${serviceName} - Valor: ${formattedCommissionAmount}`,
     amount: commissionAmount,
     payment_method: null,
     due_date: appointment.appointment_date,
     payment_date: null,
     status: "pendente",
-    notes: `Gerado automaticamente pelo atendimento ${appointmentId}.`,
+    notes: `Gerado automaticamente pelo atendimento ${appointmentId} realizado em ${appointment.appointment_date}.`,
     future_agenda_source_id: appointmentId,
     future_package_source_id: null,
     commission_status: "generated",
