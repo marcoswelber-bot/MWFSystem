@@ -156,6 +156,16 @@ function normalizeAppointmentOrigin(value?: string): AppointmentOrigin {
     : "avulso";
 }
 
+function normalizeIntegrationKind(value?: string | null) {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/-/g, "_");
+}
+
 function normalizeTime(value?: string | null) {
   if (!value) {
     return null;
@@ -534,21 +544,35 @@ function calculateCommissionValue(
 function isPackageAppointment(
   appointment: Database["public"]["Tables"]["appointments"]["Row"]
 ) {
-  return appointment.appointment_type === "pacote" || appointment.appointment_origin === "pacote";
+  return (
+    normalizeIntegrationKind(appointment.appointment_type) === "pacote" ||
+    normalizeIntegrationKind(appointment.appointment_origin) === "pacote"
+  );
 }
 
 function isSingleRevenueAppointment(
   appointment: Database["public"]["Tables"]["appointments"]["Row"]
 ) {
-  return appointment.appointment_type === "avulso" || appointment.appointment_origin === "avulso";
+  return (
+    normalizeIntegrationKind(appointment.appointment_type) === "avulso" ||
+    normalizeIntegrationKind(appointment.appointment_origin) === "avulso"
+  );
 }
 
 async function generateSingleRevenueFinancialTransaction(
   appointmentId: string,
   appointment: Database["public"]["Tables"]["appointments"]["Row"]
 ) {
-  if (!appointment.is_billable || isPackageAppointment(appointment) || !isSingleRevenueAppointment(appointment)) {
-    return isPackageAppointment(appointment) ? "package_session" : "not_applicable";
+  if (isPackageAppointment(appointment)) {
+    return "package_session";
+  }
+
+  if (!isSingleRevenueAppointment(appointment)) {
+    return "not_applicable";
+  }
+
+  if (normalizeIntegrationKind(appointment.appointment_origin) === "cortesia") {
+    return "not_applicable";
   }
 
   const supabase = await createClient();
@@ -557,7 +581,6 @@ async function generateSingleRevenueFinancialTransaction(
     .select("id")
     .eq("future_agenda_source_id", appointmentId)
     .eq("transaction_type", "receita")
-    .eq("origin", "avulso")
     .limit(1)
     .maybeSingle();
 
@@ -639,7 +662,7 @@ async function generateCommissionFinancialTransaction(
     .select("id")
     .eq("future_agenda_source_id", appointmentId)
     .eq("transaction_type", "despesa")
-    .in("category", ["Comissões", "Comissoes"])
+    .eq("commission_status", "generated")
     .limit(1)
     .maybeSingle();
 
@@ -891,11 +914,17 @@ async function completeAppointmentSideEffects(
     appointment
   );
 
-  if (appointment.is_billable) {
-    financeIntegrationStatus = await generateSingleRevenueFinancialTransaction(
-      appointmentId,
-      appointment
-    );
+  financeIntegrationStatus = await generateSingleRevenueFinancialTransaction(
+    appointmentId,
+    appointment
+  );
+
+  if (
+    financeIntegrationStatus === "not_applicable" &&
+    !appointment.is_billable &&
+    !isSingleRevenueAppointment(appointment)
+  ) {
+    financeIntegrationStatus = "not_billable";
   }
 
   if (appointment.patient_package_id && appointment.package_session_status !== "consumed") {
