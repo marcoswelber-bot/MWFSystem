@@ -650,6 +650,8 @@ export function AgendaManager({
   const [message, setMessage] = React.useState<AgendaActionResult | null>(
     loadError ? { ok: false, message: loadError } : null
   );
+  const [appointmentFormMessage, setAppointmentFormMessage] =
+    React.useState<AgendaActionResult | null>(null);
 
   const canCreate = permissions?.create ?? true;
   const canEdit = permissions?.edit ?? true;
@@ -765,6 +767,7 @@ export function AgendaManager({
       appointment_date: date
     });
     setMessage(null);
+    setAppointmentFormMessage(null);
     setAppointmentFormOpen(true);
   }
 
@@ -772,6 +775,7 @@ export function AgendaManager({
     setEditingAppointment(appointment);
     setAppointmentForm(appointmentToForm(appointment));
     setMessage(null);
+    setAppointmentFormMessage(null);
     setAppointmentFormOpen(true);
   }
 
@@ -804,12 +808,14 @@ export function AgendaManager({
       original_appointment_id: appointment.id
     });
     setMessage(null);
+    setAppointmentFormMessage(null);
     setAppointmentFormOpen(true);
   }
 
   function closeAppointmentForm() {
     setEditingAppointment(null);
     setAppointmentForm(emptyAppointmentForm);
+    setAppointmentFormMessage(null);
     setAppointmentFormOpen(false);
   }
 
@@ -832,8 +838,11 @@ export function AgendaManager({
   function submitAppointment(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage(null);
+    setAppointmentFormMessage(null);
 
-    const patientIds = selectedService?.is_group
+    const isGroupAppointment =
+      appointmentForm.appointment_type === "grupo" || Boolean(selectedService?.is_group);
+    const patientIds = isGroupAppointment
       ? appointmentForm.patient_ids ?? []
       : [appointmentForm.patient_id].filter(Boolean);
 
@@ -854,7 +863,10 @@ export function AgendaManager({
       (!!appointmentForm.end_time &&
         !isTimeAfter(appointmentForm.end_time, appointmentForm.start_time))
     ) {
-      setMessage({ ok: false, message: "Data bloqueada para agendamento" });
+      setAppointmentFormMessage({
+        ok: false,
+        message: "Não foi possível salvar: data ou horário bloqueado."
+      });
       return;
     }
 
@@ -871,13 +883,17 @@ export function AgendaManager({
         ? await updateAppointment(editingAppointment.id, appointmentPayload)
         : await createAppointment(appointmentPayload);
 
-      setMessage(
-        getAppointmentMessage(result, editingAppointment ? "update" : "create")
-      );
-
       if (result.ok) {
+        setMessage(
+          getAppointmentMessage(result, editingAppointment ? "update" : "create")
+        );
         closeAppointmentForm();
         refresh();
+      } else {
+        setAppointmentFormMessage({
+          ok: false,
+          message: `Não foi possível salvar: ${result.message}`
+        });
       }
     });
   }
@@ -1172,6 +1188,7 @@ export function AgendaManager({
           patientPackages={patientPackages}
           blocks={scopedBlocks}
           selectedService={selectedService}
+          formMessage={appointmentFormMessage}
           isAdmMaster={isAdmMaster}
           isPending={isPending}
           onSubmit={submitAppointment}
@@ -1953,6 +1970,7 @@ function AppointmentFormModal({
   patientPackages,
   blocks,
   selectedService,
+  formMessage,
   isAdmMaster,
   isPending,
   onSubmit,
@@ -1969,6 +1987,7 @@ function AppointmentFormModal({
   patientPackages: PatientPackage[];
   blocks: ScheduleBlock[];
   selectedService?: Service;
+  formMessage: AgendaActionResult | null;
   isAdmMaster: boolean;
   isPending: boolean;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
@@ -1977,6 +1996,32 @@ function AppointmentFormModal({
   const selectedPatients = form.patient_ids ?? [];
   const appointmentType = form.appointment_type ?? "avulso";
   const isPackageAppointment = appointmentType === "pacote";
+  const isGroupAppointment = appointmentType === "grupo" || Boolean(selectedService?.is_group);
+  const participantLimit = selectedService?.participant_limit ?? null;
+  const occupiedGroupSeats = appointments
+    .filter(
+      (appointment) =>
+        appointment.id !== editingAppointment?.id &&
+        appointment.clinic_id === form.clinic_id &&
+        appointment.employee_id === form.employee_id &&
+        appointment.service_id === form.service_id &&
+        appointment.appointment_date === form.appointment_date &&
+        formatTime(appointment.start_time) === form.start_time &&
+        ["agendado", "confirmado", "realizado"].includes(
+          normalizeStatus(appointment.status)
+        ) &&
+        (appointment.service_is_group || getAppointmentType(appointment) === "grupo")
+    )
+    .reduce(
+      (total, appointment) =>
+        total + Math.max(appointment.patient_ids.length, 1),
+      0
+    );
+  const groupProjectedSeats = occupiedGroupSeats + selectedPatients.length;
+  const groupCapacityExceeded =
+    isGroupAppointment &&
+    Boolean(participantLimit) &&
+    groupProjectedSeats > Number(participantLimit);
   const availablePatientPackages = patientPackages.filter(
     (patientPackage) =>
       patientPackage.clinic_id === form.clinic_id &&
@@ -2054,7 +2099,8 @@ function AppointmentFormModal({
         blocks,
         form.employee_id
       ));
-  const schedulingBlocked = dateBlocked || selectedTimeBlocked || selectedEndTimeBlocked;
+  const schedulingBlocked =
+    dateBlocked || selectedTimeBlocked || selectedEndTimeBlocked || groupCapacityExceeded;
 
   return (
     <ModalShell
@@ -2079,7 +2125,10 @@ function AppointmentFormModal({
               setForm((current) => ({
                 ...current,
                 service_id: value,
-                patient_ids: service?.is_group ? current.patient_ids : [],
+                patient_ids:
+                  current.appointment_type === "grupo" || service?.is_group
+                    ? current.patient_ids
+                    : [],
                 patient_package_id: ""
               }));
             }}
@@ -2101,6 +2150,12 @@ function AppointmentFormModal({
                   original_appointment_id: keepOriginal
                     ? current.original_appointment_id
                     : "",
+                  patient_ids:
+                    appointmentType === "grupo"
+                      ? current.patient_ids
+                      : current.patient_id
+                        ? [current.patient_id]
+                        : [],
                   patient_package_id:
                     appointmentType === "pacote" ? current.patient_package_id : ""
                 };
@@ -2128,21 +2183,34 @@ function AppointmentFormModal({
               }
             />
           ) : null}
-          {selectedService?.is_group ? (
-            <MultiSelectField
-              label="Pacientes do grupo"
-              value={selectedPatients}
-              onChange={(value) =>
-                setForm((current) => ({
-                  ...current,
-                  patient_id: value[0] ?? "",
-                  patient_ids: value,
-                  patient_package_id: ""
-                }))
-              }
-              options={patients.map((patient) => [patient.id, patient.full_name])}
-              helper={`${selectedPatients.length}/${selectedService.participant_limit ?? "sem limite"} vagas ocupadas`}
-            />
+          {isGroupAppointment ? (
+            <div className="grid gap-3 md:col-span-2">
+              <MultiSelectField
+                label="Pacientes do grupo"
+                value={selectedPatients}
+                onChange={(value) =>
+                  setForm((current) => ({
+                    ...current,
+                    patient_id: value[0] ?? "",
+                    patient_ids: value,
+                    patient_package_id: ""
+                  }))
+                }
+                options={patients.map((patient) => [patient.id, patient.full_name])}
+                helper={`${groupProjectedSeats}/${participantLimit ?? "sem limite"} vagas ocupadas`}
+              />
+              <div className="grid gap-2 rounded-md border bg-muted/30 p-3 text-sm md:grid-cols-3">
+                <PackageDetail
+                  label="Capacidade mÃ¡xima"
+                  value={participantLimit ?? "Sem limite"}
+                />
+                <PackageDetail label="Vagas ocupadas" value={occupiedGroupSeats} />
+                <PackageDetail
+                  label="Selecionadas"
+                  value={selectedPatients.length}
+                />
+              </div>
+            </div>
           ) : (
             <SelectField
               label="Paciente"
@@ -2247,6 +2315,8 @@ function AppointmentFormModal({
             }
             disabled={dateBlocked || !form.start_time || endTimeOptions.length === 0}
           />
+          {false ? (
+            <>
           <TextField
             label="Quantidade contratada"
             type="number"
@@ -2277,10 +2347,19 @@ function AppointmentFormModal({
             }
             options={statusOptions}
           />
+            </>
+          ) : null}
         </div>
+        {formMessage ? (
+          <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-100">
+            {formMessage.message}
+          </p>
+        ) : null}
         {schedulingBlocked ? (
           <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-100">
-            Data bloqueada para agendamento
+            {groupCapacityExceeded
+              ? "Capacidade mÃ¡xima do grupo atingida."
+              : "Data bloqueada para agendamento"}
           </p>
         ) : null}
         <TextAreaField

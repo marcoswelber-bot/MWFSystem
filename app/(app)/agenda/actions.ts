@@ -166,6 +166,10 @@ function normalizeIntegrationKind(value?: string | null) {
     .replace(/-/g, "_");
 }
 
+function isGroupKind(value?: string | null) {
+  return normalizeIntegrationKind(value) === "grupo";
+}
+
 function normalizeTime(value?: string | null) {
   if (!value) {
     return null;
@@ -330,13 +334,28 @@ function getBlockPayload(input: ScheduleBlockFormInput): ScheduleBlockInsert {
 
 async function assertNoAppointmentConflict(
   payload: AppointmentInsert | AppointmentUpdate,
+  patientIds: string[],
   appointmentId?: string
 ) {
   const supabase = await createClient();
+  const { data: service, error: serviceError } = await supabase
+    .from("services")
+    .select("is_group, participant_limit")
+    .eq("id", String(payload.service_id))
+    .maybeSingle();
+
+  if (serviceError) {
+    throw serviceError;
+  }
+
+  const isGroupAppointment =
+    service?.is_group ||
+    isGroupKind(payload.appointment_type) ||
+    isGroupKind(payload.appointment_origin);
 
   let appointmentsQuery = supabase
     .from("appointments")
-    .select("id")
+    .select("id,service_id,appointment_type,appointment_origin,patient_id")
     .eq("employee_id", String(payload.employee_id))
     .eq("appointment_date", String(payload.appointment_date))
     .eq("start_time", String(payload.start_time))
@@ -352,8 +371,53 @@ async function assertNoAppointmentConflict(
     throw appointmentsError;
   }
 
-  if ((appointments ?? []).length > 0) {
+  if ((appointments ?? []).length > 0 && !isGroupAppointment) {
     throw new Error("Este profissional ja possui atendimento neste horario.");
+  }
+
+  if (isGroupAppointment && (appointments ?? []).length > 0) {
+    const conflictingIndividual = (appointments ?? []).find(
+      (appointment) =>
+        appointment.service_id !== payload.service_id ||
+        (!isGroupKind(appointment.appointment_type) &&
+          !isGroupKind(appointment.appointment_origin))
+    );
+
+    if (conflictingIndividual) {
+      throw new Error("Este profissional ja possui atendimento neste horario.");
+    }
+
+    if (service?.participant_limit) {
+      const appointmentIds = (appointments ?? []).map((appointment) => appointment.id);
+      const { data: participants, error: participantsError } = await supabase
+        .from("appointment_participants")
+        .select("appointment_id,patient_id")
+        .in("appointment_id", appointmentIds);
+
+      if (participantsError) {
+        throw participantsError;
+      }
+
+      const participantCountByAppointment = (participants ?? []).reduce(
+        (accumulator, participant) => {
+          accumulator.set(
+            participant.appointment_id,
+            (accumulator.get(participant.appointment_id) ?? 0) + 1
+          );
+          return accumulator;
+        },
+        new Map<string, number>()
+      );
+      const occupiedSeats = (appointments ?? []).reduce(
+        (total, appointment) =>
+          total + (participantCountByAppointment.get(appointment.id) ?? 1),
+        0
+      );
+
+      if (occupiedSeats + patientIds.length > service.participant_limit) {
+        throw new Error("A capacidade maxima do grupo foi atingida.");
+      }
+    }
   }
 
   const { data: blocks, error: blocksError } = await supabase
@@ -391,25 +455,33 @@ async function assertNoAppointmentConflict(
   }
 }
 
-async function assertServiceCapacity(serviceId: string, patientIds: string[]) {
+async function assertServiceCapacity(
+  payload: AppointmentInsert | AppointmentUpdate,
+  patientIds: string[]
+) {
   const supabase = await createClient();
   const { data: service, error } = await supabase
     .from("services")
     .select("is_group, participant_limit")
-    .eq("id", serviceId)
+    .eq("id", String(payload.service_id))
     .maybeSingle();
 
   if (error) {
     throw error;
   }
 
-  if (!service?.is_group && patientIds.length > 1) {
+  const isGroupAppointment =
+    service?.is_group ||
+    isGroupKind(payload.appointment_type) ||
+    isGroupKind(payload.appointment_origin);
+
+  if (!isGroupAppointment && patientIds.length > 1) {
     throw new Error("Este servico esta configurado como atendimento individual.");
   }
 
   if (
-    service?.is_group &&
-    service.participant_limit &&
+    isGroupAppointment &&
+    service?.participant_limit &&
     patientIds.length > service.participant_limit
   ) {
     throw new Error("A quantidade de pacientes excede a capacidade do grupo.");
@@ -559,6 +631,39 @@ function isSingleRevenueAppointment(
   );
 }
 
+async function insertFinancialTransaction(payload: FinancialTransactionInsert) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("financial_transactions").insert(payload);
+
+  if (!error) {
+    return;
+  }
+
+  const message = getErrorMessage(error);
+  const isSchemaCacheError =
+    message.includes("schema cache") ||
+    message.includes("Could not find") ||
+    message.includes("column");
+
+  if (!isSchemaCacheError) {
+    throw error;
+  }
+
+  const fallbackPayload = { ...payload };
+  delete fallbackPayload.employee_id;
+  delete fallbackPayload.appointment_date;
+  delete fallbackPayload.base_amount;
+  delete fallbackPayload.commission_type;
+  delete fallbackPayload.commission_rule_id;
+  const { error: fallbackError } = await supabase
+    .from("financial_transactions")
+    .insert(fallbackPayload);
+
+  if (fallbackError) {
+    throw fallbackError;
+  }
+}
+
 async function generateSingleRevenueFinancialTransaction(
   appointmentId: string,
   appointment: Database["public"]["Tables"]["appointments"]["Row"]
@@ -634,11 +739,9 @@ async function generateSingleRevenueFinancialTransaction(
     report_visibility: "ready"
   };
 
-  const { error: insertError } = await supabase
-    .from("financial_transactions")
-    .insert(payload);
-
-  if (insertError) {
+  try {
+    await insertFinancialTransaction(payload);
+  } catch (insertError) {
     if (
       (insertError as { code?: string }).code === "23505" ||
       getErrorMessage(insertError).includes("duplicate key")
@@ -791,11 +894,9 @@ async function generateCommissionFinancialTransaction(
     report_visibility: "ready"
   };
 
-  const { error: insertError } = await supabase
-    .from("financial_transactions")
-    .insert(payload);
-
-  if (insertError) {
+  try {
+    await insertFinancialTransaction(payload);
+  } catch (insertError) {
     if (
       (insertError as { code?: string }).code === "23505" ||
       getErrorMessage(insertError).includes("duplicate key")
@@ -957,9 +1058,10 @@ export async function createAppointment(
     const payload = getAppointmentPayload(input);
     const patientIds = cleanPatientIds(input);
     payload.clinic_id = await resolveClinicId(input.clinic_id);
-    await assertServiceCapacity(payload.service_id, patientIds);
+    payload.status = "agendado";
+    await assertServiceCapacity(payload, patientIds);
     await assertActivePatientPackage(payload);
-    await assertNoAppointmentConflict(payload);
+    await assertNoAppointmentConflict(payload, patientIds);
 
     const { data, error } = await supabase
       .from("appointments")
@@ -994,9 +1096,9 @@ export async function updateAppointment(
     const payload = getAppointmentPayload(input) satisfies AppointmentUpdate;
     const patientIds = cleanPatientIds(input);
     payload.clinic_id = await resolveClinicId(input.clinic_id);
-    await assertServiceCapacity(String(payload.service_id), patientIds);
+    await assertServiceCapacity(payload, patientIds);
     await assertActivePatientPackage(payload);
-    await assertNoAppointmentConflict(payload, id);
+    await assertNoAppointmentConflict(payload, patientIds, id);
 
     const { data, error } = await supabase
       .from("appointments")
