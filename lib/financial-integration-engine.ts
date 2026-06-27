@@ -13,6 +13,15 @@ export type FinancialIntegrationResult = {
   packageSessionStatus: string;
 };
 
+type RollbackState = {
+  financialTransactionIds: string[];
+  packageSnapshot: {
+    id: string;
+    completed_sessions: number;
+    remaining_sessions: number;
+  } | null;
+};
+
 function normalizeIntegrationKind(value?: string | null) {
   return (value ?? "")
     .normalize("NFD")
@@ -57,18 +66,75 @@ function getServiceAmount(
 
 async function insertFinancialTransaction(payload: FinancialTransactionInsert) {
   const supabase = await createClient();
-  const { error } = await supabase.from("financial_transactions").insert(payload);
+  const { data, error } = await supabase
+    .from("financial_transactions")
+    .insert(payload)
+    .select("id")
+    .single();
 
   if (error) {
     throw error;
   }
+
+  return data.id;
 }
 
 export async function createFinancialMovement(payload: FinancialTransactionInsert) {
   await insertFinancialTransaction(payload);
 }
 
-async function createSingleRevenue(appointment: Appointment) {
+function validateRealizedAppointment(appointment: Appointment) {
+  if (!appointment.clinic_id) {
+    throw new Error("Atendimento sem clinica vinculada.");
+  }
+
+  if (!appointment.patient_id) {
+    throw new Error("Atendimento sem paciente vinculado.");
+  }
+
+  if (!appointment.employee_id) {
+    throw new Error("Atendimento sem profissional vinculado.");
+  }
+
+  if (!appointment.service_id) {
+    throw new Error("Atendimento sem servico vinculado.");
+  }
+
+  if (!appointment.appointment_date) {
+    throw new Error("Atendimento sem data vinculada.");
+  }
+}
+
+async function rollbackIntegration(state: RollbackState) {
+  const supabase = await createClient();
+
+  if (state.financialTransactionIds.length > 0) {
+    const { error } = await supabase
+      .from("financial_transactions")
+      .delete()
+      .in("id", state.financialTransactionIds);
+
+    if (error) {
+      throw error;
+    }
+  }
+
+  if (state.packageSnapshot) {
+    const { error } = await supabase
+      .from("patient_packages")
+      .update({
+        completed_sessions: state.packageSnapshot.completed_sessions,
+        remaining_sessions: state.packageSnapshot.remaining_sessions
+      })
+      .eq("id", state.packageSnapshot.id);
+
+    if (error) {
+      throw error;
+    }
+  }
+}
+
+async function createSingleRevenue(appointment: Appointment, state: RollbackState) {
   if (isPackageAppointment(appointment)) {
     return "package_session";
   }
@@ -109,10 +175,10 @@ async function createSingleRevenue(appointment: Appointment) {
 
   const amount = getServiceAmount(service);
   if (amount <= 0) {
-    return "missing_value";
+    throw new Error("Valor do servico nao configurado para gerar receita.");
   }
 
-  await insertFinancialTransaction({
+  const transactionId = await insertFinancialTransaction({
     clinic_id: appointment.clinic_id,
     transaction_type: "receita",
     patient_id: appointment.patient_id,
@@ -137,11 +203,12 @@ async function createSingleRevenue(appointment: Appointment) {
     whatsapp_status: "not_applicable",
     report_visibility: "ready"
   });
+  state.financialTransactionIds.push(transactionId);
 
   return "generated";
 }
 
-async function consumePackageSession(appointment: Appointment) {
+async function consumePackageSession(appointment: Appointment, state: RollbackState) {
   if (
     !isPackageAppointment(appointment) ||
     !appointment.patient_package_id ||
@@ -169,6 +236,12 @@ async function consumePackageSession(appointment: Appointment) {
     throw new Error("Pacote sem sessoes restantes.");
   }
 
+  state.packageSnapshot = {
+    id: appointment.patient_package_id,
+    completed_sessions: patientPackage.completed_sessions,
+    remaining_sessions: patientPackage.remaining_sessions
+  };
+
   const { error: updateError } = await supabase
     .from("patient_packages")
     .update({
@@ -187,7 +260,7 @@ async function consumePackageSession(appointment: Appointment) {
   return "consumed";
 }
 
-async function createCommissionPayable(appointment: Appointment) {
+async function createCommissionPayable(appointment: Appointment, state: RollbackState) {
   const supabase = await createClient();
   const { data: existingCommission, error: existingCommissionError } = await supabase
     .from("financial_transactions")
@@ -295,7 +368,7 @@ async function createCommissionPayable(appointment: Appointment) {
     return "not_configured";
   }
 
-  await insertFinancialTransaction({
+  const transactionId = await insertFinancialTransaction({
     clinic_id: appointment.clinic_id,
     transaction_type: "despesa",
     patient_id: appointment.patient_id,
@@ -320,11 +393,39 @@ async function createCommissionPayable(appointment: Appointment) {
     whatsapp_status: "not_applicable",
     report_visibility: "ready"
   });
+  state.financialTransactionIds.push(transactionId);
 
   return "generated";
 }
 
-export async function syncRealizedAppointmentFinancials(
+async function updateAppointmentAsRealized(
+  appointment: Appointment,
+  integration: FinancialIntegrationResult
+) {
+  const supabase = await createClient();
+  const sessionsContracted = appointment.sessions_contracted ?? 1;
+  const sessionsCompleted =
+    appointment.sessions_completed > 0
+      ? appointment.sessions_completed
+      : Math.min(sessionsContracted, 1);
+  const { error } = await supabase
+    .from("appointments")
+    .update({
+      status: "realizado",
+      performed_at: new Date().toISOString(),
+      finance_integration_status: integration.financeIntegrationStatus,
+      commission_integration_status: integration.commissionIntegrationStatus,
+      package_session_status: integration.packageSessionStatus,
+      sessions_completed: sessionsCompleted
+    })
+    .eq("id", appointment.id);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function completeAppointmentAsRealized(
   appointmentId: string
 ): Promise<FinancialIntegrationResult> {
   const supabase = await createClient();
@@ -342,23 +443,48 @@ export async function syncRealizedAppointmentFinancials(
     throw new Error("Atendimento nao encontrado para integracao financeira.");
   }
 
-  if (appointment.status !== "realizado") {
-    return {
-      financeIntegrationStatus: appointment.finance_integration_status,
-      commissionIntegrationStatus: appointment.commission_integration_status,
-      packageSessionStatus: appointment.package_session_status
-    };
-  }
+  validateRealizedAppointment(appointment);
 
-  const financeIntegrationStatus = await createSingleRevenue(appointment);
-  const commissionIntegrationStatus = await createCommissionPayable(appointment);
-  const packageSessionStatus = await consumePackageSession(appointment);
-
-  return {
-    financeIntegrationStatus,
-    commissionIntegrationStatus,
-    packageSessionStatus
+  const rollbackState: RollbackState = {
+    financialTransactionIds: [],
+    packageSnapshot: null
   };
+
+  try {
+    const financeIntegrationStatus = await createSingleRevenue(
+      appointment,
+      rollbackState
+    );
+    const commissionIntegrationStatus = await createCommissionPayable(
+      appointment,
+      rollbackState
+    );
+    const packageSessionStatus = await consumePackageSession(
+      appointment,
+      rollbackState
+    );
+    const integration = {
+      financeIntegrationStatus,
+      commissionIntegrationStatus,
+      packageSessionStatus
+    };
+
+    await updateAppointmentAsRealized(appointment, integration);
+
+    return integration;
+  } catch (error) {
+    try {
+      await rollbackIntegration(rollbackState);
+    } catch (rollbackError) {
+      throw new Error(
+        `${getErrorMessage(error)} Rollback financeiro falhou: ${getErrorMessage(
+          rollbackError
+        )}`
+      );
+    }
+
+    throw error;
+  }
 }
 
 export async function getOperationalFinanceSnapshot() {

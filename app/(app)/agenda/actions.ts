@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getCurrentClinicScope } from "@/lib/access-control";
-import { syncRealizedAppointmentFinancials } from "@/lib/financial-integration-engine";
+import { completeAppointmentAsRealized } from "@/lib/financial-integration-engine";
 import { assertCan } from "@/lib/permissions";
 import { getErrorMessage } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
@@ -551,10 +551,10 @@ async function completeAppointmentSideEffects(
 ) {
   const supabase = await createClient();
   let medicalRecordId = appointment.medical_record_id;
-  let financeIntegrationStatus = appointment.is_billable
+  const financeIntegrationStatus = appointment.is_billable
     ? "pending"
     : "not_billable";
-  let packageSessionStatus = appointment.consumes_package_session
+  const packageSessionStatus = appointment.consumes_package_session
     ? "consume_pending"
     : "not_applied";
   const { data: participants, error: participantsError } = await supabase
@@ -640,31 +640,18 @@ async function completeAppointmentSideEffects(
     }
   }
 
-  const sessionsContracted = appointment.sessions_contracted ?? 1;
-  const sessionsCompleted =
-    appointment.sessions_completed > 0
-      ? appointment.sessions_completed
-      : Math.min(sessionsContracted, 1);
-  const financialIntegration = await syncRealizedAppointmentFinancials(appointmentId);
-  financeIntegrationStatus = financialIntegration.financeIntegrationStatus;
-  packageSessionStatus = financialIntegration.packageSessionStatus;
+  if (medicalRecordId !== appointment.medical_record_id) {
+    const { error: updateRecordLinkError } = await supabase
+      .from("appointments")
+      .update({ medical_record_id: medicalRecordId })
+      .eq("id", appointmentId);
 
-  const { error: updateError } = await supabase
-    .from("appointments")
-    .update({
-      medical_record_id: medicalRecordId,
-      performed_at: new Date().toISOString(),
-      finance_integration_status: financeIntegrationStatus,
-      commission_integration_status:
-        financialIntegration.commissionIntegrationStatus,
-      package_session_status: packageSessionStatus,
-      sessions_completed: sessionsCompleted
-    })
-    .eq("id", appointmentId);
-
-  if (updateError) {
-    throw updateError;
+    if (updateRecordLinkError) {
+      throw updateRecordLinkError;
+    }
   }
+
+  await completeAppointmentAsRealized(appointmentId);
 
   revalidatePath("/financeiro");
   revalidatePath("/dashboard");
@@ -718,6 +705,7 @@ export async function updateAppointment(
     const payload = getAppointmentPayload(input) satisfies AppointmentUpdate;
     const patientIds = cleanPatientIds(input);
     payload.clinic_id = await resolveClinicId(input.clinic_id);
+    delete payload.status;
     await assertServiceCapacity(payload, patientIds);
     await assertActivePatientPackage(payload);
     await assertNoAppointmentConflict(payload, patientIds, id);
@@ -735,10 +723,6 @@ export async function updateAppointment(
 
     await syncAppointmentParticipants(data.id, patientIds);
 
-    if (data.status === "realizado") {
-      await completeAppointmentSideEffects(data.id, data);
-    }
-
     revalidatePath("/agenda");
     return { ok: true, message: "Agendamento atualizado com sucesso." };
   } catch (error) {
@@ -753,6 +737,23 @@ export async function setAppointmentStatus(
   try {
     await assertCan("agenda", "edit");
     const supabase = await createClient();
+
+    if (status === "realizado") {
+      const { data: appointment, error: appointmentError } = await supabase
+        .from("appointments")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (appointmentError) {
+        return { ok: false, message: getErrorMessage(appointmentError) };
+      }
+
+      await completeAppointmentSideEffects(appointment.id, appointment);
+      revalidatePath("/agenda");
+      return { ok: true, message: "Status do agendamento atualizado." };
+    }
+
     const { data, error } = await supabase
       .from("appointments")
       .update({ status })
