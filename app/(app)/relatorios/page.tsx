@@ -1,28 +1,52 @@
+import Link from "next/link";
+import type { Route } from "next";
 import { BarChart3, Building2, Download } from "lucide-react";
-import { ModuleCard } from "@/components/module-card";
 import { PageHeader } from "@/components/page-header";
+import { ReportsMenu } from "@/components/reports/reports-menu";
 import { Button } from "@/components/ui/button";
+
+const reports = [
+  {
+    title: "Operacional",
+    description: "Agenda e producao",
+    icon: BarChart3,
+    value: "12",
+    href: "/relatorios/operacional"
+  },
+  {
+    title: "Financeiro",
+    description: "Receita e caixa",
+    icon: Download,
+    value: "09",
+    href: "/relatorios/financeiro"
+  },
+  {
+    title: "Multiclinica",
+    description: "Comparativo de unidades",
+    icon: Building2,
+    value: "04",
+    href: "/relatorios/multiclinica"
+  }
+];
 
 export default function RelatoriosPage() {
   return (
     <div>
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
         <PageHeader
-          eyebrow="Inteligência"
-          title="Relatórios"
-          description="Visões gerenciais por unidade, período, serviço, profissional, receita, agenda e retenção de pacientes."
+          eyebrow="Inteligencia"
+          title="Relatorios"
+          description="Visoes gerenciais por unidade, periodo, servico, profissional, receita, agenda e retencao de pacientes."
         />
-        <Button variant="outline">
-          <Download className="h-4 w-4" />
-          Exportar
+        <Button asChild variant="outline">
+          <Link href={"/relatorios/financeiro" as Route}>
+            <Download className="h-4 w-4" />
+            Exportar
+          </Link>
         </Button>
       </div>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <ModuleCard title="Operacional" description="Agenda e produção" icon={BarChart3} value="12" />
-        <ModuleCard title="Financeiro" description="Receita e caixa" icon={Download} value="09" />
-        <ModuleCard title="Multiclínica" description="Comparativo de unidades" icon={Building2} value="04" />
-      </section>
+      <ReportsMenu reports={reports} />
     </div>
   );
 }
