@@ -1,33 +1,9 @@
 import Link from "next/link";
 import type { Route } from "next";
-import { BarChart3, Building2, Download } from "lucide-react";
+import { Download } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { ReportsMenu } from "@/components/reports/reports-menu";
 import { Button } from "@/components/ui/button";
-
-const reports = [
-  {
-    title: "Operacional",
-    description: "Agenda e producao",
-    icon: BarChart3,
-    value: "12",
-    href: "/relatorios/operacional"
-  },
-  {
-    title: "Financeiro",
-    description: "Receita e caixa",
-    icon: Download,
-    value: "09",
-    href: "/relatorios/financeiro"
-  },
-  {
-    title: "Multiclinica",
-    description: "Comparativo de unidades",
-    icon: Building2,
-    value: "04",
-    href: "/relatorios/multiclinica"
-  }
-];
 
 export default function RelatoriosPage() {
   return (
@@ -46,7 +22,7 @@ export default function RelatoriosPage() {
         </Button>
       </div>
 
-      <ReportsMenu reports={reports} />
+      <ReportsMenu />
     </div>
   );
 }

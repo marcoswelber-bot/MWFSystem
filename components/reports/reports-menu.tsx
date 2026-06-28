@@ -3,7 +3,7 @@
 import * as React from "react";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
-import type { LucideIcon } from "lucide-react";
+import { BarChart3, Building2, Download, type LucideIcon } from "lucide-react";
 import { ModuleCard } from "@/components/module-card";
 
 type ReportMenuItem = {
@@ -14,11 +14,31 @@ type ReportMenuItem = {
   href: string;
 };
 
-type ReportsMenuProps = {
-  reports: ReportMenuItem[];
-};
+const reports: ReportMenuItem[] = [
+  {
+    title: "Operacional",
+    description: "Agenda e producao",
+    icon: BarChart3,
+    value: "12",
+    href: "/relatorios/operacional"
+  },
+  {
+    title: "Financeiro",
+    description: "Receita e caixa",
+    icon: Download,
+    value: "09",
+    href: "/relatorios/financeiro"
+  },
+  {
+    title: "Multiclinica",
+    description: "Comparativo de unidades",
+    icon: Building2,
+    value: "04",
+    href: "/relatorios/multiclinica"
+  }
+];
 
-export function ReportsMenu({ reports }: ReportsMenuProps) {
+export function ReportsMenu() {
   const router = useRouter();
 
   function openReport(href: string) {
