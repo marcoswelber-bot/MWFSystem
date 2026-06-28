@@ -65,14 +65,16 @@
 
 @media print {
   @page {
-    margin: 12mm;
-    size: landscape;
+    margin: 8mm;
+    size: A4 landscape;
   }
 
   html,
   body {
     background: #ffffff !important;
     color: #111827 !important;
+    font-size: 10px !important;
+    line-height: 1.2 !important;
   }
 
   .app-sidebar,
@@ -88,31 +90,149 @@
 
   .report-print-area {
     color: #111827 !important;
+    display: block !important;
+    width: 100% !important;
   }
 
   .report-print-area * {
     box-shadow: none !important;
   }
 
+  .report-print-area > div:first-child {
+    display: none !important;
+  }
+
+  .report-print-area > * + * {
+    margin-top: 6px !important;
+  }
+
+  .report-print-meta {
+    border-bottom: 1px solid #9ca3af !important;
+    display: grid !important;
+    gap: 1px 12px !important;
+    grid-template-columns: 1fr 1fr 1fr !important;
+    margin-bottom: 6px !important;
+    padding-bottom: 5px !important;
+    page-break-inside: avoid !important;
+  }
+
+  .report-print-system,
+  .report-print-title {
+    color: #111827 !important;
+    font-weight: 700 !important;
+    margin: 0 !important;
+  }
+
+  .report-print-system {
+    font-size: 11px !important;
+  }
+
+  .report-print-title {
+    font-size: 14px !important;
+  }
+
+  .report-print-meta p {
+    margin: 0 !important;
+  }
+
+  .report-print-meta p:nth-child(1),
+  .report-print-meta p:nth-child(2) {
+    grid-column: 1 / -1 !important;
+  }
+
+  .report-print-area .grid {
+    display: grid !important;
+    gap: 4px !important;
+  }
+
+  .report-print-area .md\:grid-cols-3,
+  .report-print-area .md\:grid-cols-4,
+  .report-print-area .xl\:grid-cols-4,
+  .report-print-area .xl\:grid-cols-6,
+  .report-print-area .xl\:grid-cols-8 {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+
+  .report-metric-card {
+    border: 1px solid #d1d5db !important;
+    border-radius: 4px !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    padding: 5px 6px !important;
+  }
+
+  .report-metric-card p,
+  .report-metric-card span {
+    margin: 0 !important;
+  }
+
+  .report-metric-card p:first-child,
+  .report-metric-card span:first-child {
+    color: #4b5563 !important;
+    font-size: 7px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0 !important;
+    line-height: 1.1 !important;
+  }
+
+  .report-metric-card p:nth-child(2),
+  .report-metric-card > p {
+    color: #111827 !important;
+    font-size: 12px !important;
+    line-height: 1.15 !important;
+    margin-top: 2px !important;
+  }
+
+  .report-metric-card .mb-3 {
+    margin-bottom: 2px !important;
+  }
+
+  .report-metric-icon,
+  .report-print-area svg {
+    display: none !important;
+  }
+
   .report-print-area table {
+    table-layout: auto !important;
     min-width: 0 !important;
     width: 100% !important;
     border-collapse: collapse !important;
-    font-size: 10px !important;
+    font-size: 7.5px !important;
+    line-height: 1.12 !important;
   }
 
   .report-print-area th,
   .report-print-area td {
     border: 1px solid #d1d5db !important;
-    padding: 6px !important;
+    break-inside: avoid !important;
     color: #111827 !important;
+    padding: 3px 4px !important;
+    page-break-inside: avoid !important;
+    vertical-align: top !important;
   }
 
   .report-print-area thead {
-    background: #f3f4f6 !important;
+    background: #e5e7eb !important;
+    display: table-header-group !important;
+    font-weight: 700 !important;
   }
 
-  .report-print-meta {
-    display: block !important;
+  .report-print-area tr {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .report-print-area .overflow-x-auto,
+  .report-print-area .overflow-hidden {
+    overflow: visible !important;
+  }
+
+  .report-print-area .rounded-full {
+    border-radius: 3px !important;
+    padding: 1px 3px !important;
+  }
+
+  .report-print-area .max-w-\[260px\] {
+    max-width: none !important;
   }
 }

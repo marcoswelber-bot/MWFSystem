@@ -361,6 +361,8 @@ export function OperationalReport({
       </div>
 
       <div className="report-print-meta hidden text-sm text-muted-foreground">
+        <p className="report-print-system">MWFSystem</p>
+        <p className="report-print-title">Relatorio Operacional</p>
         <p>
           Clinica:{" "}
           {clinicId === "all"
@@ -586,7 +588,7 @@ function MetricCard({
   value: number | string;
 }) {
   return (
-    <Card className="border-none p-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
+    <Card className="report-metric-card border-none p-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -594,7 +596,7 @@ function MetricCard({
           </p>
           <p className="mt-2 text-2xl font-bold">{value}</p>
         </div>
-        <div className="rounded-lg bg-primary/10 p-2 text-primary">
+        <div className="report-metric-icon rounded-lg bg-primary/10 p-2 text-primary">
           <Icon className="h-5 w-5" />
         </div>
       </div>

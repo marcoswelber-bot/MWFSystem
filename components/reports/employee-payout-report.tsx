@@ -439,7 +439,8 @@ export function EmployeePayoutReport({
       </div>
 
       <div className="report-print-meta hidden text-sm text-muted-foreground">
-        <p className="text-lg font-semibold text-foreground">Repasse / Contracheque</p>
+        <p className="report-print-system">MWFSystem</p>
+        <p className="report-print-title">Repasse / Contracheque</p>
         <p>
           Clinica:{" "}
           {clinicId === "all"
@@ -650,10 +651,10 @@ function MetricCard({
   icon: React.ElementType;
 }) {
   return (
-    <Card className="border-none p-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
+    <Card className="report-metric-card border-none p-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
       <div className="mb-3 flex items-center justify-between gap-3 text-muted-foreground">
         <span className="text-xs font-medium uppercase tracking-wide">{label}</span>
-        <Icon className="h-4 w-4 shrink-0" />
+        <Icon className="report-metric-icon h-4 w-4 shrink-0" />
       </div>
       <p className="break-words text-xl font-semibold">{value}</p>
     </Card>

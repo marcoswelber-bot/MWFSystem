@@ -122,6 +122,8 @@ export function ReportPlaceholder({
       </div>
 
       <div className="report-print-meta hidden text-sm text-muted-foreground">
+        <p className="report-print-system">MWFSystem</p>
+        <p className="report-print-title">{title}</p>
         <p>
           Clinica: {clinic === "all" ? "Todas" : clinic}
         </p>
