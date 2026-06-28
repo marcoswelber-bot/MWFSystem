@@ -3,7 +3,13 @@
 import * as React from "react";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
-import { BarChart3, Building2, Download, type LucideIcon } from "lucide-react";
+import {
+  BarChart3,
+  Building2,
+  CreditCard,
+  Download,
+  type LucideIcon
+} from "lucide-react";
 import { ModuleCard } from "@/components/module-card";
 
 type ReportMenuItem = {
@@ -35,6 +41,13 @@ const reports: ReportMenuItem[] = [
     icon: Building2,
     value: "04",
     href: "/relatorios/multiclinica"
+  },
+  {
+    title: "Pagamentos / Cobranca",
+    description: "Recebimentos e inadimplencia",
+    icon: CreditCard,
+    value: "08",
+    href: "/relatorios/pagamentos"
   }
 ];
 
@@ -46,7 +59,7 @@ export function ReportsMenu() {
   }
 
   return (
-    <section className="grid gap-4 md:grid-cols-3">
+    <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
       {reports.map((report) => (
         <div
           key={report.href}
