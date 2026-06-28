@@ -6,7 +6,6 @@ import {
   ArrowLeft,
   ArrowUpDown,
   BadgeDollarSign,
-  Download,
   Eye,
   FileText,
   Filter,
@@ -17,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { ReportPrintActions } from "@/components/reports/report-print-actions";
 import type { Database } from "@/types/database";
 
 type Clinic = Database["public"]["Tables"]["clinics"]["Row"];
@@ -321,6 +321,7 @@ export function EmployeePayoutReport({
   const [sortDirection, setSortDirection] = React.useState<"asc" | "desc">("desc");
   const [page, setPage] = React.useState(1);
   const [selectedEmployeeId, setSelectedEmployeeId] = React.useState<string | null>(null);
+  const [issuedAt, setIssuedAt] = React.useState("");
   const pageSize = 10;
 
   const filteredRows = React.useMemo(
@@ -409,6 +410,13 @@ export function EmployeePayoutReport({
     setPage(1);
   }, [clinicId, employeeId, endDate, query, startDate, status, type]);
 
+  React.useEffect(() => {
+    setIssuedAt(new Intl.DateTimeFormat("pt-BR", {
+      dateStyle: "short",
+      timeStyle: "short"
+    }).format(new Date()));
+  }, []);
+
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
       setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
@@ -420,14 +428,28 @@ export function EmployeePayoutReport({
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex justify-end">
+    <div className="report-print-area space-y-5">
+      <div className="report-screen-only flex justify-end">
         <Button asChild variant="outline">
           <Link href="/relatorios">
             <ArrowLeft className="h-4 w-4" />
             Voltar para Relatorios
           </Link>
         </Button>
+      </div>
+
+      <div className="report-print-meta hidden text-sm text-muted-foreground">
+        <p className="text-lg font-semibold text-foreground">Repasse / Contracheque</p>
+        <p>
+          Clinica:{" "}
+          {clinicId === "all"
+            ? "Todas"
+            : clinics.find((clinic) => clinic.id === clinicId)?.name ?? "-"}
+        </p>
+        <p>
+          Periodo: {startDate || "-"} ate {endDate || "-"}
+        </p>
+        <p>Data de emissao: {issuedAt || "-"}</p>
       </div>
 
       {loadError ? (
@@ -445,7 +467,7 @@ export function EmployeePayoutReport({
         <MetricCard label="Total liquido" value={money(totals.netTotal)} icon={Users} />
       </section>
 
-      <Card className="border-none p-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
+      <Card className="report-screen-only border-none p-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
         <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
           <Filter className="h-4 w-4" />
           Filtros
@@ -475,7 +497,7 @@ export function EmployeePayoutReport({
           <SelectFilter label="Tipo" value={type} onChange={(value) => setType(value as PayoutType)} options={payoutTypeOptions} />
           <SelectFilter label="Status" value={status} onChange={(value) => setStatus(value as PayoutStatus)} options={payoutStatusOptions} />
         </div>
-        <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
+        <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_420px]">
           <label className="space-y-1 text-sm">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Pesquisa
@@ -491,15 +513,9 @@ export function EmployeePayoutReport({
             </div>
           </label>
           <div className="flex items-end">
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              onClick={() => downloadCsv("relatorio-financeiro-repasses.csv", summaries)}
-            >
-              <Download className="h-4 w-4" />
-              Exportar CSV
-            </Button>
+            <ReportPrintActions
+              onExportCsv={() => downloadCsv("relatorio-financeiro-repasses.csv", summaries)}
+            />
           </div>
         </div>
       </Card>
@@ -533,7 +549,7 @@ export function EmployeePayoutReport({
                     <SortableHeader label="Total liquido" column="netTotal" onSort={toggleSort} />
                     <SortableHeader label="Status" column="status" onSort={toggleSort} />
                     <th className="px-4 py-3">Periodo</th>
-                    <th className="px-4 py-3">Acao</th>
+                    <th className="report-screen-only px-4 py-3">Acao</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -554,7 +570,7 @@ export function EmployeePayoutReport({
                         </span>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">{summary.period}</td>
-                      <td className="px-4 py-3">
+                      <td className="report-screen-only px-4 py-3">
                         <Button size="sm" variant="outline" onClick={() => setSelectedEmployeeId(summary.employeeId)}>
                           <Eye className="h-4 w-4" />
                           Visualizar detalhes
@@ -565,7 +581,7 @@ export function EmployeePayoutReport({
                 </tbody>
               </table>
             </div>
-            <div className="flex items-center justify-between border-t px-4 py-3 text-sm">
+            <div className="report-screen-only flex items-center justify-between border-t px-4 py-3 text-sm">
               <span className="text-muted-foreground">
                 Pagina {page} de {totalPages}
               </span>
@@ -592,7 +608,9 @@ export function EmployeePayoutReport({
             </div>
           </Card>
 
-          <EmployeeDetails summary={selectedSummary} />
+          <div className="report-screen-only">
+            <EmployeeDetails summary={selectedSummary} />
+          </div>
         </div>
       )}
     </div>

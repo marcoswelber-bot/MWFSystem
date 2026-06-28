@@ -62,3 +62,57 @@
     @apply h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20;
   }
 }
+
+@media print {
+  @page {
+    margin: 12mm;
+    size: landscape;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #111827 !important;
+  }
+
+  .app-sidebar,
+  .app-topbar,
+  .report-screen-only {
+    display: none !important;
+  }
+
+  .app-main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  .report-print-area {
+    color: #111827 !important;
+  }
+
+  .report-print-area * {
+    box-shadow: none !important;
+  }
+
+  .report-print-area table {
+    min-width: 0 !important;
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 10px !important;
+  }
+
+  .report-print-area th,
+  .report-print-area td {
+    border: 1px solid #d1d5db !important;
+    padding: 6px !important;
+    color: #111827 !important;
+  }
+
+  .report-print-area thead {
+    background: #f3f4f6 !important;
+  }
+
+  .report-print-meta {
+    display: block !important;
+  }
+}

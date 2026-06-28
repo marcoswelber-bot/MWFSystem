@@ -2,9 +2,10 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowUpDown, Download, FileText, Search } from "lucide-react";
+import { ArrowLeft, ArrowUpDown, FileText, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ReportPrintActions } from "@/components/reports/report-print-actions";
 
 type PlaceholderRow = {
   id: string;
@@ -62,6 +63,7 @@ export function ReportPlaceholder({
   const [sortKey, setSortKey] = React.useState<SortKey>("indicador");
   const [sortDirection, setSortDirection] = React.useState<"asc" | "desc">("asc");
   const [page, setPage] = React.useState(1);
+  const [issuedAt, setIssuedAt] = React.useState("");
   const pageSize = 10;
   const filteredRows = React.useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -82,6 +84,13 @@ export function ReportPlaceholder({
   const totalPages = Math.max(Math.ceil(filteredRows.length / pageSize), 1);
   const visibleRows = filteredRows.slice((page - 1) * pageSize, page * pageSize);
 
+  React.useEffect(() => {
+    setIssuedAt(new Intl.DateTimeFormat("pt-BR", {
+      dateStyle: "short",
+      timeStyle: "short"
+    }).format(new Date()));
+  }, []);
+
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
       setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
@@ -93,7 +102,7 @@ export function ReportPlaceholder({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="report-print-area space-y-5">
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
         <div>
           <p className="text-sm font-semibold uppercase tracking-wide text-primary">
@@ -102,12 +111,24 @@ export function ReportPlaceholder({
           <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
           <p className="mt-2 max-w-3xl text-muted-foreground">{description}</p>
         </div>
-        <Button asChild variant="outline">
-          <Link href="/relatorios">
-            <ArrowLeft className="h-4 w-4" />
-            Voltar para Relatorios
-          </Link>
-        </Button>
+        <div className="report-screen-only">
+          <Button asChild variant="outline">
+            <Link href="/relatorios">
+              <ArrowLeft className="h-4 w-4" />
+              Voltar para Relatorios
+            </Link>
+          </Button>
+        </div>
+      </div>
+
+      <div className="report-print-meta hidden text-sm text-muted-foreground">
+        <p>
+          Clinica: {clinic === "all" ? "Todas" : clinic}
+        </p>
+        <p>
+          Periodo: {startDate || "-"} ate {endDate || "-"}
+        </p>
+        <p>Data de emissao: {issuedAt || "-"}</p>
       </div>
 
       <Card className="border-dashed p-8 text-center">
@@ -118,7 +139,7 @@ export function ReportPlaceholder({
         </p>
       </Card>
 
-      <Card className="border-none p-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
+      <Card className="report-screen-only border-none p-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
         <div className="grid gap-3 md:grid-cols-5">
           <label className="space-y-1 text-sm">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -141,15 +162,7 @@ export function ReportPlaceholder({
           <InputField label="Periodo inicial" type="date" value={startDate} onChange={setStartDate} />
           <InputField label="Periodo final" type="date" value={endDate} onChange={setEndDate} />
           <div className="flex items-end">
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              onClick={() => downloadCsv(fileName, filteredRows)}
-            >
-              <Download className="h-4 w-4" />
-              Exportar CSV
-            </Button>
+            <ReportPrintActions onExportCsv={() => downloadCsv(fileName, filteredRows)} />
           </div>
         </div>
       </Card>
@@ -179,7 +192,7 @@ export function ReportPlaceholder({
             </tbody>
           </table>
         </div>
-        <div className="flex items-center justify-between border-t px-4 py-3 text-sm">
+        <div className="report-screen-only flex items-center justify-between border-t px-4 py-3 text-sm">
           <span className="text-muted-foreground">
             Pagina {page} de {totalPages}
           </span>

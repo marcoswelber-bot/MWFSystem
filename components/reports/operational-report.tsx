@@ -7,7 +7,6 @@ import {
   ArrowUpDown,
   CalendarCheck,
   CalendarClock,
-  Download,
   RotateCcw,
   Search,
   UserCheck,
@@ -17,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { ReportPrintActions } from "@/components/reports/report-print-actions";
 import type { Database } from "@/types/database";
 
 type Clinic = Database["public"]["Tables"]["clinics"]["Row"];
@@ -234,6 +234,7 @@ export function OperationalReport({
   const [sortKey, setSortKey] = React.useState<SortKey>("appointmentDate");
   const [sortDirection, setSortDirection] = React.useState<"asc" | "desc">("desc");
   const [page, setPage] = React.useState(1);
+  const [issuedAt, setIssuedAt] = React.useState("");
 
   const filteredRows = React.useMemo(() => {
     const normalizedQuery = normalizeText(query);
@@ -319,6 +320,13 @@ export function OperationalReport({
     setPage(1);
   }, [clinicId, employeeId, endDate, patientId, query, serviceId, startDate, status, type]);
 
+  React.useEffect(() => {
+    setIssuedAt(new Intl.DateTimeFormat("pt-BR", {
+      dateStyle: "short",
+      timeStyle: "short"
+    }).format(new Date()));
+  }, []);
+
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
       setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
@@ -330,7 +338,7 @@ export function OperationalReport({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="report-print-area space-y-5">
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
         <div>
           <p className="text-sm font-semibold uppercase tracking-wide text-primary">
@@ -342,12 +350,27 @@ export function OperationalReport({
             paciente, servico, tipo e status.
           </p>
         </div>
-        <Button asChild variant="outline">
-          <Link href="/relatorios">
-            <ArrowLeft className="h-4 w-4" />
-            Voltar para Relatorios
-          </Link>
-        </Button>
+        <div className="report-screen-only flex flex-col gap-2 sm:flex-row">
+          <Button asChild variant="outline">
+            <Link href="/relatorios">
+              <ArrowLeft className="h-4 w-4" />
+              Voltar para Relatorios
+            </Link>
+          </Button>
+        </div>
+      </div>
+
+      <div className="report-print-meta hidden text-sm text-muted-foreground">
+        <p>
+          Clinica:{" "}
+          {clinicId === "all"
+            ? "Todas"
+            : clinics.find((clinic) => clinic.id === clinicId)?.name ?? "-"}
+        </p>
+        <p>
+          Periodo: {startDate || "-"} ate {endDate || "-"}
+        </p>
+        <p>Data de emissao: {issuedAt || "-"}</p>
       </div>
 
       {loadError ? (
@@ -371,7 +394,7 @@ export function OperationalReport({
         />
       </div>
 
-      <Card className="border-none p-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
+      <Card className="report-screen-only border-none p-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
         <div className="grid gap-3 md:grid-cols-4 xl:grid-cols-8">
           <label className="space-y-1 text-sm xl:col-span-2">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -448,16 +471,10 @@ export function OperationalReport({
             onChange={setStatus}
             options={[...statusOptions]}
           />
-          <div className="flex items-end">
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              onClick={() => downloadCsv("relatorio-operacional.csv", filteredRows)}
-            >
-              <Download className="h-4 w-4" />
-              Exportar CSV
-            </Button>
+          <div className="flex items-end xl:col-span-2">
+            <ReportPrintActions
+              onExportCsv={() => downloadCsv("relatorio-operacional.csv", filteredRows)}
+            />
           </div>
         </div>
       </Card>
@@ -528,7 +545,7 @@ export function OperationalReport({
             </tbody>
           </table>
         </div>
-        <div className="flex flex-col gap-3 border-t px-4 py-3 text-sm md:flex-row md:items-center md:justify-between">
+        <div className="report-screen-only flex flex-col gap-3 border-t px-4 py-3 text-sm md:flex-row md:items-center md:justify-between">
           <span className="text-muted-foreground">
             Mostrando {visibleRows.length} de {filteredRows.length} registros. Pagina{" "}
             {page} de {totalPages}

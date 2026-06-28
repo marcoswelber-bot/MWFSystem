@@ -66,7 +66,7 @@ export function AppShell({
   const sidebar = (
     <aside
       className={cn(
-        "flex h-full flex-col border-r bg-card transition-[width] duration-200",
+        "app-sidebar flex h-full flex-col border-r bg-card transition-[width] duration-200",
         collapsed ? "w-[76px]" : "w-72"
       )}
     >
@@ -212,10 +212,10 @@ export function AppShell({
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:block">{sidebar}</div>
+      <div className="app-sidebar hidden lg:fixed lg:inset-y-0 lg:left-0 lg:block">{sidebar}</div>
 
       {mobileOpen ? (
-        <div className="fixed inset-0 z-40 lg:hidden">
+        <div className="app-sidebar fixed inset-0 z-40 lg:hidden">
           <button
             type="button"
             className="absolute inset-0 bg-background/80 backdrop-blur-sm"
@@ -232,7 +232,7 @@ export function AppShell({
           collapsed && "lg:pl-[76px]"
         )}
       >
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-background/90 px-4 backdrop-blur md:px-6">
+        <header className="app-topbar sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-background/90 px-4 backdrop-blur md:px-6">
           <div className="flex items-center gap-3">
             <Button
               type="button"
@@ -254,7 +254,7 @@ export function AppShell({
           <ThemeToggle />
         </header>
 
-        <main className="mx-auto w-full max-w-7xl p-4 md:p-6">{children}</main>
+        <main className="app-main mx-auto w-full max-w-7xl p-4 md:p-6">{children}</main>
       </div>
     </div>
   );
