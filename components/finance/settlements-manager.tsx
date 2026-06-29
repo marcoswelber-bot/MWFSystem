@@ -55,7 +55,9 @@ const paymentMethodOptions: Array<[PaymentMethod, string]> = [
   ["dinheiro", "Dinheiro"],
   ["cartao", "Cartao"],
   ["boleto", "Boleto"],
-  ["parcelado", "Parcelado"]
+  ["parcelado", "Parcelado"],
+  ["transferencia", "Transferencia"],
+  ["outro", "Outro"]
 ];
 const patientStatusOptions: Array<[string, string]> = [["all", "Todos"], ["pendente", "Em aberto"], ["parcial", "Parcial"], ["vencido", "Vencido"]];
 const staffStatusOptions: Array<[string, string]> = [["all", "Todos"], ["pendente", "Em aberto"], ["parcial", "Parcial"], ["pago", "Pago"]];
@@ -188,6 +190,9 @@ export function SettlementsManager({ transactions, clinics, patients, services, 
   const selectedRows = rows.filter((row) => selectedIds.includes(row.id));
   const selectedOpenAmount = selectedRows.reduce((total, row) => total + getOpenAmount(row), 0);
   const selectedPaidAmount = selectedRows.reduce((total, row) => total + getPaidAmount(row), 0);
+  const parsedSettlementAmount = Number.parseFloat(amount.replace(",", "."));
+  const informedAmount = mode === "total" ? selectedOpenAmount : Number.isFinite(parsedSettlementAmount) ? parsedSettlementAmount : 0;
+  const remainingAfterSettlement = Math.max(selectedOpenAmount - informedAmount, 0);
 
   React.useEffect(() => {
     setSelectedIds([]);
@@ -285,6 +290,10 @@ export function SettlementsManager({ transactions, clinics, patients, services, 
       </Card>
 
       <Card className="space-y-4 p-4">
+        <div className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950">
+          <div className="text-sm font-semibold text-slate-900 dark:text-white">{tab === "patients" ? "Baixa de recebimentos" : "Pagamento de repasses"}</div>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Escolha baixa total para quitar todo o saldo selecionado ou baixa parcial para informar um valor menor.</p>
+        </div>
         <div className="grid gap-3 md:grid-cols-5">
           <SelectField label="Tipo de baixa" value={mode} onChange={(value) => setMode(value as SettlementMode)} options={[["total", "Baixa total"], ["partial", "Baixa parcial"]]} />
           <InputField label="Valor pago" value={mode === "total" ? formatCurrency(selectedOpenAmount) : amount} onChange={setAmount} disabled={mode === "total"} placeholder="0,00" />
@@ -292,9 +301,15 @@ export function SettlementsManager({ transactions, clinics, patients, services, 
           <InputField label="Data do pagamento" type="date" value={paidAt} onChange={setPaidAt} />
           <InputField label="Observacao" value={notes} onChange={setNotes} placeholder="Opcional" />
         </div>
-        <div className="flex flex-col gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-200 md:flex-row md:items-center md:justify-between">
-          <div><strong>{selectedIds.length}</strong> lancamento(s) selecionado(s) - em aberto {formatCurrency(selectedOpenAmount)} - ja pago {formatCurrency(selectedPaidAmount)}</div>
-          <Button type="button" onClick={submitSettlement} disabled={isPending || selectedIds.length === 0}>{isPending ? "Processando..." : tab === "patients" ? "Dar baixa selecionados" : "Pagar selecionados"}</Button>
+        <div className="grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-200 md:grid-cols-5">
+          <Metric label="Selecionados" value={String(selectedIds.length)} />
+          <Metric label="Total em aberto" value={formatCurrency(selectedOpenAmount)} />
+          <Metric label="Ja pago" value={formatCurrency(selectedPaidAmount)} />
+          <Metric label="Valor informado" value={formatCurrency(informedAmount)} />
+          <Metric label="Saldo restante" value={formatCurrency(remainingAfterSettlement)} />
+        </div>
+        <div className="flex justify-end">
+          <Button type="button" onClick={submitSettlement} disabled={isPending || selectedIds.length === 0}>{isPending ? "Processando..." : tab === "patients" ? "Baixar recebimentos selecionados" : "Pagar repasses selecionados"}</Button>
         </div>
         {message ? <Alert type={message.type} text={message.text} /> : null}
       </Card>
@@ -335,6 +350,15 @@ function SummaryCard({ icon: Icon, label, value }: { icon: React.ComponentType<{
         <div className="rounded-md bg-slate-100 p-2 text-slate-600 dark:bg-slate-800 dark:text-slate-300"><Icon className="h-5 w-5" /></div>
       </div>
     </Card>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</div>
+      <div className="mt-1 text-base font-semibold text-slate-950 dark:text-white">{value}</div>
+    </div>
   );
 }
 

@@ -20,7 +20,7 @@ type PaymentSettlementInsert =
 export type FinancialTransactionType = "receita" | "despesa";
 export type FinancialOrigin = "avulso" | "pacote" | "manual";
 export type FinancialStatus = "pendente" | "pago" | "vencido" | "parcial" | "cancelado";
-export type PaymentMethod = "pix" | "dinheiro" | "cartao" | "boleto" | "parcelado";
+export type PaymentMethod = "pix" | "dinheiro" | "cartao" | "boleto" | "parcelado" | "transferencia" | "outro";
 export type SettlementType = "patient_payment" | "staff_payout";
 export type SettlementMode = "total" | "partial";
 
@@ -433,11 +433,12 @@ export async function settleFinancialTransactions(
       const previousPaidAmount = getPaidAmount(allocation.transaction);
       const paidAmount = roundMoney(previousPaidAmount + allocation.amount);
       const isPaid = paidAmount >= allocation.transaction.amount;
+      const isOverdue = allocation.transaction.due_date < today();
       const updatePayload: FinancialTransactionUpdate = {
         paid_amount: Math.min(paidAmount, allocation.transaction.amount),
-        status: isPaid ? "pago" : "parcial",
+        status: isPaid ? "pago" : isOverdue ? "vencido" : "parcial",
         payment_method: input.payment_method ?? allocation.transaction.payment_method,
-        payment_date: isPaid ? input.paid_at : allocation.transaction.payment_date
+        payment_date: input.paid_at
       };
 
       const { error: updateError } = await supabase
