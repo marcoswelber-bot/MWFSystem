@@ -1,4 +1,4 @@
-@tailwind base;
+﻿@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
@@ -66,15 +66,15 @@
 @media print {
   @page {
     margin: 8mm;
-    size: A4 landscape;
+    size: A4 portrait;
   }
 
   html,
   body {
     background: #ffffff !important;
     color: #111827 !important;
-    font-size: 10px !important;
-    line-height: 1.2 !important;
+    font-size: 8px !important;
+    line-height: 1.12 !important;
   }
 
   .app-sidebar,
@@ -103,16 +103,16 @@
   }
 
   .report-print-area > * + * {
-    margin-top: 6px !important;
+    margin-top: 4px !important;
   }
 
   .report-print-meta {
     border-bottom: 1px solid #9ca3af !important;
     display: grid !important;
-    gap: 1px 12px !important;
+    gap: 1px 8px !important;
     grid-template-columns: 1fr 1fr 1fr !important;
-    margin-bottom: 6px !important;
-    padding-bottom: 5px !important;
+    margin-bottom: 4px !important;
+    padding-bottom: 4px !important;
     page-break-inside: avoid !important;
   }
 
@@ -124,11 +124,11 @@
   }
 
   .report-print-system {
-    font-size: 11px !important;
+    font-size: 9px !important;
   }
 
   .report-print-title {
-    font-size: 14px !important;
+    font-size: 9.5px !important;
   }
 
   .report-print-meta p {
@@ -149,6 +149,7 @@
   .report-print-area .md\:grid-cols-4,
   .report-print-area .xl\:grid-cols-4,
   .report-print-area .xl\:grid-cols-6,
+  .report-print-area .xl\:grid-cols-7,
   .report-print-area .xl\:grid-cols-8 {
     grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
   }
@@ -158,7 +159,7 @@
     border-radius: 4px !important;
     break-inside: avoid !important;
     page-break-inside: avoid !important;
-    padding: 5px 6px !important;
+    padding: 2px 2.5px !important;
   }
 
   .report-metric-card p,
@@ -169,7 +170,7 @@
   .report-metric-card p:first-child,
   .report-metric-card span:first-child {
     color: #4b5563 !important;
-    font-size: 7px !important;
+    font-size: 6px !important;
     font-weight: 700 !important;
     letter-spacing: 0 !important;
     line-height: 1.1 !important;
@@ -178,9 +179,9 @@
   .report-metric-card p:nth-child(2),
   .report-metric-card > p {
     color: #111827 !important;
-    font-size: 12px !important;
+    font-size: 9.5px !important;
     line-height: 1.15 !important;
-    margin-top: 2px !important;
+    margin-top: 1px !important;
   }
 
   .report-metric-card .mb-3 {
@@ -197,8 +198,8 @@
     min-width: 0 !important;
     width: 100% !important;
     border-collapse: collapse !important;
-    font-size: 7.5px !important;
-    line-height: 1.12 !important;
+    font-size: 5.7px !important;
+    line-height: 1.08 !important;
   }
 
   .report-print-area th,
@@ -206,7 +207,7 @@
     border: 1px solid #d1d5db !important;
     break-inside: avoid !important;
     color: #111827 !important;
-    padding: 3px 4px !important;
+    padding: 2px 2.5px !important;
     page-break-inside: avoid !important;
     vertical-align: top !important;
   }

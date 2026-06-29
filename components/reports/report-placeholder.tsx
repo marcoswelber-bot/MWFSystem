@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import Link from "next/link";
@@ -83,6 +83,8 @@ export function ReportPlaceholder({
   }, [clinic, endDate, query, sortDirection, sortKey, startDate]);
   const totalPages = Math.max(Math.ceil(filteredRows.length / pageSize), 1);
   const visibleRows = filteredRows.slice((page - 1) * pageSize, page * pageSize);
+  const periodLabel = `${startDate || "inicio"} a ${endDate || "fim"}`;
+  const printFileName = `${clinic === "all" ? "Todas as clinicas" : clinic} - ${title} - ${periodLabel}.pdf`;
 
   React.useEffect(() => {
     setIssuedAt(new Intl.DateTimeFormat("pt-BR", {
@@ -164,7 +166,10 @@ export function ReportPlaceholder({
           <InputField label="Periodo inicial" type="date" value={startDate} onChange={setStartDate} />
           <InputField label="Periodo final" type="date" value={endDate} onChange={setEndDate} />
           <div className="flex items-end">
-            <ReportPrintActions onExportCsv={() => downloadCsv(fileName, filteredRows)} />
+            <ReportPrintActions
+              printFileName={printFileName}
+              onExportCsv={() => downloadCsv(fileName, filteredRows)}
+            />
           </div>
         </div>
       </Card>

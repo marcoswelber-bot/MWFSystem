@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import Link from "next/link";
@@ -386,6 +386,8 @@ export function MulticlinicReport({
     (page - 1) * pageSize,
     page * pageSize
   );
+  const periodLabel = `${startDate || "inicio"} a ${endDate || "fim"}`;
+  const printFileName = `Relatorio Multiclinica - ${periodLabel}.pdf`;
   const statusOptions = React.useMemo(
     () => [
       ["all", "Todos"] as [string, string],
@@ -536,6 +538,7 @@ export function MulticlinicReport({
           />
           <div className="flex items-end xl:col-span-2">
             <ReportPrintActions
+              printFileName={printFileName}
               onExportCsv={() =>
                 downloadCsv("relatorio-multiclinica.csv", filteredSummaries)
               }

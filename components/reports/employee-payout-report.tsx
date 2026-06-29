@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import Link from "next/link";
@@ -427,6 +427,18 @@ export function EmployeePayoutReport({
     setSortDirection("asc");
   }
 
+  const selectedClinicName =
+    clinicId === "all"
+      ? "Todas as clinicas"
+      : clinics.find((clinic) => clinic.id === clinicId)?.name ?? "Clinica";
+  const selectedEmployeeName =
+    selectedSummary?.employeeName ??
+    (employeeId === "all"
+      ? "Todos os funcionarios"
+      : employees.find((employee) => employee.id === employeeId)?.name ?? "Funcionario");
+  const periodLabel = `${startDate || "inicio"} a ${endDate || "fim"}`;
+  const printFileName = `${selectedClinicName} - Contracheque - ${selectedEmployeeName} - ${periodLabel}.pdf`;
+
   return (
     <div className="report-print-area space-y-5">
       <div className="report-screen-only flex justify-end">
@@ -515,6 +527,7 @@ export function EmployeePayoutReport({
           </label>
           <div className="flex items-end">
             <ReportPrintActions
+              printFileName={printFileName}
               onExportCsv={() => downloadCsv("relatorio-financeiro-repasses.csv", summaries)}
             />
           </div>
