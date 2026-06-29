@@ -66,6 +66,7 @@ const statusOptions: Array<[FinancialStatus, string]> = [
   ["pendente", "Pendente"],
   ["pago", "Pago"],
   ["vencido", "Vencido"],
+  ["parcial", "Parcial"],
   ["cancelado", "Cancelado"]
 ];
 
@@ -85,7 +86,7 @@ const paymentMethodOptions: Array<[PaymentMethod, string]> = [
 
 const expenseCategoryOptions = [
   "ADM / Funcionarios",
-  "Comissões",
+  "ComissÃµes",
   "Aluguel",
   "Energia",
   "Agua",
@@ -186,6 +187,7 @@ function statusClass(status: FinancialStatus) {
       "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-100",
     pago: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-100",
     vencido: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-100",
+    parcial: "bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-100",
     cancelado: "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
   };
 
@@ -276,7 +278,7 @@ export function FinanceManager({
   const commissionsPayable = filteredTransactions.filter(
     (item) =>
       item.transaction_type === "despesa" &&
-      (item.category === "Comissões" || item.category === "Comissoes") &&
+      (item.category === "ComissÃµes" || item.category === "Comissoes") &&
       item.commission_status === "generated"
   );
   const expenses = filteredTransactions.filter(
@@ -326,7 +328,7 @@ export function FinanceManager({
   const tabOptions: Array<[FinanceTab, string]> = [
     ["receitas", "Receitas"],
     ["despesas", "Despesas"],
-    ["comissoes", "Comissões a pagar"],
+    ["comissoes", "ComissÃµes a pagar"],
     ["pacientes", "Pacientes em aberto"],
     ["fluxo", "Fluxo de caixa"]
   ];
@@ -445,9 +447,9 @@ export function FinanceManager({
       </div>
 
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-        <MetricCard label="Receitas do mês" value={money(totals.revenue)} icon={ArrowUpRight} />
-        <MetricCard label="Despesas do mês" value={money(totals.expense)} icon={ArrowDownRight} />
-        <MetricCard label="Saldo do mês" value={money(balance)} icon={CircleDollarSign} />
+        <MetricCard label="Receitas do mÃªs" value={money(totals.revenue)} icon={ArrowUpRight} />
+        <MetricCard label="Despesas do mÃªs" value={money(totals.expense)} icon={ArrowDownRight} />
+        <MetricCard label="Saldo do mÃªs" value={money(balance)} icon={CircleDollarSign} />
         <MetricCard label="Contas a receber" value={money(totals.receivable)} icon={ArrowUpRight} />
         <MetricCard label="Contas pagas" value={money(totals.paid)} icon={CheckCircle2} />
         <MetricCard label="Contas vencidas" value={money(totals.overdue)} icon={XCircle} />
@@ -521,7 +523,7 @@ export function FinanceManager({
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <MetricCard label="Total de receitas" value={money(cashFlowTotals.revenue)} icon={ArrowUpRight} />
           <MetricCard label="Total de despesas" value={money(cashFlowTotals.expense)} icon={ArrowDownRight} />
-          <MetricCard label="Comissões pendentes" value={money(cashFlowTotals.pendingCommission)} icon={XCircle} />
+          <MetricCard label="ComissÃµes pendentes" value={money(cashFlowTotals.pendingCommission)} icon={XCircle} />
           <MetricCard label="Saldo previsto" value={money(predictedBalance)} icon={CircleDollarSign} />
           <MetricCard label="Saldo realizado" value={money(cashFlowTotals.realized)} icon={CheckCircle2} />
         </section>
@@ -530,7 +532,7 @@ export function FinanceManager({
           <div className="border-b p-4">
             <h2 className="text-xl font-semibold tracking-normal">{activeTabTitle}</h2>
             <p className="text-sm text-muted-foreground">
-              Controle operacional financeiro por clínica, período e status.
+              Controle operacional financeiro por clÃ­nica, perÃ­odo e status.
             </p>
           </div>
           <div className="overflow-x-auto">
@@ -538,41 +540,41 @@ export function FinanceManager({
               <thead className="bg-muted/60 text-xs uppercase text-muted-foreground">
                 {activeTab === "comissoes" ? (
                   <tr>
-                    <th className="px-4 py-3">Clínica</th>
-                    <th className="px-4 py-3">Funcionário</th>
+                    <th className="px-4 py-3">ClÃ­nica</th>
+                    <th className="px-4 py-3">FuncionÃ¡rio</th>
                     <th className="px-4 py-3">Paciente</th>
-                    <th className="px-4 py-3">Serviço</th>
+                    <th className="px-4 py-3">ServiÃ§o</th>
                     <th className="px-4 py-3">Atendimento</th>
                     <th className="px-4 py-3">Data</th>
                     <th className="px-4 py-3">Valor base</th>
                     <th className="px-4 py-3">Tipo</th>
-                    <th className="px-4 py-3">Comissão</th>
+                    <th className="px-4 py-3">ComissÃ£o</th>
                     <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3 text-right">Ações</th>
+                    <th className="px-4 py-3 text-right">AÃ§Ãµes</th>
                   </tr>
                 ) : activeTab === "pacientes" ? (
                   <tr>
                     <th className="px-4 py-3">Paciente</th>
-                    <th className="px-4 py-3">ServiÃ§o</th>
+                    <th className="px-4 py-3">ServiÃƒÂ§o</th>
                     <th className="px-4 py-3">Valor em aberto</th>
                     <th className="px-4 py-3">Origem</th>
                     <th className="px-4 py-3">Vencimento</th>
                     <th className="px-4 py-3">Dias em atraso</th>
                     <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Clínica</th>
-                    <th className="px-4 py-3 text-right">Ações</th>
+                    <th className="px-4 py-3">ClÃ­nica</th>
+                    <th className="px-4 py-3 text-right">AÃ§Ãµes</th>
                   </tr>
                 ) : (
                   <tr>
                     <th className="px-4 py-3">Tipo</th>
-                    <th className="px-4 py-3">Descrição</th>
+                    <th className="px-4 py-3">DescriÃ§Ã£o</th>
                     <th className="px-4 py-3">Paciente</th>
-                    <th className="px-4 py-3">Serviço</th>
+                    <th className="px-4 py-3">ServiÃ§o</th>
                     <th className="px-4 py-3">Valor</th>
                     <th className="px-4 py-3">Vencimento</th>
                     <th className="px-4 py-3">Pagamento</th>
                     <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3 text-right">Ações</th>
+                    <th className="px-4 py-3 text-right">AÃ§Ãµes</th>
                   </tr>
                 )}
               </thead>
@@ -797,13 +799,13 @@ function FinanceFormModal({
           <div>
             <h2 className="text-lg font-semibold tracking-normal">
               {editingTransaction
-                ? "Editar movimentação"
+                ? "Editar movimentaÃ§Ã£o"
                 : isRevenue
                   ? "Nova receita"
                   : "Nova despesa"}
             </h2>
             <p className="text-sm text-muted-foreground">
-              {isRevenue ? "Lançamento manual de entrada." : "Lançamento manual de saída."}
+              {isRevenue ? "LanÃ§amento manual de entrada." : "LanÃ§amento manual de saÃ­da."}
             </p>
           </div>
           <button
@@ -860,7 +862,7 @@ function FinanceFormModal({
                   required
                 />
                 <SelectField
-                  label="Serviço"
+                  label="ServiÃ§o"
                   value={form.service_id ?? ""}
                   onChange={(value) =>
                     setForm((current) => ({ ...current, service_id: value }))
@@ -891,7 +893,7 @@ function FinanceFormModal({
                   required
                 />
                 <TextField
-                  label="Descrição"
+                  label="DescriÃ§Ã£o"
                   value={form.description ?? ""}
                   onChange={(value) =>
                     setForm((current) => ({ ...current, description: value }))
@@ -930,7 +932,7 @@ function FinanceFormModal({
             />
           </div>
           <TextAreaField
-            label="Observações"
+            label="ObservaÃ§Ãµes"
             value={form.notes ?? ""}
             onChange={(value) => setForm((current) => ({ ...current, notes: value }))}
           />

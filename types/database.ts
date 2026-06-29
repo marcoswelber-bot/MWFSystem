@@ -68,6 +68,8 @@ export type Database = {
           category: string | null;
           description: string | null;
           amount: number;
+          paid_amount: number;
+          open_amount: number;
           payment_method: string | null;
           due_date: string;
           payment_date: string | null;
@@ -96,6 +98,8 @@ export type Database = {
           category?: string | null;
           description?: string | null;
           amount?: number;
+          paid_amount?: number;
+          open_amount?: number;
           payment_method?: string | null;
           due_date?: string;
           payment_date?: string | null;
@@ -124,6 +128,8 @@ export type Database = {
           category?: string | null;
           description?: string | null;
           amount?: number;
+          paid_amount?: number;
+          open_amount?: number;
           payment_method?: string | null;
           due_date?: string;
           payment_date?: string | null;
@@ -140,6 +146,42 @@ export type Database = {
           report_visibility?: string;
           created_at?: string;
           updated_at?: string;
+        };
+        Relationships: [];
+      };
+      payment_settlements: {
+        Row: {
+          id: string;
+          financial_transaction_id: string;
+          settlement_type: string;
+          amount: number;
+          payment_method: string | null;
+          paid_at: string;
+          notes: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          financial_transaction_id: string;
+          settlement_type: string;
+          amount: number;
+          payment_method?: string | null;
+          paid_at: string;
+          notes?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          financial_transaction_id?: string;
+          settlement_type?: string;
+          amount?: number;
+          payment_method?: string | null;
+          paid_at?: string;
+          notes?: string | null;
+          created_by?: string | null;
+          created_at?: string;
         };
         Relationships: [];
       };

@@ -81,7 +81,14 @@ export const appNavigation: NavigationItem[] = [
     title: "Financeiro",
     href: "/financeiro",
     icon: WalletCards,
-    moduleKey: "financeiro"
+    moduleKey: "financeiro",
+    children: [
+      {
+        title: "Baixas e Repasses",
+        href: "/financeiro/baixas",
+        moduleKey: "financeiro"
+      }
+    ]
   },
   {
     title: "Prontuarios",
