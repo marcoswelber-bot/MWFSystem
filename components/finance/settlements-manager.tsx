@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Banknote, CheckCircle2, CreditCard, Search, UsersRound } from "lucide-react";
+import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -261,12 +261,6 @@ export function SettlementsManager({ transactions, clinics, patients, services, 
     <div className="space-y-6">
       {loadError ? <Alert type="error" text={loadError} /> : null}
 
-      <div className="grid gap-4 md:grid-cols-4">
-        <SummaryCard icon={CreditCard} label={tab === "patients" ? "Recebimentos em aberto" : "Repasses em aberto"} value={formatCurrency(rows.reduce((total, row) => total + getOpenAmount(row), 0))} />
-        <SummaryCard icon={CheckCircle2} label="Ja pago" value={formatCurrency(rows.reduce((total, row) => total + getPaidAmount(row), 0))} />
-        <SummaryCard icon={UsersRound} label="Lancamentos" value={String(rows.length)} />
-        <SummaryCard icon={Banknote} label="Selecionado" value={formatCurrency(selectedOpenAmount)} />
-      </div>
 
       <Card className="p-2">
         <div className="grid gap-2 md:grid-cols-2">
@@ -276,7 +270,10 @@ export function SettlementsManager({ transactions, clinics, patients, services, 
       </Card>
 
       <Card className="space-y-4 p-4">
-        <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200"><Search className="h-4 w-4" />Filtros</div>
+        <div>
+          <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200"><Search className="h-4 w-4" />Filtros</div>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Refine os lancamentos por clinica, periodo, pessoa, servico e status.</p>
+        </div>
         <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
           {isAdmMaster ? <SelectField label="Clinica" value={filters.clinicId} onChange={(value) => updateFilter("clinicId", value)} options={[["all", "Todas"], ...clinics.map((clinic) => [clinic.id, clinic.name] as [string, string])]} /> : null}
           <InputField label="Inicio" type="date" value={filters.startDate} onChange={(value) => updateFilter("startDate", value)} />
@@ -289,24 +286,31 @@ export function SettlementsManager({ transactions, clinics, patients, services, 
         </div>
       </Card>
 
-      <Card className="space-y-4 p-4">
-        <div className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950">
-          <div className="text-sm font-semibold text-slate-900 dark:text-white">{tab === "patients" ? "Baixa de recebimentos" : "Pagamento de repasses"}</div>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Escolha baixa total para quitar todo o saldo selecionado ou baixa parcial para informar um valor menor.</p>
+      <Card className="space-y-3 p-4">
+        <div>
+          <div className="text-sm font-semibold text-slate-900 dark:text-white">Resumo da selecao</div>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Confira o saldo antes de confirmar a baixa.</p>
         </div>
-        <div className="grid gap-3 md:grid-cols-5">
-          <SelectField label="Tipo de baixa" value={mode} onChange={(value) => setMode(value as SettlementMode)} options={[["total", "Baixa total"], ["partial", "Baixa parcial"]]} />
-          <InputField label="Valor pago" value={mode === "total" ? formatCurrency(selectedOpenAmount) : amount} onChange={setAmount} disabled={mode === "total"} placeholder="0,00" />
-          <SelectField label="Forma de pagamento" value={paymentMethod} onChange={(value) => setPaymentMethod(value as PaymentMethod)} options={paymentMethodOptions} />
-          <InputField label="Data do pagamento" type="date" value={paidAt} onChange={setPaidAt} />
-          <InputField label="Observacao" value={notes} onChange={setNotes} placeholder="Opcional" />
-        </div>
-        <div className="grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-200 md:grid-cols-5">
+        <div className="grid gap-3 text-sm text-slate-700 dark:text-slate-200 md:grid-cols-5">
           <Metric label="Selecionados" value={String(selectedIds.length)} />
           <Metric label="Total em aberto" value={formatCurrency(selectedOpenAmount)} />
           <Metric label="Ja pago" value={formatCurrency(selectedPaidAmount)} />
           <Metric label="Valor informado" value={formatCurrency(informedAmount)} />
           <Metric label="Saldo restante" value={formatCurrency(remainingAfterSettlement)} />
+        </div>
+      </Card>
+
+      <Card className="space-y-4 p-4">
+        <div>
+          <div className="text-sm font-semibold text-slate-900 dark:text-white">{tab === "patients" ? "Baixa de recebimentos" : "Pagamento de repasses"}</div>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Escolha baixa total para quitar todo o saldo selecionado ou baixa parcial para informar um valor menor.</p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-5">
+          <SelectField label="Tipo" value={mode} onChange={(value) => setMode(value as SettlementMode)} options={[["total", "Baixa total"], ["partial", "Baixa parcial"]]} />
+          <InputField label="Valor pago" value={mode === "total" ? formatCurrency(selectedOpenAmount) : amount} onChange={setAmount} disabled={mode === "total"} placeholder="0,00" />
+          <SelectField label="Forma de pagamento" value={paymentMethod} onChange={(value) => setPaymentMethod(value as PaymentMethod)} options={paymentMethodOptions} />
+          <InputField label="Data" type="date" value={paidAt} onChange={setPaidAt} />
+          <InputField label="Observacao" value={notes} onChange={setNotes} placeholder="Opcional" />
         </div>
         <div className="flex justify-end">
           <Button type="button" onClick={submitSettlement} disabled={isPending || selectedIds.length === 0}>{isPending ? "Processando..." : tab === "patients" ? "Baixar recebimentos selecionados" : "Pagar repasses selecionados"}</Button>
@@ -330,26 +334,12 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
       type="button"
       onClick={onClick}
       className={cn(
-        "rounded-md px-4 py-3 text-left text-sm font-semibold transition",
+        "rounded-md px-3 py-2 text-left text-sm font-semibold transition",
         active ? "bg-slate-900 text-white shadow-sm dark:bg-white dark:text-slate-950" : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
       )}
     >
       {children}
     </button>
-  );
-}
-
-function SummaryCard({ icon: Icon, label, value }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string }) {
-  return (
-    <Card className="p-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</p>
-          <p className="mt-2 text-xl font-semibold text-slate-950 dark:text-white">{value}</p>
-        </div>
-        <div className="rounded-md bg-slate-100 p-2 text-slate-600 dark:bg-slate-800 dark:text-slate-300"><Icon className="h-5 w-5" /></div>
-      </div>
-    </Card>
   );
 }
 
@@ -372,7 +362,7 @@ function InputField({ label, value, onChange, type = "text", placeholder, disabl
   return (
     <label className="space-y-1 text-xs font-medium text-slate-600 dark:text-slate-300">
       <span>{label}</span>
-      <input type={type} value={value} placeholder={placeholder} disabled={disabled} onChange={(event) => onChange(event.target.value)} className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-slate-600" />
+      <input type={type} value={value} placeholder={placeholder} disabled={disabled} onChange={(event) => onChange(event.target.value)} className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-slate-600" />
     </label>
   );
 }
@@ -381,7 +371,7 @@ function SelectField({ label, value, onChange, options }: { label: string; value
   return (
     <label className="space-y-1 text-xs font-medium text-slate-600 dark:text-slate-300">
       <span>{label}</span>
-      <select value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-slate-600">
+      <select value={value} onChange={(event) => onChange(event.target.value)} className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-slate-600">
         {options.map(([optionValue, labelText]) => <option key={optionValue} value={optionValue}>{labelText}</option>)}
       </select>
     </label>
@@ -398,22 +388,22 @@ function SelectionCell({ id, selectedIds, onToggle }: { id: string; selectedIds:
 
 function PatientTable({ rows, selectedIds, onToggle, onToggleAll, onSingle }: { rows: FinancialTransaction[]; selectedIds: string[]; onToggle: (id: string) => void; onToggleAll: () => void; onSingle: (id: string) => void }) {
   return (
-    <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
+    <table className="min-w-[980px] divide-y divide-slate-200 text-xs dark:divide-slate-800">
       <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-slate-900 dark:text-slate-400">
         <tr>
-          <th className="px-4 py-3 text-left"><SelectionHeader rows={rows} selectedIds={selectedIds} onToggleAll={onToggleAll} /></th>
-          <th className="px-4 py-3 text-left">Paciente</th><th className="px-4 py-3 text-left">Clinica</th><th className="px-4 py-3 text-left">Servico</th><th className="px-4 py-3 text-left">Origem</th>
-          <th className="px-4 py-3 text-right">Valor total</th><th className="px-4 py-3 text-right">Valor pago</th><th className="px-4 py-3 text-right">Valor em aberto</th>
-          <th className="px-4 py-3 text-left">Vencimento</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-right">Acao</th>
+          <th className="px-3 py-2 text-left"><SelectionHeader rows={rows} selectedIds={selectedIds} onToggleAll={onToggleAll} /></th>
+          <th className="px-3 py-2 text-left">Paciente</th><th className="px-3 py-2 text-left">Clinica</th><th className="px-3 py-2 text-left">Servico</th><th className="px-3 py-2 text-left">Origem</th>
+          <th className="px-3 py-2 text-right">Valor total</th><th className="px-3 py-2 text-right">Valor pago</th><th className="px-3 py-2 text-right">Valor em aberto</th>
+          <th className="px-3 py-2 text-left">Vencimento</th><th className="px-3 py-2 text-left">Status</th><th className="px-3 py-2 text-right">Acao</th>
         </tr>
       </thead>
       <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
         {rows.map((row) => (
           <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-900/60">
-            <td className="px-4 py-3"><SelectionCell id={row.id} selectedIds={selectedIds} onToggle={onToggle} /></td>
-            <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{row.patient_name}</td><td className="px-4 py-3 text-slate-600 dark:text-slate-300">{row.clinic_name}</td><td className="px-4 py-3 text-slate-600 dark:text-slate-300">{row.service_name}</td><td className="px-4 py-3 text-slate-600 dark:text-slate-300">{row.origin ?? "-"}</td>
-            <td className="px-4 py-3 text-right">{formatCurrency(row.amount)}</td><td className="px-4 py-3 text-right">{formatCurrency(getPaidAmount(row))}</td><td className="px-4 py-3 text-right font-semibold">{formatCurrency(getOpenAmount(row))}</td>
-            <td className="px-4 py-3">{row.due_date}</td><td className="px-4 py-3">{getStatusLabel(row.derived_status)}</td><td className="px-4 py-3 text-right"><Button type="button" variant="outline" size="sm" onClick={() => onSingle(row.id)}>Dar baixa</Button></td>
+            <td className="px-3 py-2"><SelectionCell id={row.id} selectedIds={selectedIds} onToggle={onToggle} /></td>
+            <td className="max-w-44 truncate px-3 py-2 font-medium text-slate-900 dark:text-white" title={row.patient_name}>{row.patient_name}</td><td className="max-w-36 truncate px-3 py-2 text-slate-600 dark:text-slate-300" title={row.clinic_name}>{row.clinic_name}</td><td className="max-w-40 truncate px-3 py-2 text-slate-600 dark:text-slate-300" title={row.service_name}>{row.service_name}</td><td className="whitespace-nowrap px-3 py-2 text-slate-600 dark:text-slate-300">{row.origin ?? "-"}</td>
+            <td className="px-3 py-2 text-right">{formatCurrency(row.amount)}</td><td className="px-3 py-2 text-right">{formatCurrency(getPaidAmount(row))}</td><td className="px-3 py-2 text-right font-semibold">{formatCurrency(getOpenAmount(row))}</td>
+            <td className="whitespace-nowrap px-3 py-2">{row.due_date}</td><td className="whitespace-nowrap px-3 py-2">{getStatusLabel(row.derived_status)}</td><td className="whitespace-nowrap px-3 py-2 text-right"><Button type="button" variant="outline" size="sm" onClick={() => onSingle(row.id)}>Dar baixa</Button></td>
           </tr>
         ))}
       </tbody>
@@ -423,12 +413,12 @@ function PatientTable({ rows, selectedIds, onToggle, onToggleAll, onSingle }: { 
 
 function StaffTable({ rows, selectedIds, onToggle, onToggleAll, onSingle }: { rows: FinancialTransaction[]; selectedIds: string[]; onToggle: (id: string) => void; onToggleAll: () => void; onSingle: (id: string) => void }) {
   return (
-    <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
+    <table className="min-w-[980px] divide-y divide-slate-200 text-xs dark:divide-slate-800">
       <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-slate-900 dark:text-slate-400">
         <tr>
-          <th className="px-4 py-3 text-left"><SelectionHeader rows={rows} selectedIds={selectedIds} onToggleAll={onToggleAll} /></th>
-          <th className="px-4 py-3 text-left">Funcionario</th><th className="px-4 py-3 text-left">Clinica</th><th className="px-4 py-3 text-left">Tipo</th><th className="px-4 py-3 text-left">Descricao</th>
-          <th className="px-4 py-3 text-right">Valor bruto</th><th className="px-4 py-3 text-right">Descontos</th><th className="px-4 py-3 text-right">Valor liquido</th><th className="px-4 py-3 text-right">Valor pago</th><th className="px-4 py-3 text-right">Valor em aberto</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-right">Acao</th>
+          <th className="px-3 py-2 text-left"><SelectionHeader rows={rows} selectedIds={selectedIds} onToggleAll={onToggleAll} /></th>
+          <th className="px-3 py-2 text-left">Funcionario</th><th className="px-3 py-2 text-left">Clinica</th><th className="px-3 py-2 text-left">Tipo</th><th className="w-48 px-3 py-2 text-left">Descricao</th>
+          <th className="px-3 py-2 text-right">Valor bruto</th><th className="px-3 py-2 text-right">Descontos</th><th className="px-3 py-2 text-right">Valor liquido</th><th className="px-3 py-2 text-right">Valor pago</th><th className="px-3 py-2 text-right">Valor em aberto</th><th className="px-3 py-2 text-left">Status</th><th className="px-3 py-2 text-right">Acao</th>
         </tr>
       </thead>
       <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -438,9 +428,9 @@ function StaffTable({ rows, selectedIds, onToggle, onToggleAll, onSingle }: { ro
           const netAmount = type === "Desconto" ? -Math.abs(row.amount) : row.amount;
           return (
             <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-900/60">
-              <td className="px-4 py-3"><SelectionCell id={row.id} selectedIds={selectedIds} onToggle={onToggle} /></td>
-              <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{row.employee_name}</td><td className="px-4 py-3 text-slate-600 dark:text-slate-300">{row.clinic_name}</td><td className="px-4 py-3 text-slate-600 dark:text-slate-300">{type}</td><td className="px-4 py-3 text-slate-600 dark:text-slate-300">{row.description ?? "-"}</td>
-              <td className="px-4 py-3 text-right">{formatCurrency(row.amount)}</td><td className="px-4 py-3 text-right">{formatCurrency(discount)}</td><td className="px-4 py-3 text-right">{formatCurrency(netAmount)}</td><td className="px-4 py-3 text-right">{formatCurrency(getPaidAmount(row))}</td><td className="px-4 py-3 text-right font-semibold">{formatCurrency(getOpenAmount(row))}</td><td className="px-4 py-3">{getStatusLabel(row.derived_status)}</td><td className="px-4 py-3 text-right"><Button type="button" variant="outline" size="sm" onClick={() => onSingle(row.id)}>Pagar</Button></td>
+              <td className="px-3 py-2"><SelectionCell id={row.id} selectedIds={selectedIds} onToggle={onToggle} /></td>
+              <td className="max-w-44 truncate px-3 py-2 font-medium text-slate-900 dark:text-white" title={row.employee_name}>{row.employee_name}</td><td className="max-w-36 truncate px-3 py-2 text-slate-600 dark:text-slate-300" title={row.clinic_name}>{row.clinic_name}</td><td className="whitespace-nowrap px-3 py-2 text-slate-600 dark:text-slate-300">{type}</td><td className="max-w-48 truncate px-3 py-2 text-slate-600 dark:text-slate-300" title={row.description ?? "-"}>{row.description ?? "-"}</td>
+              <td className="px-3 py-2 text-right">{formatCurrency(row.amount)}</td><td className="px-3 py-2 text-right">{formatCurrency(discount)}</td><td className="px-3 py-2 text-right">{formatCurrency(netAmount)}</td><td className="px-3 py-2 text-right">{formatCurrency(getPaidAmount(row))}</td><td className="px-3 py-2 text-right font-semibold">{formatCurrency(getOpenAmount(row))}</td><td className="whitespace-nowrap px-3 py-2">{getStatusLabel(row.derived_status)}</td><td className="whitespace-nowrap px-3 py-2 text-right"><Button type="button" variant="outline" size="sm" onClick={() => onSingle(row.id)}>Pagar</Button></td>
             </tr>
           );
         })}

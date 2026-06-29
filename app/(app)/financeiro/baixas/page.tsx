@@ -110,7 +110,7 @@ export default async function BaixasFinanceiroPage() {
       <PageHeader
         eyebrow="Operacao financeira"
         title="Baixas e Repasses"
-        description="Centralize recebimentos de pacientes e pagamentos de repasses com baixa total, parcial e em lote."
+        description="Controle de recebimentos de pacientes e pagamentos de funcionarios"
       />
       <SettlementsManager
         transactions={hydratedTransactions}
