@@ -92,6 +92,20 @@ function entryTypeLabel(type: string) {
   return entryTypeOptions.find(([value]) => value === type)?.[1] ?? type;
 }
 
+
+function getPayrollDescription(item: PayrollWithKind) {
+  if (item.source === "commission") {
+    return item.description ?? "Comissao automatica gerada pela Agenda";
+  }
+
+  return item.notes ?? entryTypeLabel(item.entry_type);
+}
+
+function payrollSectionTitle(item: PayrollWithKind) {
+  if (item.source === "commission") return "Comissao automatica";
+  if (isCharge(item.entry_type, item.nature)) return getPayrollDescription(item);
+  return entryTypeLabel(item.entry_type);
+}
 function statusLabel(status: string) {
   return ({ pendente: "Aberto", parcial: "Parcial", pago: "Pago", cancelado: "Cancelado", vencido: "Vencido" } as Record<string, string>)[status] ?? status;
 }
@@ -188,17 +202,21 @@ export function PayrollManager({ entries, commissionTransactions, clinics, emplo
   });
 
   const payrollOnlyRows = filteredRows.filter((item) => item.source === "payroll");
+  const creditRows = filteredRows.filter((item) => isCredit(item.entry_type, item.nature));
+  const debitRows = filteredRows.filter((item) => isCharge(item.entry_type, item.nature));
   const totals = {
-    salaries: payrollOnlyRows.filter((item) => item.entry_type === "salario_fixo").reduce((total, item) => total + item.amount, 0),
-    commissions: filteredRows.filter((item) => item.entry_type === "comissao_manual").reduce((total, item) => total + item.amount, 0),
-    benefits: payrollOnlyRows.filter((item) => ["vale_transporte", "vale_alimentacao", "ajuda_custo", "bonus"].includes(item.entry_type)).reduce((total, item) => total + item.amount, 0),
-    discounts: payrollOnlyRows.filter((item) => ["desconto", "adiantamento"].includes(item.entry_type)).reduce((total, item) => total + item.amount, 0),
+    salaries: payrollOnlyRows.filter((item) => item.entry_type === "salario_fixo" && isCredit(item.entry_type, item.nature)).reduce((total, item) => total + item.amount, 0),
+    commissions: filteredRows.filter((item) => item.entry_type === "comissao_manual" && isCredit(item.entry_type, item.nature)).reduce((total, item) => total + item.amount, 0),
+    benefits: payrollOnlyRows.filter((item) => ["vale_transporte", "vale_alimentacao", "ajuda_custo", "bonus"].includes(item.entry_type) && isCredit(item.entry_type, item.nature)).reduce((total, item) => total + item.amount, 0),
+    discounts: payrollOnlyRows.filter((item) => ["desconto", "adiantamento"].includes(item.entry_type) || isCharge(item.entry_type, item.nature)).reduce((total, item) => total + item.amount, 0),
     charges: payrollOnlyRows.filter((item) => ["inss", "fgts", "irrf"].includes(item.entry_type)).reduce((total, item) => total + item.amount, 0),
+    credits: creditRows.reduce((total, item) => total + item.amount, 0),
+    debits: debitRows.reduce((total, item) => total + item.amount, 0),
     paid: filteredRows.reduce((total, item) => total + getPaidAmount(item), 0),
     open: filteredRows.reduce((total, item) => total + getOpenAmount(item), 0)
   };
-  const gross = totals.salaries + totals.commissions + totals.benefits;
-  const net = gross - totals.discounts - totals.charges;
+  const gross = totals.credits;
+  const net = gross - totals.debits;
   const payslipRows = payslipEmployeeId ? filteredRows.filter((item) => item.employee_id === payslipEmployeeId) : [];
   const payslipEmployee = employees.find((employee) => employee.id === payslipEmployeeId);
   const selectedClinic = clinics.find((clinic) => clinic.id === clinicFilter);
@@ -319,7 +337,7 @@ export function PayrollManager({ entries, commissionTransactions, clinics, emplo
       ) : null}
 
       {payslipEmployeeId ? (
-        <PayslipModal employeeName={payslipEmployee?.name ?? "Funcionario"} clinicName={selectedClinic?.name ?? payslipRows[0]?.clinic_name ?? "Clinica"} period={`${monthFilter}/${yearFilter}`} rows={payslipRows} gross={payslipRows.filter((item) => isCredit(item.entry_type, item.nature)).reduce((total, item) => total + item.amount, 0)} discounts={payslipRows.filter((item) => isCharge(item.entry_type, item.nature)).reduce((total, item) => total + item.amount, 0)} onPrint={printPayslip} onClose={() => setPayslipEmployeeId(null)} />
+        <PayslipModal employeeName={payslipEmployee?.name ?? "Funcionario"} clinicName={selectedClinic?.name ?? payslipRows[0]?.clinic_name ?? "Clinica"} period={`${monthFilter}/${yearFilter}`} rows={payslipRows} onPrint={printPayslip} onClose={() => setPayslipEmployeeId(null)} />
       ) : null}
     </div>
   );
@@ -362,7 +380,11 @@ function PayrollFormModal({ form, setForm, formMessage, clinics, employees, isAd
   );
 }
 
-function PayslipModal({ employeeName, clinicName, period, rows, gross, discounts, onPrint, onClose }: { employeeName: string; clinicName: string; period: string; rows: PayrollWithKind[]; gross: number; discounts: number; onPrint: () => void; onClose: () => void }) {
+function PayslipModal({ employeeName, clinicName, period, rows, onPrint, onClose }: { employeeName: string; clinicName: string; period: string; rows: PayrollWithKind[]; onPrint: () => void; onClose: () => void }) {
+  const creditRows = rows.filter((item) => isCredit(item.entry_type, item.nature));
+  const debitRows = rows.filter((item) => isCharge(item.entry_type, item.nature));
+  const gross = creditRows.reduce((total, item) => total + item.amount, 0);
+  const discounts = debitRows.reduce((total, item) => total + item.amount, 0);
   const net = gross - discounts;
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm print:static print:block print:bg-white print:p-0">
@@ -383,18 +405,45 @@ function PayslipModal({ employeeName, clinicName, period, rows, gross, discounts
             <Detail label="Total liquido" value={money(net)} />
             <Detail label="Emissao" value={today()} />
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-left text-xs print:min-w-0">
-              <thead className="bg-muted/60 uppercase text-muted-foreground"><tr><th className="px-3 py-2">Tipo</th><th className="px-3 py-2">Origem</th><th className="px-3 py-2">Natureza</th><th className="px-3 py-2 text-right">Valor</th><th className="px-3 py-2">Status</th></tr></thead>
-              <tbody>{rows.map((item) => <tr key={`${item.source}-${item.id}`} className="border-t"><td className="px-3 py-2">{item.source === "commission" ? "Comissao automatica" : entryTypeLabel(item.entry_type)}</td><td className="px-3 py-2">{item.source === "commission" ? "Agenda" : "Folha"}</td><td className="px-3 py-2">{isCredit(item.entry_type, item.nature) ? "Credito" : "Debito"}</td><td className="px-3 py-2 text-right">{money(item.amount)}</td><td className="px-3 py-2">{statusLabel(item.financial_status)}</td></tr>)}</tbody>
-            </table>
-          </div>
+          <PayslipSection title="Creditos" rows={creditRows} emptyText="Nenhum credito no periodo." />
+          <PayslipSection title="Descontos" rows={debitRows} emptyText="Nenhum desconto no periodo." />
         </div>
       </Card>
     </div>
   );
 }
 
+function PayslipSection({ title, rows, emptyText }: { title: string; rows: PayrollWithKind[]; emptyText: string }) {
+  return (
+    <div className="overflow-x-auto">
+      <h3 className="mb-2 text-sm font-semibold tracking-normal">{title}</h3>
+      <table className="w-full min-w-[760px] text-left text-xs print:min-w-0">
+        <thead className="bg-muted/60 uppercase text-muted-foreground">
+          <tr>
+            <th className="px-3 py-2">Tipo</th>
+            <th className="px-3 py-2">Descricao/Observacao</th>
+            <th className="px-3 py-2">Origem</th>
+            <th className="px-3 py-2 text-right">Valor</th>
+            <th className="px-3 py-2">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length > 0 ? rows.map((item) => (
+            <tr key={`${item.source}-${item.id}`} className="border-t">
+              <td className="px-3 py-2">{payrollSectionTitle(item)}</td>
+              <td className="max-w-72 px-3 py-2"><span className="line-clamp-2" title={getPayrollDescription(item)}>{getPayrollDescription(item)}</span></td>
+              <td className="px-3 py-2">{item.source === "commission" ? "Agenda" : "Folha"}</td>
+              <td className="px-3 py-2 text-right">{money(item.amount)}</td>
+              <td className="px-3 py-2">{statusLabel(item.financial_status)}</td>
+            </tr>
+          )) : (
+            <tr><td className="px-3 py-6 text-center text-sm text-muted-foreground" colSpan={5}>{emptyText}</td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 function SystemMessage({ message, onClose }: { message: PayrollActionResult; onClose: () => void }) {
   return <div className={cn("flex items-center justify-between gap-3 rounded-md border px-4 py-3 text-sm shadow-sm", message.ok ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-100" : "border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-100")}><span>{message.message}</span><button type="button" onClick={onClose} className="rounded-md p-1 hover:bg-black/5"><X className="h-4 w-4" /></button></div>;
 }
