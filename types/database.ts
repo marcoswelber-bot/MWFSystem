@@ -185,7 +185,60 @@ export type Database = {
         };
         Relationships: [];
       };
-      employees: {
+      payroll_entries: {
+        Row: {
+          id: string;
+          clinic_id: string;
+          employee_id: string;
+          financial_transaction_id: string | null;
+          competence_month: number;
+          competence_year: number;
+          entry_type: string;
+          nature: string;
+          amount: number;
+          due_date: string;
+          paid_at: string | null;
+          status: string;
+          notes: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          clinic_id: string;
+          employee_id: string;
+          financial_transaction_id?: string | null;
+          competence_month: number;
+          competence_year: number;
+          entry_type: string;
+          nature: string;
+          amount?: number;
+          due_date?: string;
+          paid_at?: string | null;
+          status?: string;
+          notes?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          clinic_id?: string;
+          employee_id?: string;
+          financial_transaction_id?: string | null;
+          competence_month?: number;
+          competence_year?: number;
+          entry_type?: string;
+          nature?: string;
+          amount?: number;
+          due_date?: string;
+          paid_at?: string | null;
+          status?: string;
+          notes?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };      employees: {
         Row: {
           id: string;
           clinic_id: string | null;

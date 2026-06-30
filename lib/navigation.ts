@@ -87,6 +87,11 @@ export const appNavigation: NavigationItem[] = [
         title: "Baixas e Repasses",
         href: "/financeiro/baixas",
         moduleKey: "financeiro"
+      },
+      {
+        title: "Folha / Contracheque",
+        href: "/financeiro/folha",
+        moduleKey: "financeiro"
       }
     ]
   },

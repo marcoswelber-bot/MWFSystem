@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import type { Route } from "next";
 import { useRouter } from "next/navigation";
 import {
   ArrowDownRight,
@@ -210,7 +211,7 @@ function getOpenAmount(item: FinancialTransaction) {
 }
 
 function isCommissionTransaction(item: FinancialTransaction) {
-  const category = `${item.category ?? ""} ${item.description ?? ""}`
+  const category = `${item.category ?? ""}`
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
@@ -404,6 +405,9 @@ export function FinanceManager({
         ) : null}
         <Button type="button" variant="outline" onClick={() => router.push("/financeiro/baixas")}>
           Baixas e Repasses
+        </Button>
+        <Button type="button" variant="outline" onClick={() => router.push("/financeiro/folha" as Route)}>
+          Folha / Contracheque
         </Button>
       </div>
 
