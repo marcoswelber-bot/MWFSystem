@@ -254,8 +254,17 @@ export function PayrollManager({ entries, commissionTransactions, clinics, emplo
     const employeeName = payslipEmployee?.name ?? "Funcionario";
     const clinicName = selectedClinic?.name ?? "Clinica";
     document.title = `${clinicName} - Contracheque - ${employeeName} - ${monthFilter}-${yearFilter}`;
+    document.body.classList.add("mwf-payslip-printing");
+
+    const restorePrintState = () => {
+      document.body.classList.remove("mwf-payslip-printing");
+      document.title = previousTitle;
+      window.removeEventListener("afterprint", restorePrintState);
+    };
+
+    window.addEventListener("afterprint", restorePrintState);
     window.print();
-    document.title = previousTitle;
+    window.setTimeout(restorePrintState, 500);
   }
 
   return (
@@ -268,7 +277,7 @@ export function PayrollManager({ entries, commissionTransactions, clinics, emplo
         <Button type="button" variant="outline" onClick={() => router.push("/financeiro")}>Voltar ao Financeiro</Button>
       </div>
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-8">
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-8 print:hidden">
         <MetricCard label="Total salarios" value={money(totals.salaries)} icon={WalletCards} />
         <MetricCard label="Total comissoes" value={money(totals.commissions)} icon={ArrowUpRight} />
         <MetricCard label="Total beneficios" value={money(totals.benefits)} icon={CheckCircle2} />
@@ -289,7 +298,7 @@ export function PayrollManager({ entries, commissionTransactions, clinics, emplo
         </div>
       </Card>
 
-      <Card className="overflow-hidden border-none shadow-[0_18px_55px_rgba(15,23,42,0.08)] dark:shadow-none">
+      <Card className="overflow-hidden border-none shadow-[0_18px_55px_rgba(15,23,42,0.08)] dark:shadow-none print:hidden">
         <div className="border-b p-4">
           <h2 className="text-lg font-semibold tracking-normal">Folha / Contracheque</h2>
           <p className="text-sm text-muted-foreground">Lancamentos de folha e comissoes automaticas ja existentes, sem duplicar valores.</p>
@@ -307,7 +316,7 @@ export function PayrollManager({ entries, commissionTransactions, clinics, emplo
                 <th className="px-3 py-2 text-right">Pago</th>
                 <th className="px-3 py-2 text-right">Em aberto</th>
                 <th className="px-3 py-2">Vencimento</th>
-                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2 print:hidden">Status</th>
                 <th className="px-3 py-2 text-right print:hidden">Acoes</th>
               </tr>
             </thead>
@@ -387,28 +396,125 @@ function PayslipModal({ employeeName, clinicName, period, rows, onPrint, onClose
   const discounts = debitRows.reduce((total, item) => total + item.amount, 0);
   const net = gross - discounts;
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm print:static print:block print:bg-white print:p-0">
-      <Card className="w-full max-w-4xl border-none p-5 shadow-2xl print:shadow-none">
-        <div className="flex items-start justify-between gap-4 border-b pb-4 print:hidden">
+    <div className="payslip-print-root fixed inset-0 z-50 grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm print:static print:block print:bg-white print:p-0">
+      <Card className="payslip-document w-full max-w-4xl border-none p-5 shadow-2xl print:shadow-none">
+        <div className="payslip-screen-actions flex items-start justify-between gap-4 border-b pb-4 print:hidden">
           <div><h2 className="text-lg font-semibold tracking-normal">Contracheque</h2><p className="text-sm text-muted-foreground">{employeeName} - {period}</p></div>
           <div className="flex gap-2"><Button type="button" variant="outline" onClick={onPrint}><Printer className="h-4 w-4" />Imprimir / PDF</Button><button type="button" onClick={onClose} className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"><X className="h-5 w-5" /></button></div>
         </div>
-        <div className="space-y-4 print:block">
-          <div className="hidden print:block print:mb-3"><strong>MWFSystem</strong><div>Contracheque</div></div>
-          <div className="grid gap-3 pt-4 md:grid-cols-4 print:grid-cols-4 print:pt-0">
+        <div className="payslip-content space-y-4 print:block">
+          <div className="hidden print:block print:mb-3 print:border-b print:pb-2"><strong className="print:block print:text-[13px]">MWFSystem</strong><div className="print:text-[18px] print:font-semibold">Contracheque</div></div>
+          <div className="payslip-summary grid gap-3 pt-4 md:grid-cols-4 print:grid-cols-4 print:pt-0">
             <Detail label="Clinica" value={clinicName} />
             <Detail label="Funcionario" value={employeeName} />
             <Detail label="Competencia" value={period} />
             <Detail label="Status" value={rows.some((item) => item.financial_status !== "pago") ? "Em aberto" : "Pago"} />
-            <Detail label="Total bruto" value={money(gross)} />
-            <Detail label="Descontos/encargos" value={money(discounts)} />
+            <Detail label="Total de creditos" value={money(gross)} />
+            <Detail label="Total de descontos" value={money(discounts)} />
             <Detail label="Total liquido" value={money(net)} />
             <Detail label="Emissao" value={today()} />
           </div>
           <PayslipSection title="Creditos" rows={creditRows} emptyText="Nenhum credito no periodo." />
           <PayslipSection title="Descontos" rows={debitRows} emptyText="Nenhum desconto no periodo." />
+          <div className="payslip-total grid gap-3 rounded-md border bg-muted/30 p-3 text-sm md:grid-cols-3 print:grid-cols-3">
+            <Detail label="Total de creditos" value={money(gross)} />
+            <Detail label="Total de descontos" value={money(discounts)} />
+            <Detail label="Liquido a receber" value={money(net)} />
+          </div>
+          <div className="hidden print:grid print:grid-cols-2 print:gap-12 print:pt-10 print:text-center print:text-[11px]">
+            <div className="print:border-t print:border-slate-700 print:pt-2">Assinatura do funcionario</div>
+            <div className="print:border-t print:border-slate-700 print:pt-2">Assinatura da clinica</div>
+          </div>
         </div>
       </Card>
+      <style jsx global>{`
+        @media print {
+          @page {
+            size: A4 portrait;
+            margin: 10mm;
+          }
+
+          body.mwf-payslip-printing * {
+            visibility: hidden !important;
+          }
+
+          body.mwf-payslip-printing .payslip-print-root,
+          body.mwf-payslip-printing .payslip-print-root * {
+            visibility: visible !important;
+          }
+
+          body.mwf-payslip-printing {
+            background: #ffffff !important;
+          }
+
+          body.mwf-payslip-printing .payslip-print-root {
+            position: absolute !important;
+            inset: 0 auto auto 0 !important;
+            display: block !important;
+            width: 100% !important;
+            min-height: auto !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            backdrop-filter: none !important;
+          }
+
+          body.mwf-payslip-printing .payslip-document {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0 !important;
+            border: 0 !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            color: #111827 !important;
+            background: #ffffff !important;
+          }
+
+          body.mwf-payslip-printing .payslip-content {
+            display: block !important;
+            font-size: 10px !important;
+            line-height: 1.25 !important;
+          }
+
+          body.mwf-payslip-printing .payslip-summary,
+          body.mwf-payslip-printing .payslip-total {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+            gap: 6px !important;
+            margin-bottom: 8px !important;
+          }
+
+          body.mwf-payslip-printing .payslip-total {
+            padding: 6px !important;
+            border: 1px solid #cbd5e1 !important;
+            background: #f8fafc !important;
+          }
+
+          body.mwf-payslip-printing table {
+            width: 100% !important;
+            min-width: 0 !important;
+            border-collapse: collapse !important;
+            table-layout: fixed !important;
+            font-size: 9px !important;
+          }
+
+          body.mwf-payslip-printing th,
+          body.mwf-payslip-printing td {
+            border: 1px solid #d1d5db !important;
+            padding: 4px 5px !important;
+            vertical-align: top !important;
+            color: #111827 !important;
+          }
+
+          body.mwf-payslip-printing thead {
+            background: #e5e7eb !important;
+          }
+
+          body.mwf-payslip-printing tr {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
@@ -424,7 +530,7 @@ function PayslipSection({ title, rows, emptyText }: { title: string; rows: Payro
             <th className="px-3 py-2">Descricao/Observacao</th>
             <th className="px-3 py-2">Origem</th>
             <th className="px-3 py-2 text-right">Valor</th>
-            <th className="px-3 py-2">Status</th>
+            <th className="px-3 py-2 print:hidden">Status</th>
           </tr>
         </thead>
         <tbody>
@@ -434,7 +540,7 @@ function PayslipSection({ title, rows, emptyText }: { title: string; rows: Payro
               <td className="max-w-72 px-3 py-2"><span className="line-clamp-2" title={getPayrollDescription(item)}>{getPayrollDescription(item)}</span></td>
               <td className="px-3 py-2">{item.source === "commission" ? "Agenda" : "Folha"}</td>
               <td className="px-3 py-2 text-right">{money(item.amount)}</td>
-              <td className="px-3 py-2">{statusLabel(item.financial_status)}</td>
+              <td className="px-3 py-2 print:hidden">{statusLabel(item.financial_status)}</td>
             </tr>
           )) : (
             <tr><td className="px-3 py-6 text-center text-sm text-muted-foreground" colSpan={5}>{emptyText}</td></tr>
