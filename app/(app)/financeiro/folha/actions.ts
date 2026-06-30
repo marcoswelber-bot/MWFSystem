@@ -156,7 +156,6 @@ function getPayloads(
       description,
       amount,
       paid_amount: paidAmount,
-      open_amount: Math.max(amount - paidAmount, 0),
       payment_method: null,
       due_date: input.due_date,
       payment_date: null,
