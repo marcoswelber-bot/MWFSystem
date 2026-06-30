@@ -35,7 +35,7 @@ export type PayrollEntryFormInput = {
   nature: PayrollNature;
   amount: string;
   due_date: string;
-  status: PayrollStatus;
+  status?: PayrollStatus;
   notes?: string;
 };
 
@@ -141,7 +141,8 @@ function getPayloads(
   const label = entryLabels[input.entry_type] ?? "Folha";
   const competence = `${String(competenceMonth).padStart(2, "0")}/${competenceYear}`;
   const description = `${label} - ${employeeName ?? "Funcionario"} - Competencia ${competence}`;
-  const paidAmount = input.status === "pago" ? amount : 0;
+  const status: PayrollStatus = "pendente";
+  const paidAmount = 0;
 
   return {
     financial: {
@@ -158,12 +159,12 @@ function getPayloads(
       open_amount: Math.max(amount - paidAmount, 0),
       payment_method: null,
       due_date: input.due_date,
-      payment_date: input.status === "pago" ? input.due_date : null,
+      payment_date: null,
       appointment_date: null,
       base_amount: amount,
       commission_type: input.entry_type === "comissao_manual" ? "manual" : null,
       commission_rule_id: null,
-      status: input.status,
+      status,
       notes: cleanOptionalValue(input.notes),
       future_agenda_source_id: null,
       future_package_source_id: null,
@@ -180,8 +181,8 @@ function getPayloads(
       nature: input.nature,
       amount,
       due_date: input.due_date,
-      paid_at: input.status === "pago" ? input.due_date : null,
-      status: input.status,
+      paid_at: null,
+      status,
       notes: cleanOptionalValue(input.notes),
       created_by: createdBy
     }
@@ -205,7 +206,7 @@ export async function createPayrollEntry(input: PayrollEntryFormInput): Promise<
 
     if (employeeError) throw employeeError;
     if (!employee) throw new Error("Funcionario/profissional nao encontrado.");
-    if (employee.clinic_id && employee.clinic_id !== clinicId) {
+    if (!employee.clinic_id || employee.clinic_id !== clinicId) {
       throw new Error("Funcionario/profissional nao pertence a clinica selecionada.");
     }
 
@@ -234,7 +235,7 @@ export async function createPayrollEntry(input: PayrollEntryFormInput): Promise<
     revalidatePath("/dashboard");
     revalidatePath("/relatorios");
 
-    return { ok: true, message: "Lancamento de folha criado com sucesso." };
+    return { ok: true, message: "Lancamento criado com sucesso." };
   } catch (error) {
     if (financialTransactionId) {
       try {

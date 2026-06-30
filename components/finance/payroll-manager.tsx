@@ -150,6 +150,7 @@ export function PayrollManager({ entries, commissionTransactions, clinics, emplo
   const router = useRouter();
   const [isPending, startTransition] = React.useTransition();
   const [message, setMessage] = React.useState<PayrollActionResult | null>(loadError ? { ok: false, message: loadError } : null);
+  const [formMessage, setFormMessage] = React.useState<PayrollActionResult | null>(null);
   const [formOpen, setFormOpen] = React.useState(false);
   const [payslipEmployeeId, setPayslipEmployeeId] = React.useState<string | null>(null);
   const [clinicFilter, setClinicFilter] = React.useState(currentClinicId ?? "all");
@@ -160,6 +161,8 @@ export function PayrollManager({ entries, commissionTransactions, clinics, emplo
   const [form, setForm] = React.useState<PayrollEntryFormInput>(() => emptyForm(currentClinicId));
 
   const canCreate = permissions?.create ?? true;
+  const defaultClinicId = currentClinicId ?? (clinics.length === 1 ? clinics[0]?.id ?? "" : "" );
+  const formEmployees = form.clinic_id ? employees.filter((employee) => employee.clinic_id === form.clinic_id) : [];
 
   const payrollRows: PayrollWithKind[] = entries.map((entry) => ({ ...entry, source: "payroll" }));
   const automaticCommissions: PayrollWithKind[] = commissionTransactions.map((transaction) => ({
@@ -199,26 +202,31 @@ export function PayrollManager({ entries, commissionTransactions, clinics, emplo
   const payslipRows = payslipEmployeeId ? filteredRows.filter((item) => item.employee_id === payslipEmployeeId) : [];
   const payslipEmployee = employees.find((employee) => employee.id === payslipEmployeeId);
   const selectedClinic = clinics.find((clinic) => clinic.id === clinicFilter);
+  const filterEmployees = clinicFilter === "all" ? employees : employees.filter((employee) => employee.clinic_id === clinicFilter);
 
   function openCreateForm() {
-    setForm(emptyForm(currentClinicId));
+    setForm({ ...emptyForm(defaultClinicId), clinic_id: defaultClinicId });
     setMessage(null);
+    setFormMessage(null);
     setFormOpen(true);
   }
 
   function closeForm() {
-    setForm(emptyForm(currentClinicId));
+    setForm({ ...emptyForm(defaultClinicId), clinic_id: defaultClinicId });
+    setFormMessage(null);
     setFormOpen(false);
   }
 
   function submitForm(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     startTransition(async () => {
-      const result = await createPayrollEntry(form);
-      setMessage(result);
+      const result = await createPayrollEntry({ ...form, status: "pendente" });
       if (result.ok) {
+        setMessage(result);
         closeForm();
         router.refresh();
+      } else {
+        setFormMessage(result);
       }
     });
   }
@@ -255,10 +263,10 @@ export function PayrollManager({ entries, commissionTransactions, clinics, emplo
 
       <Card className="border-none p-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)] dark:shadow-none print:hidden">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <SelectField label="Clinica" value={clinicFilter} onChange={setClinicFilter} options={[...(isAdmMaster ? [["all", "Todas as clinicas"] as [string, string]] : []), ...clinics.map((clinic) => [clinic.id, clinic.name] as [string, string])]} disabled={!isAdmMaster} />
+          <SelectField label="Clinica" value={clinicFilter} onChange={(value) => { setClinicFilter(value); setEmployeeFilter("all"); }} options={[...(isAdmMaster ? [["all", "Todas as clinicas"] as [string, string]] : []), ...clinics.map((clinic) => [clinic.id, clinic.name] as [string, string])]} disabled={!isAdmMaster} />
           <SelectField label="Mes" value={monthFilter} onChange={setMonthFilter} options={Array.from({ length: 12 }, (_, index) => [String(index + 1).padStart(2, "0"), String(index + 1).padStart(2, "0")] as [string, string])} />
           <TextField label="Ano" value={yearFilter} onChange={setYearFilter} />
-          <SelectField label="Funcionario" value={employeeFilter} onChange={setEmployeeFilter} options={[["all", "Todos"], ...employees.map((employee) => [employee.id, employee.name] as [string, string])]} />
+          <SelectField label="Funcionario" value={employeeFilter} onChange={setEmployeeFilter} options={[["all", "Todos"], ...filterEmployees.map((employee) => [employee.id, employee.name] as [string, string])]} />
           <SelectField label="Status" value={statusFilter} onChange={(value) => setStatusFilter(value as PayrollStatus | "all")} options={statusOptions} />
         </div>
       </Card>
@@ -307,7 +315,7 @@ export function PayrollManager({ entries, commissionTransactions, clinics, emplo
       </Card>
 
       {formOpen ? (
-        <PayrollFormModal form={form} setForm={setForm} clinics={clinics} employees={employees} isAdmMaster={isAdmMaster} isPending={isPending} onSubmit={submitForm} onClose={closeForm} />
+        <PayrollFormModal form={form} setForm={setForm} formMessage={formMessage} clinics={clinics} employees={formEmployees} isAdmMaster={isAdmMaster} isPending={isPending} onSubmit={submitForm} onClose={closeForm} />
       ) : null}
 
       {payslipEmployeeId ? (
@@ -317,8 +325,9 @@ export function PayrollManager({ entries, commissionTransactions, clinics, emplo
   );
 }
 
-function PayrollFormModal({ form, setForm, clinics, employees, isAdmMaster, isPending, onSubmit, onClose }: { form: PayrollEntryFormInput; setForm: React.Dispatch<React.SetStateAction<PayrollEntryFormInput>>; clinics: Clinic[]; employees: Employee[]; isAdmMaster: boolean; isPending: boolean; onSubmit: (event: React.FormEvent<HTMLFormElement>) => void; onClose: () => void }) {
+function PayrollFormModal({ form, setForm, formMessage, clinics, employees, isAdmMaster, isPending, onSubmit, onClose }: { form: PayrollEntryFormInput; setForm: React.Dispatch<React.SetStateAction<PayrollEntryFormInput>>; formMessage: PayrollActionResult | null; clinics: Clinic[]; employees: Employee[]; isAdmMaster: boolean; isPending: boolean; onSubmit: (event: React.FormEvent<HTMLFormElement>) => void; onClose: () => void }) {
   const amount = Number.parseFloat(form.amount.replace(",", ".")) || 0;
+  const employeeOptions = employees.map((employee) => [employee.id, employee.name] as [string, string]);
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm print:hidden">
@@ -330,20 +339,20 @@ function PayrollFormModal({ form, setForm, clinics, employees, isAdmMaster, isPe
           </div>
           <button type="button" onClick={onClose} className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"><X className="h-5 w-5" /></button>
         </div>
-        <form onSubmit={onSubmit} className="grid gap-4 p-5">
-          <div className="grid gap-3 md:grid-cols-2">
-            <SelectField label="Clinica" value={form.clinic_id ?? ""} onChange={(value) => setForm((current) => ({ ...current, clinic_id: value }))} options={clinics.map((clinic) => [clinic.id, clinic.name])} disabled={!isAdmMaster} required />
-            <SelectField label="Funcionario/Profissional" value={form.employee_id ?? ""} onChange={(value) => setForm((current) => ({ ...current, employee_id: value }))} options={employees.map((employee) => [employee.id, employee.name])} required />
+        <form onSubmit={onSubmit} className="grid gap-4">
+          <div className="grid gap-3 px-5 py-5 md:grid-cols-2">
+            <SelectField label="Clinica" value={form.clinic_id ?? ""} onChange={(value) => setForm((current) => ({ ...current, clinic_id: value, employee_id: "" }))} options={clinics.map((clinic) => [clinic.id, clinic.name])} disabled={!isAdmMaster || clinics.length === 1} required />
+            <SelectField label="Funcionario/Profissional" value={form.employee_id ?? ""} onChange={(value) => setForm((current) => ({ ...current, employee_id: value }))} options={employeeOptions} disabled={!form.clinic_id} required />
             <SelectField label="Mes" value={form.competence_month} onChange={(value) => setForm((current) => ({ ...current, competence_month: value }))} options={Array.from({ length: 12 }, (_, index) => [String(index + 1).padStart(2, "0"), String(index + 1).padStart(2, "0")] as [string, string])} required />
             <TextField label="Ano" value={form.competence_year} onChange={(value) => setForm((current) => ({ ...current, competence_year: value }))} required />
             <SelectField label="Tipo" value={form.entry_type} onChange={(value) => setForm((current) => ({ ...current, entry_type: value as PayrollEntryType }))} options={entryTypeOptions} required />
             <SelectField label="Natureza" value={form.nature} onChange={(value) => setForm((current) => ({ ...current, nature: value as PayrollNature }))} options={natureOptions} required />
             <TextField label="Valor" type="number" step="0.01" value={form.amount} onChange={(value) => setForm((current) => ({ ...current, amount: value }))} required />
             <TextField label="Vencimento" type="date" value={form.due_date} onChange={(value) => setForm((current) => ({ ...current, due_date: value }))} required />
-            <SelectField label="Status" value={form.status} onChange={(value) => setForm((current) => ({ ...current, status: value as PayrollStatus }))} options={statusOptions.filter(([value]) => value !== "all") as Array<[PayrollStatus, string]>} required />
           </div>
-          <TextAreaField label="Observacao" value={form.notes ?? ""} onChange={(value) => setForm((current) => ({ ...current, notes: value }))} />
-          <div className="flex items-center justify-between gap-3">
+          <div className="px-5"><TextAreaField label="Observacao" value={form.notes ?? ""} onChange={(value) => setForm((current) => ({ ...current, notes: value }))} /></div>
+          <div className="px-5">{formMessage ? <SystemMessage message={formMessage} onClose={() => undefined} /> : null}</div>
+          <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t bg-card px-5 py-4">
             <span className="text-sm font-semibold text-muted-foreground">Total: {money(amount)}</span>
             <div className="flex gap-2"><Button type="button" variant="outline" onClick={onClose}>Cancelar</Button><Button type="submit" disabled={isPending}>{isPending ? "Salvando..." : "Salvar"}</Button></div>
           </div>
