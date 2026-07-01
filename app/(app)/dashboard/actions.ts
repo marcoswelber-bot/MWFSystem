@@ -148,7 +148,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       title: "Agendamento sem baixa",
       description: `${patientMap.get(a.patient_id) ?? "Paciente"} - ${a.appointment_date} as ${a.start_time.slice(0, 5)}`,
       date: a.appointment_date,
-      link: "/agenda"
+      link: `/agenda?date=${a.appointment_date}&highlight=${a.id}`
     });
   });
 
@@ -160,7 +160,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       title: "Paciente faltou",
       description: `${patientMap.get(a.patient_id) ?? "Paciente"} - ${a.appointment_date}`,
       date: a.appointment_date,
-      link: "/agenda"
+      link: `/agenda?date=${a.appointment_date}&highlight=${a.id}`
     });
   });
 
@@ -172,7 +172,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       title: "Pagamento vencido",
       description: `${p.description ?? "Cobranca"} - venceu em ${p.due_date}`,
       date: p.due_date,
-      link: "/financeiro"
+      link: `/financeiro?highlight=${p.id}`
     });
   });
 
