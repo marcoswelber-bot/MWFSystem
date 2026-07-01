@@ -12,6 +12,7 @@ import {
   Users
 } from "lucide-react";
 import Link from "next/link";
+import type { Route } from "next";
 import { PageHeader } from "@/components/page-header";
 import {
   Card,
@@ -104,7 +105,7 @@ export default async function DashboardPage() {
             {alerts.slice(0, 9).map((alert) => {
               const Icon = getAlertIcon(alert.type);
               return (
-                <Link key={alert.id} href={alert.link}>
+                <Link key={alert.id} href={alert.link as Route}>
                   <div
                     className={`flex items-start gap-3 rounded-lg border p-3 transition-colors hover:opacity-80 ${getAlertColor(alert.type)}`}
                   >
