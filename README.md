@@ -1,18 +1,36 @@
 # MWFSystem
 
-Fundacao do MWFSystem, um sistema web multiclinica para gestao clinica, operacional e financeira.
+Sistema de gestão para clínicas de Pilates e Fisioterapia.
 
-Sistema de gestao para clinicas de Pilates e Fisioterapia.
+Sistema web multiclínica para gestão clínica, operacional e financeira.
 
 ## Stack
 
 - Next.js 15 com App Router
+- React 19
 - TypeScript
 - Tailwind CSS
-- Supabase Auth e estrutura inicial de banco
-- Shadcn/UI como padrao de componentes
+- Supabase (Auth + Database + RLS)
+- Shadcn/UI como padrão de componentes
 - Tema claro e escuro
-- Layout responsivo com sidebar recolhivel
+- Layout responsivo com sidebar recolhível
+- Deploy na Vercel
+
+## Módulos
+
+- Autenticação (funcionários e pacientes)
+- Dashboard
+- Clínicas/unidades
+- Funcionários
+- Pacientes
+- Prontuários
+- Agenda (com bloqueios)
+- Serviços e Tipos de Serviço
+- Pacotes
+- Financeiro (receitas, despesas, folha, comissões)
+- Relatórios (financeiro, operacional, pagamentos, multiclínica)
+- Configurações e Permissões
+- Portal do paciente
 
 ## Como rodar
 
@@ -32,30 +50,16 @@ NEXT_PUBLIC_APP_URL=https://mwf-system.vercel.app
 
 ## Supabase
 
-O schema inicial esta em `supabase/schema.sql`. Ele cria:
+O schema está em `supabase/schema.sql`. Ele cria:
 
 - `clinics`
 - `profiles`
-- papel `adm_master`
-- politicas RLS para ADM Master e usuarios vinculados a clinica
-
-Depois de criar o projeto no Supabase, execute esse SQL no SQL Editor ou adapte para migrations do Supabase CLI.
-
-## Paginas iniciais
-
-- `/dashboard`
-- `/pacientes`
-- `/agenda`
-- `/funcionarios`
-- `/financeiro`
-- `/servicos`
-- `/prontuarios`
-- `/relatorios`
-- `/configuracoes`
-- `/login`
+- `patients`
+- Papel `adm_master`
+- Políticas RLS para ADM Master e usuários vinculados à clínica
 
 ## Deploy na Vercel
 
-1. Conecte o repositorio na Vercel.
-2. Configure as variaveis de ambiente do Supabase.
-3. Use o comando padrao `npm run build`.
+1. Conecte o repositório na Vercel.
+2. Configure as variáveis de ambiente do Supabase.
+3. Use o comando padrão `npm run build`.
