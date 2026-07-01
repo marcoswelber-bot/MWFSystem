@@ -1,8 +1,8 @@
 import { AgendaManager } from "@/components/agenda/agenda-manager";
-import { ModuleAlerts } from "@/components/module-alerts";
+import { ActionableAlertsWrapper } from "@/components/actionable-alerts-wrapper";
 import { PageHeader } from "@/components/page-header";
 import { getCurrentClinicScope } from "@/lib/access-control";
-import { getAgendaAlerts } from "@/lib/module-alerts";
+import { getAgendaActionableAlerts } from "@/lib/module-alerts";
 import { getCurrentPermissionMap } from "@/lib/permissions";
 import { getErrorMessage } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
@@ -250,7 +250,7 @@ export default async function AgendaPage() {
       : "Clinica"
   }));
 
-  const agendaAlerts = await getAgendaAlerts();
+  const agendaAlerts = await getAgendaActionableAlerts();
 
   return (
     <div>
@@ -260,7 +260,7 @@ export default async function AgendaPage() {
         description="Crie agendamentos, visualize por dia, semana ou mes e bloqueie horarios por profissional ou clinica."
       />
 
-      <ModuleAlerts alerts={agendaAlerts} />
+      <ActionableAlertsWrapper alerts={agendaAlerts} />
 
       <AgendaManager
         appointments={appointments}
