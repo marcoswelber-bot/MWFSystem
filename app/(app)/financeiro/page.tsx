@@ -1,6 +1,8 @@
 ﻿import { FinanceManager } from "@/components/finance/finance-manager";
+import { ModuleAlerts } from "@/components/module-alerts";
 import { PageHeader } from "@/components/page-header";
 import { getCurrentClinicScope } from "@/lib/access-control";
+import { getFinanceiroAlerts } from "@/lib/module-alerts";
 import { getCurrentPermissionMap, isCurrentUserAdmMaster } from "@/lib/permissions";
 import { getErrorMessage } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
@@ -178,6 +180,8 @@ export default async function FinanceiroPage() {
     })
   );
 
+  const financeAlerts = await getFinanceiroAlerts();
+
   return (
     <div>
       <PageHeader
@@ -185,6 +189,8 @@ export default async function FinanceiroPage() {
         title="Financeiro"
         description="Controle receitas, despesas e movimentacoes da clinica com estrutura preparada para Agenda e Pacotes futuros."
       />
+
+      <ModuleAlerts alerts={financeAlerts} />
 
       <FinanceManager
         transactions={hydratedTransactions}
