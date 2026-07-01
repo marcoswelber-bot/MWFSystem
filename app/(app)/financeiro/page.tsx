@@ -1,4 +1,4 @@
-import { FinanceManager } from "@/components/finance/finance-manager";
+﻿import { FinanceManager } from "@/components/finance/finance-manager";
 import { PageHeader } from "@/components/page-header";
 import { getCurrentClinicScope } from "@/lib/access-control";
 import { getCurrentPermissionMap, isCurrentUserAdmMaster } from "@/lib/permissions";
@@ -191,6 +191,7 @@ export default async function FinanceiroPage() {
         clinics={clinics}
         patients={patients}
         services={services}
+        employees={employees}
         currentClinicId={clinicScope.clinicId}
         isAdmMaster={isAdmMaster}
         loadError={loadError}

@@ -1,19 +1,13 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
-import {
-  ArrowDownRight,
-  ArrowUpRight,
-  CheckCircle2,
-  CircleDollarSign,
+import {  Download,
   Edit3,
+  FileText,
   Plus,
-  Trash2,
-  X,
-  XCircle
-} from "lucide-react";
+  Trash2,  X,} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -44,25 +38,21 @@ type FinancialTransaction =
 type Clinic = Database["public"]["Tables"]["clinics"]["Row"];
 type Patient = Database["public"]["Tables"]["patients"]["Row"];
 type Service = Database["public"]["Tables"]["services"]["Row"];
+type Employee = Database["public"]["Tables"]["employees"]["Row"];
 
 type FinanceManagerProps = {
   transactions: FinancialTransaction[];
   clinics: Clinic[];
   patients: Patient[];
   services: Service[];
+  employees: Employee[];
   currentClinicId: string | null;
   isAdmMaster: boolean;
   loadError?: string;
   permissions?: PermissionSet;
 };
 
-type FinanceTab =
-  | "entradas"
-  | "saidas"
-  | "pacientes"
-  | "funcionarios"
-  | "fluxo"
-  | "balancete";
+type FinanceTab = "receitas" | "despesas" | "pacientes" | "contracheques" | "fluxo";
 
 const statusOptions: Array<[FinancialStatus, string]> = [
   ["pendente", "Pendente"],
@@ -88,7 +78,7 @@ const paymentMethodOptions: Array<[PaymentMethod, string]> = [
 
 const expenseCategoryOptions = [
   "ADM / Funcionarios",
-  "ComissÃƒÂµes",
+  "ComissÃƒÆ’Ã‚Âµes",
   "Aluguel",
   "Energia",
   "Agua",
@@ -221,6 +211,22 @@ type BalanceRow = {
   total: number;
 };
 
+type PaycheckSummary = {
+  employee: Employee;
+  clinicName: string;
+  periodLabel: string;
+  baseSalary: number;
+  benefits: number;
+  manualCommission: number;
+  automaticCommission: number;
+  appointmentCount: number;
+  discounts: number;
+  gross: number;
+  net: number;
+  status: FinancialStatus;
+  transactions: FinancialTransaction[];
+};
+
 function normalizeText(value: string | null | undefined) {
   return (value ?? "")
     .normalize("NFD")
@@ -265,6 +271,76 @@ function getBalanceCategory(item: FinancialTransaction) {
   return item.category ?? (isCommissionTransaction(item) ? "Comissoes" : "Despesas");
 }
 
+function isPayrollDiscount(item: FinancialTransaction) {
+  const category = normalizeText(item.category);
+  return isPayrollTransaction(item) && (category.includes("desconto") || category.includes("encargo"));
+}
+
+function isPayrollCredit(item: FinancialTransaction) {
+  return isPayrollTransaction(item) && !isPayrollDiscount(item);
+}
+
+function getEmployeeInitials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return (parts[0]?.[0] ?? "F") + (parts[1]?.[0] ?? "");
+}
+
+function getPaycheckStatus(rows: FinancialTransaction[]): FinancialStatus {
+  if (rows.length === 0) return "pendente";
+  if (rows.every((item) => item.derived_status === "pago")) return "pago";
+  if (rows.some((item) => item.derived_status === "vencido")) return "vencido";
+  if (rows.some((item) => item.derived_status === "parcial")) return "parcial";
+  return "pendente";
+}
+
+function buildPaycheckSummaries({
+  employees,
+  rows,
+  clinics,
+  clinicFilter,
+  periodLabel
+}: {
+  employees: Employee[];
+  rows: FinancialTransaction[];
+  clinics: Clinic[];
+  clinicFilter: string;
+  periodLabel: string;
+}) {
+  const clinicsById = new Map(clinics.map((clinic) => [clinic.id, clinic.name]));
+  return employees
+    .filter((employee) => clinicFilter === "all" || employee.clinic_id === clinicFilter)
+    .map((employee) => {
+      const transactions = rows.filter((item) => item.employee_id === employee.id && (isPayrollTransaction(item) || isCommissionTransaction(item)));
+      const payrollCredits = transactions.filter(isPayrollCredit);
+      const payrollDiscounts = transactions.filter(isPayrollDiscount);
+      const automaticCommissions = transactions.filter(isCommissionTransaction);
+      const manualCommissions = payrollCredits.filter((item) => normalizeText(item.category).includes("comissao"));
+      const baseSalary = payrollCredits.filter((item) => normalizeText(item.category).includes("salario")).reduce((total, item) => total + Number(item.amount ?? 0), 0);
+      const benefits = payrollCredits.filter((item) => normalizeText(item.category).includes("beneficio")).reduce((total, item) => total + Number(item.amount ?? 0), 0);
+      const manualCommission = manualCommissions.reduce((total, item) => total + Number(item.amount ?? 0), 0);
+      const automaticCommission = automaticCommissions.reduce((total, item) => total + Number(item.amount ?? 0), 0);
+      const discounts = payrollDiscounts.reduce((total, item) => total + Number(item.amount ?? 0), 0);
+      const gross = baseSalary + benefits + manualCommission + automaticCommission;
+      return {
+        employee,
+        clinicName: employee.clinic_id ? clinicsById.get(employee.clinic_id) ?? "Clinica nao encontrada" : "Sem clinica",
+        periodLabel,
+        baseSalary,
+        benefits,
+        manualCommission,
+        automaticCommission,
+        appointmentCount: automaticCommissions.length,
+        discounts,
+        gross,
+        net: gross - discounts,
+        status: getPaycheckStatus(transactions),
+        transactions
+      } satisfies PaycheckSummary;
+    })
+    .filter((summary) => summary.transactions.length > 0)
+    .sort((a, b) => a.employee.name.localeCompare(b.employee.name));
+}
+
 function buildBalanceRows(rows: FinancialTransaction[]) {
   const grouped = new Map<string, BalanceRow>();
 
@@ -288,6 +364,7 @@ export function FinanceManager({
   clinics,
   patients,
   services,
+  employees,
   currentClinicId,
   isAdmMaster,
   loadError,
@@ -310,7 +387,8 @@ export function FinanceManager({
   );
   const [periodStart, setPeriodStart] = React.useState(monthStart());
   const [periodEnd, setPeriodEnd] = React.useState(monthEnd());
-  const [activeTab, setActiveTab] = React.useState<FinanceTab>("entradas");
+  const [activeTab, setActiveTab] = React.useState<FinanceTab>("receitas");
+  const [printPaychecks, setPrintPaychecks] = React.useState<PaycheckSummary[] | null>(null);
 
   const canCreate = permissions?.create ?? true;
   const canEdit = permissions?.edit ?? true;
@@ -336,12 +414,6 @@ export function FinanceManager({
   const patientRows = incomeRows;
   const commissionRows = outflowRows.filter(isCommissionTransaction);
   const payrollRows = outflowRows.filter(isPayrollTransaction);
-  const staffRows = outflowRows.filter(
-    (item) => Boolean(item.employee_id) || isCommissionTransaction(item) || isPayrollTransaction(item)
-  );
-  const clinicExpenseRows = outflowRows.filter(
-    (item) => !isCommissionTransaction(item) && !isPayrollTransaction(item)
-  );
   const balanceRows = buildBalanceRows(filteredTransactions);
 
   const totalEntries = activeTransactions
@@ -353,12 +425,6 @@ export function FinanceManager({
   const totalPatientReceived = incomeRows
     .filter((item) => item.derived_status === "pago")
     .reduce((total, item) => total + getPaidAmount(item), 0);
-  const totalPatientOpen = patientRows
-    .filter((item) => item.derived_status !== "pago" && item.derived_status !== "cancelado")
-    .reduce((total, item) => total + getOpenAmount(item), 0);
-  const totalClinicExpenses = clinicExpenseRows
-    .filter((item) => item.derived_status !== "cancelado")
-    .reduce((total, item) => total + Number(item.amount ?? 0), 0);
   const totalPayroll = payrollRows
     .filter((item) => item.derived_status !== "cancelado")
     .reduce((total, item) => total + Number(item.amount ?? 0), 0);
@@ -380,15 +446,64 @@ export function FinanceManager({
     realized: realizedBalance
   };
 
+  const selectedClinic = clinicFilter === "all" ? null : clinics.find((clinic) => clinic.id === clinicFilter) ?? null;
+  const selectedClinicName = selectedClinic?.name ?? (clinicFilter === "all" ? "Todas as clinicas" : "Clinica nao encontrada");
+  const referenceLabel = `${periodStart} ate ${periodEnd}`;
+  const totalReceivable = incomeRows
+    .filter((item) => item.derived_status !== "pago" && item.derived_status !== "cancelado")
+    .reduce((total, item) => total + getOpenAmount(item), 0);
+  const totalPaidAccounts = activeTransactions
+    .filter((item) => item.derived_status === "pago")
+    .reduce((total, item) => total + getPaidAmount(item), 0);
+  const totalOverdueAccounts = filteredTransactions
+    .filter((item) => item.derived_status === "vencido")
+    .reduce((total, item) => total + getOpenAmount(item), 0);
+  const ratioTotal = totalEntries + totalOutflows;
+  const revenueRatio = ratioTotal > 0 ? Math.round((totalEntries / ratioTotal) * 100) : 50;
+  const expenseRatio = ratioTotal > 0 ? 100 - revenueRatio : 50;
+  const balanceBadge = periodBalance >= 0 ? "receitas acima das despesas" : "despesas acima das receitas";
+  const paycheckSummaries = buildPaycheckSummaries({ employees, rows: filteredTransactions, clinics, clinicFilter, periodLabel: referenceLabel });
+
   const tabOptions: Array<[FinanceTab, string]> = [
-    ["entradas", "Entradas"],
-    ["saidas", "Saidas"],
-    ["pacientes", "Pacientes"],
-    ["funcionarios", "Funcionarios/Folha"],
-    ["fluxo", "Fluxo de Caixa"],
-    ["balancete", "Balancete"]
+    ["receitas", "Receitas"],
+    ["despesas", "Despesas"],
+    ["pacientes", "Pacientes em aberto"],
+    ["contracheques", "Contracheques"],
+    ["fluxo", "Fluxo de caixa"]
   ];
 
+  React.useEffect(() => {
+    if (!printPaychecks) return;
+
+    const previousTitle = document.title;
+    const first = printPaychecks[0];
+    const fileName = printPaychecks.length === 1
+      ? `${first.clinicName} - Contracheque - ${first.employee.name} - ${referenceLabel}`
+      : `${selectedClinicName} - Folha de pagamento - ${referenceLabel}`;
+    document.title = fileName;
+    document.body.classList.add("mwf-finance-paycheck-printing");
+
+    const restore = () => {
+      document.body.classList.remove("mwf-finance-paycheck-printing");
+      document.title = previousTitle;
+      setPrintPaychecks(null);
+      window.removeEventListener("afterprint", restore);
+    };
+
+    window.addEventListener("afterprint", restore);
+    window.setTimeout(() => window.print(), 100);
+    window.setTimeout(restore, 900);
+  }, [printPaychecks, referenceLabel, selectedClinicName]);
+
+  function openCommissionReport(summary: PaycheckSummary) {
+    const params = new URLSearchParams({ inicio: periodStart, fim: periodEnd });
+    if (clinicFilter !== "all") params.set("clinica", clinicFilter);
+    router.push(`/financeiro/contracheques/${summary.employee.id}/comissoes?${params.toString()}` as Route);
+  }
+
+  function exportAllPaychecks() {
+    if (paycheckSummaries.length > 0) setPrintPaychecks(paycheckSummaries);
+  }
   function refresh() {
     router.refresh();
   }
@@ -465,144 +580,85 @@ export function FinanceManager({
 
   return (
     <div className="grid gap-5">
-      {message ? (
-        <SystemMessage message={message} onClose={() => setMessage(null)} />
-      ) : null}
+      {message ? <SystemMessage message={message} onClose={() => setMessage(null)} /> : null}
 
-      <div className="flex flex-wrap gap-2">
-        {canCreate ? (
-          <>
-            <Button type="button" onClick={() => openCreateForm("receita")}>
-              <Plus className="h-4 w-4" />
-              Nova receita
-            </Button>
-            <Button type="button" variant="outline" onClick={() => openCreateForm("despesa")}>
-              <Plus className="h-4 w-4" />
-              Nova despesa
-            </Button>
-          </>
-        ) : null}
-        <Button type="button" variant="outline" onClick={() => router.push("/financeiro/baixas")}>
-          Baixas e Repasses
-        </Button>
-        <Button type="button" variant="outline" onClick={() => router.push("/financeiro/folha" as Route)}>
-          Folha / Contracheque
-        </Button>
-      </div>
-
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Total de entradas" value={money(totalEntries)} icon={ArrowUpRight} />
-        <MetricCard label="Total de saidas" value={money(totalOutflows)} icon={ArrowDownRight} />
-        <MetricCard label="Saldo do periodo" value={money(periodBalance)} icon={CircleDollarSign} />
-        <MetricCard label="Recebimentos de pacientes" value={money(totalPatientReceived)} icon={CheckCircle2} />
-        <MetricCard label="Pacientes em aberto" value={money(totalPatientOpen)} icon={XCircle} />
-        <MetricCard label="Despesas da clinica" value={money(totalClinicExpenses)} icon={ArrowDownRight} />
-        <MetricCard label="Folha/funcionarios" value={money(totalPayroll)} icon={ArrowDownRight} />
-        <MetricCard label="Comissoes" value={money(totalCommissions)} icon={ArrowDownRight} />
+      <section className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-start">
+        <div>
+          <p className="text-sm text-muted-foreground">{selectedClinicName}</p>
+          <h2 className="text-2xl font-semibold tracking-normal">Referência {referenceLabel}</h2>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {canCreate ? (
+            <>
+              <Button type="button" variant="outline" onClick={() => openCreateForm("despesa")}><Plus className="h-4 w-4" />Nova despesa</Button>
+              <Button type="button" className="bg-[#1D9E75] text-white hover:bg-[#188765]" onClick={() => openCreateForm("receita")}><Plus className="h-4 w-4" />Nova receita</Button>
+            </>
+          ) : null}
+        </div>
       </section>
 
-      <Card className="border-none p-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <SelectField
-            label="Clinica"
-            value={clinicFilter}
-            onChange={setClinicFilter}
-            options={[
-              ...(isAdmMaster ? [["all", "Todas as clinicas"] as [string, string]] : []),
-              ...clinics.map((clinic) => [clinic.id, clinic.name] as [string, string])
-            ]}
-            disabled={!isAdmMaster}
-          />
-          <SelectField
-            label="Status"
-            value={statusFilter}
-            onChange={(value) => setStatusFilter(value as FinancialStatus | "all")}
-            options={[["all", "Todos"], ...statusOptions]}
-          />
-          <TextField label="Inicio" type="date" value={periodStart} onChange={setPeriodStart} />
-          <TextField label="Fim" type="date" value={periodEnd} onChange={setPeriodEnd} />
+      <Card className="border p-5 shadow-none">
+        <div className="grid gap-5 lg:grid-cols-[1fr_1.5fr] lg:items-center">
+          <div>
+            <p className="text-sm text-muted-foreground">Saldo do mês</p>
+            <strong className={cn("mt-2 block font-mono text-4xl tracking-normal", periodBalance >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300")}>{money(periodBalance)}</strong>
+            <span className={cn("mt-3 inline-flex rounded-md px-2.5 py-1 text-xs font-semibold", periodBalance >= 0 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-100" : "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-100")}>{balanceBadge}</span>
+          </div>
+          <div className="grid gap-3">
+            <div className="flex h-3 overflow-hidden rounded-full bg-muted">
+              <div className="bg-emerald-600" style={{ width: `${revenueRatio}%` }} />
+              <div className="bg-orange-500" style={{ width: `${expenseRatio}%` }} />
+            </div>
+            <div className="grid gap-2 text-sm md:grid-cols-2">
+              <div className="rounded-md border p-3"><span className="text-muted-foreground">Receitas</span><strong className="mt-1 block font-mono text-emerald-700 dark:text-emerald-300">{money(totalEntries)}</strong></div>
+              <div className="rounded-md border p-3"><span className="text-muted-foreground">Despesas</span><strong className="mt-1 block font-mono text-orange-700 dark:text-orange-300">{money(totalOutflows)}</strong></div>
+            </div>
+          </div>
         </div>
       </Card>
 
-      <div className="flex flex-wrap gap-2 rounded-md border bg-muted/40 p-1">
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <SummaryCard label="Contas a receber" value={money(totalReceivable)} tone="neutral" />
+        <SummaryCard label="Contas pagas" value={money(totalPaidAccounts)} tone="positive" />
+        <SummaryCard label="Contas vencidas" value={money(totalOverdueAccounts)} tone="danger" />
+        <SummaryCard label="Folha de pagamento" value={money(totalPayroll + totalCommissions)} tone="warning" />
+      </section>
+
+      <Card className="border p-4 shadow-none">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <SelectField label="Clínica" value={clinicFilter} onChange={setClinicFilter} options={[...(isAdmMaster ? [["all", "Todas as clínicas"] as [string, string]] : []), ...clinics.map((clinic) => [clinic.id, clinic.name] as [string, string])]} disabled={!isAdmMaster} />
+          <SelectField label="Status" value={statusFilter} onChange={(value) => setStatusFilter(value as FinancialStatus | "all")} options={[["all", "Todos"], ...statusOptions]} />
+          <TextField label="Data início" type="date" value={periodStart} onChange={setPeriodStart} />
+          <TextField label="Data fim" type="date" value={periodEnd} onChange={setPeriodEnd} />
+        </div>
+      </Card>
+
+      <div className="flex flex-wrap gap-1 rounded-md border bg-muted/30 p-1">
         {tabOptions.map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => setActiveTab(value)}
-            className={cn(
-              "h-10 rounded-md px-3 text-sm font-semibold transition-colors",
-              activeTab === value
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-muted-foreground hover:bg-background hover:text-foreground"
-            )}
-          >
-            {label}
-          </button>
+          <button key={value} type="button" onClick={() => setActiveTab(value)} className={cn("h-10 rounded-md px-3 text-sm font-semibold transition-colors", activeTab === value ? "bg-[#1D9E75] text-white" : "text-muted-foreground hover:bg-background hover:text-foreground")}>{label}</button>
         ))}
       </div>
 
-      {activeTab === "entradas" ? (
-        <FinanceTable title="Entradas" description="Tudo que entra dinheiro: pacientes, avulsos, pacotes pagos e outros creditos.">
-          <EntriesTable rows={incomeRows} canEdit={canEdit} canDelete={canDelete} isPending={isPending} onDetails={setDetailTransaction} onEdit={openEditForm} onPaid={markAsPaid} onCancel={cancelTransaction} onDelete={removeTransaction} />
-        </FinanceTable>
-      ) : null}
-
-      {activeTab === "saidas" ? (
-        <FinanceTable title="Saidas" description="Tudo que sai dinheiro: despesas, folha, encargos e comissoes.">
-          <OutflowsTable rows={outflowRows} canEdit={canEdit} canDelete={canDelete} isPending={isPending} onDetails={setDetailTransaction} onEdit={openEditForm} onPaid={markAsPaid} onCancel={cancelTransaction} onDelete={removeTransaction} />
-        </FinanceTable>
-      ) : null}
-
-      {activeTab === "pacientes" ? (
-        <FinanceTable title="Pacientes" description="Cobranca e baixa de pacientes. Baixas em lote continuam em Baixas e Repasses.">
-          <PatientPaymentsTable rows={patientRows} canEdit={canEdit} canDelete={canDelete} isPending={isPending} onDetails={setDetailTransaction} onEdit={openEditForm} onPaid={markAsPaid} onCancel={cancelTransaction} onDelete={removeTransaction} />
-        </FinanceTable>
-      ) : null}
-
-      {activeTab === "funcionarios" ? (
-        <FinanceTable title="Funcionarios/Folha" description="Lancamentos e contracheque. Pagamentos continuam em Baixas e Repasses.">
-          <StaffPayrollTable rows={staffRows} canEdit={canEdit} canDelete={canDelete} isPending={isPending} onDetails={setDetailTransaction} onEdit={openEditForm} onCancel={cancelTransaction} onDelete={removeTransaction} />
-        </FinanceTable>
-      ) : null}
-
+      {activeTab === "receitas" ? <FinanceTable title="Receitas" description="Entradas de pacientes, avulsos, pacotes pagos e outros créditos."><EntriesTable rows={incomeRows} canEdit={canEdit} canDelete={canDelete} isPending={isPending} onDetails={setDetailTransaction} onEdit={openEditForm} onPaid={markAsPaid} onCancel={cancelTransaction} onDelete={removeTransaction} /></FinanceTable> : null}
+      {activeTab === "despesas" ? <FinanceTable title="Despesas" description="Saídas da clínica, folha, encargos e comissões."><OutflowsTable rows={outflowRows} canEdit={canEdit} canDelete={canDelete} isPending={isPending} onDetails={setDetailTransaction} onEdit={openEditForm} onPaid={markAsPaid} onCancel={cancelTransaction} onDelete={removeTransaction} /></FinanceTable> : null}
+      {activeTab === "pacientes" ? <FinanceTable title="Pacientes em aberto" description="Cobrança e baixa de pacientes. Baixas em lote continuam em Baixas e Repasses."><PatientPaymentsTable rows={patientRows} canEdit={canEdit} canDelete={canDelete} isPending={isPending} onDetails={setDetailTransaction} onEdit={openEditForm} onPaid={markAsPaid} onCancel={cancelTransaction} onDelete={removeTransaction} /></FinanceTable> : null}
+      {activeTab === "contracheques" ? <PaychecksPanel summaries={paycheckSummaries} canEdit={canEdit} onExportAll={exportAllPaychecks} onPrintOne={(summary) => setPrintPaychecks([summary])} onDetails={openCommissionReport} /> : null}
       {activeTab === "fluxo" ? (
-        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <MetricCard label="Entradas previstas" value={money(cashFlowTotals.revenue)} icon={ArrowUpRight} />
-          <MetricCard label="Saidas previstas" value={money(cashFlowTotals.expense)} icon={ArrowDownRight} />
-          <MetricCard label="Saidas pendentes" value={money(cashFlowTotals.pendingOutflows)} icon={XCircle} />
-          <MetricCard label="Saldo realizado" value={money(cashFlowTotals.realized)} icon={CheckCircle2} />
-        </section>
-      ) : null}
-
-      {activeTab === "balancete" ? (
-        <FinanceTable title="Balancete" description="Resumo simples do periodo: credito, debito e saldo.">
-          <section className="grid gap-3 p-4 md:grid-cols-3">
-            <MetricCard label="Total de receitas" value={money(totalEntries)} icon={ArrowUpRight} />
-            <MetricCard label="Total de despesas" value={money(totalOutflows)} icon={ArrowDownRight} />
-            <MetricCard label="Resultado" value={money(periodBalance)} icon={CircleDollarSign} />
+        <FinanceTable title="Fluxo de caixa" description="Resumo do período com entradas, saídas, saldo e composição do balancete.">
+          <section className="grid gap-3 p-4 md:grid-cols-3 xl:grid-cols-5">
+            <SummaryCard label="Receitas" value={money(cashFlowTotals.revenue)} tone="positive" />
+            <SummaryCard label="Despesas" value={money(cashFlowTotals.expense)} tone="danger" />
+            <SummaryCard label="Pendências" value={money(cashFlowTotals.pendingOutflows)} tone="warning" />
+            <SummaryCard label="Saldo realizado" value={money(cashFlowTotals.realized)} tone="neutral" />
+            <SummaryCard label="Saldo previsto" value={money(periodBalance)} tone={periodBalance >= 0 ? "positive" : "danger"} />
           </section>
           <BalanceTable rows={balanceRows} />
         </FinanceTable>
       ) : null}
-      {detailTransaction ? (
-        <TransactionDetailsModal item={detailTransaction} onClose={() => setDetailTransaction(null)} />
-      ) : null}
 
-      {formOpen ? (
-        <FinanceFormModal
-          form={form}
-          setForm={setForm}
-          editingTransaction={editingTransaction}
-          clinics={clinics}
-          patients={patients}
-          services={services}
-          isAdmMaster={isAdmMaster}
-          isPending={isPending}
-          onSubmit={submitForm}
-          onClose={closeForm}
-        />
-      ) : null}
+      {detailTransaction ? <TransactionDetailsModal item={detailTransaction} onClose={() => setDetailTransaction(null)} /> : null}
+      {formOpen ? <FinanceFormModal form={form} setForm={setForm} editingTransaction={editingTransaction} clinics={clinics} patients={patients} services={services} isAdmMaster={isAdmMaster} isPending={isPending} onSubmit={submitForm} onClose={closeForm} /> : null}
+      {printPaychecks ? <PaycheckPrintArea summaries={printPaychecks} /> : null}
     </div>
   );
 }
@@ -730,48 +786,6 @@ function OutflowsTable({
   );
 }
 
-function StaffPayrollTable({
-  rows,
-  canEdit,
-  canDelete,
-  isPending,
-  onDetails,
-  onEdit,
-  onCancel,
-  onDelete
-}: Omit<TableActionProps, "onPaid">) {
-  return (
-    <table className="w-full min-w-[860px] text-left text-xs">
-      <thead className="bg-muted/60 uppercase text-muted-foreground">
-        <tr>
-          <th className="px-3 py-2">Funcionario</th>
-          <th className="px-3 py-2">Clinica</th>
-          <th className="px-3 py-2">Competencia</th>
-          <th className="px-3 py-2">Tipo</th>
-          <th className="px-3 py-2">Natureza</th>
-          <th className="px-3 py-2 text-right">Valor</th>
-          <th className="px-3 py-2">Status</th>
-          <th className="px-3 py-2 text-right">Acoes</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.length > 0 ? rows.map((item) => (
-          <tr key={item.id} className="border-t hover:bg-muted/30">
-            <TruncatedCell value={item.employee_name} strong />
-            <TruncatedCell value={item.clinic_name} />
-            <td className="whitespace-nowrap px-3 py-2">{item.due_date.slice(0, 7)}</td>
-            <TruncatedCell value={isCommissionTransaction(item) ? "Comissao" : item.category ?? "Folha"} />
-            <td className="whitespace-nowrap px-3 py-2">Debito</td>
-            <td className="whitespace-nowrap px-3 py-2 text-right font-semibold">{money(Number(item.amount ?? 0))}</td>
-            <StatusCell status={item.derived_status} compact />
-            <StaffActionCell item={item} canEdit={canEdit} canDelete={canDelete} isPending={isPending} onDetails={onDetails} onEdit={onEdit} onCancel={onCancel} onDelete={onDelete} />
-          </tr>
-        )) : <EmptyRow colSpan={8} />}
-      </tbody>
-    </table>
-  );
-}
-
 function BalanceTable({ rows }: { rows: BalanceRow[] }) {
   return (
     <table className="w-full min-w-[680px] text-left text-xs">
@@ -841,6 +855,141 @@ function PatientPaymentsTable({
   );
 }
 
+function PaychecksPanel({
+  summaries,
+  canEdit,
+  onExportAll,
+  onPrintOne,
+  onDetails
+}: {
+  summaries: PaycheckSummary[];
+  canEdit: boolean;
+  onExportAll: () => void;
+  onPrintOne: (summary: PaycheckSummary) => void;
+  onDetails: (summary: PaycheckSummary) => void;
+}) {
+  return (
+    <Card className="overflow-hidden border shadow-none">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
+        <div>
+          <h2 className="text-lg font-semibold tracking-normal">Contracheques</h2>
+          <p className="text-sm text-muted-foreground">Resumo de folha e comissões por funcionário.</p>
+        </div>
+        <Button type="button" variant="outline" onClick={onExportAll} disabled={summaries.length === 0}>
+          <Download className="h-4 w-4" />
+          Exportar tudo
+        </Button>
+      </div>
+      <div className="grid gap-3 p-4">
+        {summaries.length > 0 ? summaries.map((summary) => (
+          <div key={summary.employee.id} className="grid gap-3 rounded-md border p-3 md:grid-cols-[auto_1fr_auto] md:items-center">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#1D9E75]/10 text-xs font-semibold text-[#1D9E75]">{getEmployeeInitials(summary.employee.name)}</div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <strong className="truncate text-sm">{summary.employee.name}</strong>
+                <span className={cn("rounded-md px-2 py-1 text-xs font-semibold", statusClass(summary.status))}>{statusLabel(summary.status)}</span>
+              </div>
+              <p className="text-sm text-muted-foreground">{summary.employee.role ?? "Profissional"} · {summary.clinicName}</p>
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <div className="mr-2 text-right">
+                <span className="block text-xs text-muted-foreground">Total líquido</span>
+                <strong className="font-mono text-base">{money(summary.net)}</strong>
+              </div>
+              <Button type="button" size="sm" variant="outline" onClick={() => onDetails(summary)}>Ver detalhado</Button>
+              <Button type="button" size="sm" onClick={() => onPrintOne(summary)} disabled={!canEdit}>
+                <FileText className="h-4 w-4" />
+                Baixar contracheque
+              </Button>
+            </div>
+          </div>
+        )) : <div className="rounded-md border p-6 text-center text-sm text-muted-foreground">Nenhum contracheque encontrado para os filtros selecionados.</div>}
+      </div>
+    </Card>
+  );
+}
+
+function PaycheckPrintArea({ summaries }: { summaries: PaycheckSummary[] }) {
+  const generatedAt = today();
+  return (
+    <div className="finance-paycheck-print-area hidden">
+      {summaries.map((summary) => (
+        <article key={summary.employee.id} className="finance-paycheck-document">
+          <header className="finance-paycheck-header">
+            <div>
+              <strong>MWFSystem</strong>
+              <h1>Contracheque</h1>
+            </div>
+            <div>
+              <p>{summary.clinicName}</p>
+              <p>Período: {summary.periodLabel}</p>
+            </div>
+          </header>
+          <section className="finance-paycheck-grid">
+            <DetailItem label="Funcionário" value={summary.employee.name} />
+            <DetailItem label="Cargo" value={summary.employee.role ?? "Profissional"} />
+            <DetailItem label="Admissão" value={summary.employee.created_at?.slice(0, 10) ?? "-"} />
+            <DetailItem label="Status" value={statusLabel(summary.status)} />
+          </section>
+          <table className="finance-paycheck-table">
+            <tbody>
+              <tr><td>Salário base</td><td>{money(summary.baseSalary)}</td></tr>
+              <tr><td>Comissões sobre atendimentos ({summary.appointmentCount} atendimentos)</td><td>{money(summary.automaticCommission)}</td></tr>
+              <tr><td>Comissões manuais e benefícios</td><td>{money(summary.manualCommission + summary.benefits)}</td></tr>
+              <tr><td>Descontos</td><td>{money(summary.discounts)}</td></tr>
+              <tr className="finance-paycheck-net"><td>Total líquido a receber</td><td>{money(summary.net)}</td></tr>
+            </tbody>
+          </table>
+          <p className="finance-paycheck-note">A lista detalhada de pacientes e valores por atendimento está disponível em relatório separado no Financeiro.</p>
+          <footer className="finance-paycheck-signatures">
+            <div>Assinatura do funcionário</div>
+            <div>Assinatura da clínica</div>
+          </footer>
+          <p className="finance-paycheck-date">Data de geração: {generatedAt}</p>
+        </article>
+      ))}
+      <style jsx global>{`
+        @media print {
+          @page { size: A4 portrait; margin: 10mm; }
+          body.mwf-finance-paycheck-printing * { visibility: hidden !important; }
+          body.mwf-finance-paycheck-printing .finance-paycheck-print-area,
+          body.mwf-finance-paycheck-printing .finance-paycheck-print-area * { visibility: visible !important; }
+          body.mwf-finance-paycheck-printing .finance-paycheck-print-area { display: block !important; position: absolute !important; inset: 0 auto auto 0 !important; width: 100% !important; background: #fff !important; color: #111827 !important; }
+          .finance-paycheck-document { page-break-after: always; break-after: page; font-size: 10px; line-height: 1.25; }
+          .finance-paycheck-document:last-child { page-break-after: auto; break-after: auto; }
+          .finance-paycheck-header { display: flex; justify-content: space-between; gap: 16px; border-bottom: 1px solid #111827; padding-bottom: 8px; margin-bottom: 10px; }
+          .finance-paycheck-header h1 { margin: 2px 0 0; font-size: 18px; }
+          .finance-paycheck-header p { margin: 0 0 2px; text-align: right; }
+          .finance-paycheck-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-bottom: 10px; }
+          .finance-paycheck-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 10px; }
+          .finance-paycheck-table td { border: 1px solid #cbd5e1; padding: 6px 8px; }
+          .finance-paycheck-table td:last-child { text-align: right; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-weight: 700; }
+          .finance-paycheck-net td { background: #eefcf7; font-weight: 700; }
+          .finance-paycheck-note { border: 1px solid #cbd5e1; padding: 8px; margin: 10px 0 26px; }
+          .finance-paycheck-signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-top: 40px; text-align: center; }
+          .finance-paycheck-signatures div { border-top: 1px solid #111827; padding-top: 6px; }
+          .finance-paycheck-date { margin-top: 14px; text-align: right; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function SummaryCard({ label, value, tone }: { label: string; value: string; tone: "neutral" | "positive" | "warning" | "danger" }) {
+  const toneClass = {
+    neutral: "text-foreground",
+    positive: "text-emerald-700 dark:text-emerald-300",
+    warning: "text-amber-700 dark:text-amber-300",
+    danger: "text-red-700 dark:text-red-300"
+  }[tone];
+
+  return (
+    <Card className="border p-4 shadow-none">
+      <p className="text-sm text-muted-foreground">{label}</p>
+      <strong className={cn("mt-2 block font-mono text-xl tracking-normal", toneClass)}>{value}</strong>
+    </Card>
+  );
+}
 function EmptyRow({ colSpan }: { colSpan: number }) {
   return (
     <tr>
@@ -899,40 +1048,6 @@ function FinanceActionCell({
   );
 }
 
-function StaffActionCell({
-  item,
-  canEdit,
-  canDelete,
-  isPending,
-  onDetails,
-  onEdit,
-  onCancel,
-  onDelete
-}: {
-  item: FinancialTransaction;
-  canEdit: boolean;
-  canDelete: boolean;
-  isPending: boolean;
-  onDetails: (item: FinancialTransaction) => void;
-  onEdit: (item: FinancialTransaction) => void;
-  onCancel: (item: FinancialTransaction) => void;
-  onDelete: (item: FinancialTransaction) => void;
-}) {
-  return (
-    <td className="whitespace-nowrap px-3 py-2">
-      <div className="flex justify-end gap-1">
-        <Button type="button" size="sm" variant="outline" onClick={() => onDetails(item)}>Ver contracheque</Button>
-        {canEdit ? (
-          <>
-            <IconButton label="Editar" onClick={() => onEdit(item)} icon={Edit3} />
-            <Button type="button" size="sm" variant="outline" onClick={() => onCancel(item)} disabled={isPending || item.derived_status === "cancelado"}>Cancelar</Button>
-          </>
-        ) : null}
-        {canDelete ? <IconButton label="Excluir" onClick={() => onDelete(item)} icon={Trash2} danger /> : null}
-      </div>
-    </td>
-  );
-}
 function TransactionDetailsModal({ item, onClose }: { item: FinancialTransaction; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm">
@@ -1009,32 +1124,6 @@ function StatusCell({ status, compact = false }: { status: FinancialStatus; comp
 }
 
 
-function MetricCard({
-  label,
-  value,
-  icon: Icon
-}: {
-  label: string;
-  value: string;
-  icon: React.ElementType;
-}) {
-  return (
-    <Card className="border-none p-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">{label}</p>
-          <strong className="mt-2 block text-xl font-semibold tracking-normal">
-            {value}
-          </strong>
-        </div>
-        <span className="rounded-md bg-primary/10 p-2 text-primary">
-          <Icon className="h-5 w-5" />
-        </span>
-      </div>
-    </Card>
-  );
-}
-
 function FinanceFormModal({
   form,
   setForm,
@@ -1069,13 +1158,13 @@ function FinanceFormModal({
           <div>
             <h2 className="text-lg font-semibold tracking-normal">
               {editingTransaction
-                ? "Editar movimentaÃƒÂ§ÃƒÂ£o"
+                ? "Editar movimentaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o"
                 : isRevenue
                   ? "Nova receita"
                   : "Nova despesa"}
             </h2>
             <p className="text-sm text-muted-foreground">
-              {isRevenue ? "LanÃƒÂ§amento manual de entrada." : "LanÃƒÂ§amento manual de saÃƒÂ­da."}
+              {isRevenue ? "LanÃƒÆ’Ã‚Â§amento manual de entrada." : "LanÃƒÆ’Ã‚Â§amento manual de saÃƒÆ’Ã‚Â­da."}
             </p>
           </div>
           <button
@@ -1132,7 +1221,7 @@ function FinanceFormModal({
                   required
                 />
                 <SelectField
-                  label="ServiÃƒÂ§o"
+                  label="ServiÃƒÆ’Ã‚Â§o"
                   value={form.service_id ?? ""}
                   onChange={(value) =>
                     setForm((current) => ({ ...current, service_id: value }))
@@ -1163,7 +1252,7 @@ function FinanceFormModal({
                   required
                 />
                 <TextField
-                  label="DescriÃƒÂ§ÃƒÂ£o"
+                  label="DescriÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o"
                   value={form.description ?? ""}
                   onChange={(value) =>
                     setForm((current) => ({ ...current, description: value }))
@@ -1202,7 +1291,7 @@ function FinanceFormModal({
             />
           </div>
           <TextAreaField
-            label="ObservaÃƒÂ§ÃƒÂµes"
+            label="ObservaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Âµes"
             value={form.notes ?? ""}
             onChange={(value) => setForm((current) => ({ ...current, notes: value }))}
           />
