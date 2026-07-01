@@ -4,7 +4,6 @@ import type { Route } from "next";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getAccessProfileByEmail } from "@/lib/access-control";
-import { getErrorMessage } from "@/lib/supabase/env";
 
 const protectedRoutes = [
   "/dashboard",
@@ -60,7 +59,7 @@ export async function signInWithPassword(formData: FormData) {
         targetRoute = "/portal" as Route;
       }
     }
-  } catch (error) {
+  } catch {
     errorMessage = "Erro ao conectar. Tente novamente em instantes.";
   }
 
