@@ -48,19 +48,20 @@ export async function signInWithPassword(formData: FormData) {
     });
 
     if (error) {
-      errorMessage = getErrorMessage(error);
+      // Mensagem amigável em vez de expor detalhes técnicos
+      errorMessage = "Email ou senha incorretos.";
     } else {
       const profile = await getAccessProfileByEmail(email);
 
       if (profile.kind === "blocked" || profile.kind === "unknown") {
         await supabase.auth.signOut();
-        errorMessage = profile.reason;
+        errorMessage = "Seu acesso está bloqueado. Entre em contato com a administração.";
       } else if (profile.kind === "patient") {
         targetRoute = "/portal" as Route;
       }
     }
   } catch (error) {
-    errorMessage = getErrorMessage(error);
+    errorMessage = "Erro ao conectar. Tente novamente em instantes.";
   }
 
   if (errorMessage) {

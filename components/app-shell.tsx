@@ -66,19 +66,19 @@ export function AppShell({
   const sidebar = (
     <aside
       className={cn(
-        "app-sidebar flex h-full flex-col border-r bg-card transition-[width] duration-200",
+        "app-sidebar flex h-full flex-col bg-[hsl(var(--sidebar-bg))] text-[hsl(var(--sidebar-fg))] transition-[width] duration-200",
         collapsed ? "w-[76px]" : "w-72"
       )}
     >
-      <div className="flex h-16 items-center justify-between border-b px-4">
+      <div className="flex h-16 items-center justify-between border-b border-white/10 px-4">
         <Link href="/dashboard" className="flex min-w-0 items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/10 text-[hsl(var(--sidebar-accent))]">
             <Activity className="h-5 w-5" />
           </div>
           {!collapsed ? (
             <div className="min-w-0">
-              <p className="truncate font-semibold">MWFSystem</p>
-              <p className="truncate text-xs text-muted-foreground">
+              <p className="truncate font-semibold text-white">MWFSystem</p>
+              <p className="truncate text-xs text-white/60">
                 {userRole ?? "Painel administrativo"}
               </p>
             </div>
@@ -88,7 +88,7 @@ export function AppShell({
           type="button"
           variant="ghost"
           size="icon"
-          className="hidden lg:inline-flex"
+          className="hidden text-white/70 hover:bg-white/10 hover:text-white lg:inline-flex"
           onClick={() => setCollapsed((value) => !value)}
           aria-label={collapsed ? "Expandir sidebar" : "Recolher sidebar"}
           title={collapsed ? "Expandir sidebar" : "Recolher sidebar"}
@@ -101,14 +101,14 @@ export function AppShell({
         </Button>
       </div>
 
-      <div className="border-b p-4">
+      <div className="border-b border-white/10 p-4">
         <div
           className={cn(
-            "rounded-lg border bg-secondary/45 p-3",
+            "rounded-lg bg-white/5 p-3",
             collapsed && "px-2 text-center"
           )}
         >
-          <p className="text-xs font-medium uppercase text-muted-foreground">
+          <p className="text-xs font-medium uppercase text-white/50">
             {collapsed ? "Clinica" : "Clinica atual"}
           </p>
           {!collapsed ? (
@@ -118,7 +118,7 @@ export function AppShell({
                   value={activeClinicId ?? "__all"}
                   onChange={(event) => changeActiveClinic(event.target.value)}
                   disabled={isChangingClinic}
-                  className="mt-2 w-full rounded-md border bg-background px-2 py-2 text-sm font-semibold text-foreground"
+                  className="mt-2 w-full rounded-md border border-white/10 bg-white/5 px-2 py-2 text-sm font-semibold text-white"
                 >
                   {isAdmMaster ? <option value="__all">Todas as clinicas</option> : null}
                   {clinics.map((clinic) => (
@@ -128,9 +128,9 @@ export function AppShell({
                   ))}
                 </select>
               ) : (
-                <p className="mt-1 truncate text-sm font-semibold">{clinicLabel}</p>
+                <p className="mt-1 truncate text-sm font-semibold text-white">{clinicLabel}</p>
               )}
-              <p className="truncate text-xs text-muted-foreground">
+              <p className="truncate text-xs text-white/50">
                 {isChangingClinic
                   ? "Atualizando..."
                   : isAdmMaster
@@ -160,8 +160,8 @@ export function AppShell({
                 href={item.href as Route}
                 title={item.title}
                 className={cn(
-                  "flex h-11 items-center gap-3 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground",
-                  active && "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
+                  "flex h-11 items-center gap-3 rounded-md px-3 text-sm font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white",
+                  active && "bg-[hsl(var(--sidebar-accent))]/15 text-[hsl(var(--sidebar-accent))] hover:bg-[hsl(var(--sidebar-accent))]/15 hover:text-[hsl(var(--sidebar-accent))]",
                   collapsed && "justify-center px-0"
                 )}
               >
@@ -179,8 +179,8 @@ export function AppShell({
                         href={child.href as Route}
                         title={child.title}
                         className={cn(
-                          "flex h-9 items-center rounded-md px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground",
-                          childActive && "bg-secondary text-foreground"
+                          "flex h-9 items-center rounded-md px-3 text-xs font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white",
+                          childActive && "bg-white/10 text-white"
                         )}
                       >
                         {child.title}
@@ -194,12 +194,12 @@ export function AppShell({
         })}
       </nav>
 
-      <div className="border-t p-3">
+      <div className="border-t border-white/10 p-3">
         <form action={signOut}>
           <Button
             type="submit"
             variant="ghost"
-            className={cn("w-full justify-start", collapsed && "justify-center px-0")}
+            className={cn("w-full justify-start text-white/70 hover:bg-white/10 hover:text-white", collapsed && "justify-center px-0")}
             title="Sair"
           >
             <LogOut className="h-4 w-4" />

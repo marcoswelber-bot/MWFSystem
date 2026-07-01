@@ -171,6 +171,8 @@ export async function createPatient(
       payload.clinic_id = clinicScope.clinicId;
     }
     await syncPatientAuthUser(payload);
+    // Limpa a senha temporária antes de salvar no banco (segurança)
+    payload.temporary_password = null;
     const { error } = await supabase.from("patients").insert(payload);
 
     if (error) {
@@ -210,6 +212,8 @@ export async function updatePatient(
     }
 
     await syncPatientAuthUser(payload, currentPatient?.login_email ?? null);
+    // Limpa a senha temporária antes de salvar no banco (segurança)
+    payload.temporary_password = null;
     const { error } = await supabase
       .from("patients")
       .update(payload)

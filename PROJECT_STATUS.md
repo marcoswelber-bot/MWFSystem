@@ -44,6 +44,12 @@
 
 ✅ Correção da página de clínicas
 
+✅ Versões de dependências fixadas (previne quebras em deploy)
+
+✅ Senha temporária removida do banco após criação do usuário (segurança)
+
+✅ Mensagens de erro do login amigáveis (sem expor detalhes técnicos)
+
 🔄 Sistema de permissões e cargos (em andamento)
 
 ## Próximas Etapas
@@ -51,3 +57,5 @@
 - Comissão por profissional e serviço
 - WhatsApp automático
 - Relatórios
+- Dashboard com dados reais da agenda do dia
+- Loading/feedback visual nos formulários

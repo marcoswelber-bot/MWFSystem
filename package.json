@@ -10,28 +10,28 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@radix-ui/react-label": "latest",
-    "@radix-ui/react-slot": "latest",
-    "@supabase/ssr": "latest",
-    "@supabase/supabase-js": "latest",
-    "class-variance-authority": "latest",
-    "clsx": "latest",
-    "lucide-react": "latest",
-    "next": "15",
-    "next-themes": "latest",
-    "react": "19",
-    "react-dom": "19",
-    "tailwind-merge": "latest"
+    "@radix-ui/react-label": "^2.1.2",
+    "@radix-ui/react-slot": "^1.1.1",
+    "@supabase/ssr": "^0.5.2",
+    "@supabase/supabase-js": "^2.49.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.468.0",
+    "next": "^15.1.0",
+    "next-themes": "^0.4.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^2.6.0"
   },
   "devDependencies": {
-    "@types/node": "latest",
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
-    "autoprefixer": "latest",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "autoprefixer": "^10.4.20",
     "eslint": "^8.57.1",
-    "eslint-config-next": "15",
-    "postcss": "latest",
+    "eslint-config-next": "^15.1.0",
+    "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
-    "typescript": "latest"
+    "typescript": "^5.7.2"
   }
 }

@@ -290,6 +290,8 @@ export async function createEmployee(
       throw new Error("Use Permissoes de Usuarios para definir ADM Master.");
     }
     await syncEmployeeAuthUser(payload);
+    // Limpa a senha temporária antes de salvar no banco (segurança)
+    payload.temporary_password = null;
     const { error } = await supabase.from("employees").insert(payload);
 
     if (error) {
@@ -332,6 +334,8 @@ export async function updateEmployee(
     }
 
     await syncEmployeeAuthUser(payload, currentEmployee?.login_email ?? null);
+    // Limpa a senha temporária antes de salvar no banco (segurança)
+    payload.temporary_password = null;
     const { error } = await supabase
       .from("employees")
       .update(payload)
