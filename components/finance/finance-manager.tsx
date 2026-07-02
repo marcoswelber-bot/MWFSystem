@@ -17,7 +17,7 @@ import {
   cancelFinancialTransaction,
   createFinancialTransaction,
   deleteFinancialTransaction,
-  markFinancialTransactionAsPaid,
+  settleFinancialTransactions,
   updateFinancialTransaction,
   type FinancialActionResult,
   type FinancialOrigin,
@@ -71,25 +71,36 @@ const originOptions: Array<[FinancialOrigin, string]> = [
 const paymentMethodOptions: Array<[PaymentMethod, string]> = [
   ["pix", "Pix"],
   ["dinheiro", "Dinheiro"],
-  ["cartao", "Cartao"],
+  ["cartao", "Cartão"],
   ["boleto", "Boleto"],
-  ["parcelado", "Parcelado"]
+  ["parcelado", "Parcelado"],
+  ["transferencia", "Transferência"],
+  ["outro", "Outro"]
+];
+
+const settlementPaymentMethodOptions: Array<[PaymentMethod, string]> = [
+  ["pix", "Pix"],
+  ["dinheiro", "Dinheiro"],
+  ["cartao", "Cartão"],
+  ["transferencia", "Transferência"],
+  ["boleto", "Boleto"],
+  ["outro", "Outro"]
 ];
 
 const expenseCategoryOptions = [
-  "ADM / Funcionarios",
-  "ComissÃƒÆ’Ã‚Âµes",
+  "ADM / Funcionários",
+  "Comissões",
   "Aluguel",
   "Energia",
-  "Agua",
+  "Água",
   "Internet / Telefone",
   "Sistema / Software",
-  "Material de escritorio",
-  "Material clinico",
+  "Material de escritório",
+  "Material clínico",
   "Limpeza",
-  "Manutencao",
+  "Manutenção",
   "Impostos / Taxas",
-  "Salarios",
+  "Salários",
   "Terceirizados",
   "Marketing",
   "Outros"
@@ -268,7 +279,7 @@ function getBalanceCategory(item: FinancialTransaction) {
     return item.origin ? `Receita - ${getEntryOrigin(item)}` : "Receitas";
   }
 
-  return item.category ?? (isCommissionTransaction(item) ? "Comissoes" : "Despesas");
+  return item.category ?? (isCommissionTransaction(item) ? "Comissões" : "Despesas");
 }
 
 function isPayrollDiscount(item: FinancialTransaction) {
@@ -323,7 +334,7 @@ function buildPaycheckSummaries({
       const gross = baseSalary + benefits + manualCommission + automaticCommission;
       return {
         employee,
-        clinicName: employee.clinic_id ? clinicsById.get(employee.clinic_id) ?? "Clinica nao encontrada" : "Sem clinica",
+        clinicName: employee.clinic_id ? clinicsById.get(employee.clinic_id) ?? "Clínica não encontrada" : "Sem clínica",
         periodLabel,
         baseSalary,
         benefits,
@@ -389,6 +400,12 @@ export function FinanceManager({
   const [periodEnd, setPeriodEnd] = React.useState(monthEnd());
   const [activeTab, setActiveTab] = React.useState<FinanceTab>("receitas");
   const [printPaychecks, setPrintPaychecks] = React.useState<PaycheckSummary[] | null>(null);
+  const [settlementTransaction, setSettlementTransaction] =
+    React.useState<FinancialTransaction | null>(null);
+  const [settlementAmount, setSettlementAmount] = React.useState("");
+  const [settlementPaymentMethod, setSettlementPaymentMethod] =
+    React.useState<PaymentMethod>("pix");
+  const [settlementNotes, setSettlementNotes] = React.useState("");
 
   const canCreate = permissions?.create ?? true;
   const canEdit = permissions?.edit ?? true;
@@ -447,7 +464,7 @@ export function FinanceManager({
   };
 
   const selectedClinic = clinicFilter === "all" ? null : clinics.find((clinic) => clinic.id === clinicFilter) ?? null;
-  const selectedClinicName = selectedClinic?.name ?? (clinicFilter === "all" ? "Todas as clinicas" : "Clinica nao encontrada");
+  const selectedClinicName = selectedClinic?.name ?? (clinicFilter === "all" ? "Todas as clínicas" : "Clínica não encontrada");
   const referenceLabel = `${periodStart} ate ${periodEnd}`;
   const totalReceivable = incomeRows
     .filter((item) => item.derived_status !== "pago" && item.derived_status !== "cancelado")
@@ -553,10 +570,58 @@ export function FinanceManager({
   }
 
   function markAsPaid(item: FinancialTransaction) {
+    setSettlementTransaction(item);
+    setSettlementAmount(getOpenAmount(item).toFixed(2));
+    setSettlementPaymentMethod((item.payment_method as PaymentMethod | null) ?? "pix");
+    setSettlementNotes("");
+    setMessage(null);
+  }
+
+  function closeSettlementModal() {
+    setSettlementTransaction(null);
+    setSettlementAmount("");
+    setSettlementPaymentMethod("pix");
+    setSettlementNotes("");
+  }
+
+  function submitSettlement(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!settlementTransaction) return;
+
+    const openAmount = getOpenAmount(settlementTransaction);
+    const paidAmount = numberFromForm(settlementAmount);
+
+    if (paidAmount <= 0) {
+      setMessage({ ok: false, message: "Informe um valor pago maior que zero." });
+      return;
+    }
+
+    if (paidAmount > openAmount) {
+      setMessage({ ok: false, message: "O valor pago não pode ser maior que o valor em aberto." });
+      return;
+    }
+
     startTransition(async () => {
-      const result = await markFinancialTransactionAsPaid(item.id);
+      const result = await settleFinancialTransactions({
+        ids: [settlementTransaction.id],
+        settlement_type:
+          settlementTransaction.transaction_type === "receita"
+            ? "patient_payment"
+            : "staff_payout",
+        mode: paidAmount >= openAmount ? "total" : "partial",
+        amount: settlementAmount,
+        payment_method: settlementPaymentMethod,
+        paid_at: today(),
+        notes: settlementNotes
+      });
+
       setMessage(result);
-      if (result.ok) refresh();
+
+      if (result.ok) {
+        closeSettlementModal();
+        refresh();
+      }
     });
   }
 
@@ -569,7 +634,7 @@ export function FinanceManager({
   }
 
   function removeTransaction(item: FinancialTransaction) {
-    if (!window.confirm("Excluir esta movimentacao?")) return;
+    if (!window.confirm("Excluir esta movimentação?")) return;
 
     startTransition(async () => {
       const result = await deleteFinancialTransaction(item.id);
@@ -657,6 +722,20 @@ export function FinanceManager({
       ) : null}
 
       {detailTransaction ? <TransactionDetailsModal item={detailTransaction} onClose={() => setDetailTransaction(null)} /> : null}
+      {settlementTransaction ? (
+        <SettlementModal
+          item={settlementTransaction}
+          amount={settlementAmount}
+          paymentMethod={settlementPaymentMethod}
+          notes={settlementNotes}
+          isPending={isPending}
+          onAmountChange={setSettlementAmount}
+          onPaymentMethodChange={setSettlementPaymentMethod}
+          onNotesChange={setSettlementNotes}
+          onSubmit={submitSettlement}
+          onClose={closeSettlementModal}
+        />
+      ) : null}
       {formOpen ? <FinanceFormModal form={form} setForm={setForm} editingTransaction={editingTransaction} clinics={clinics} patients={patients} services={services} isAdmMaster={isAdmMaster} isPending={isPending} onSubmit={submitForm} onClose={closeForm} /> : null}
       {printPaychecks ? <PaycheckPrintArea summaries={printPaychecks} /> : null}
     </div>
@@ -710,14 +789,14 @@ function EntriesTable({
       <thead className="bg-muted/60 uppercase text-muted-foreground">
         <tr>
           <th className="px-3 py-2">Data</th>
-          <th className="px-3 py-2">Clinica</th>
+          <th className="px-3 py-2">Clínica</th>
           <th className="px-3 py-2">Origem</th>
           <th className="px-3 py-2">Paciente</th>
-          <th className="px-3 py-2">Servico</th>
+          <th className="px-3 py-2">Serviço</th>
           <th className="px-3 py-2 text-right">Valor</th>
           <th className="px-3 py-2">Forma</th>
           <th className="px-3 py-2">Status</th>
-          <th className="px-3 py-2 text-right">Acoes</th>
+          <th className="px-3 py-2 text-right">Ações</th>
         </tr>
       </thead>
       <tbody>
@@ -731,7 +810,7 @@ function EntriesTable({
             <td className="whitespace-nowrap px-3 py-2 text-right font-semibold">{money(Number(item.amount ?? 0))}</td>
             <td className="whitespace-nowrap px-3 py-2">{item.payment_method ?? "-"}</td>
             <StatusCell status={item.derived_status} compact />
-            <FinanceActionCell item={item} primaryLabel="Marcar pago" canEdit={canEdit} canDelete={canDelete} isPending={isPending} onDetails={onDetails} onEdit={onEdit} onPaid={onPaid} onCancel={onCancel} onDelete={onDelete} />
+            <FinanceActionCell item={item} primaryLabel="Dar baixa" canEdit={canEdit} canDelete={canDelete} isPending={isPending} onDetails={onDetails} onEdit={onEdit} onPaid={onPaid} onCancel={onCancel} onDelete={onDelete} />
           </tr>
         )) : <EmptyRow colSpan={9} />}
       </tbody>
@@ -755,15 +834,15 @@ function OutflowsTable({
       <thead className="bg-muted/60 uppercase text-muted-foreground">
         <tr>
           <th className="px-3 py-2">Data</th>
-          <th className="px-3 py-2">Clinica</th>
+          <th className="px-3 py-2">Clínica</th>
           <th className="px-3 py-2">Categoria</th>
-          <th className="px-3 py-2">Funcionario</th>
-          <th className="px-3 py-2">Descricao</th>
+          <th className="px-3 py-2">Funcionário</th>
+          <th className="px-3 py-2">Descrição</th>
           <th className="px-3 py-2 text-right">Valor</th>
           <th className="px-3 py-2">Vencimento</th>
           <th className="px-3 py-2">Pagamento</th>
           <th className="px-3 py-2">Status</th>
-          <th className="px-3 py-2 text-right">Acoes</th>
+          <th className="px-3 py-2 text-right">Ações</th>
         </tr>
       </thead>
       <tbody>
@@ -778,7 +857,7 @@ function OutflowsTable({
             <td className="whitespace-nowrap px-3 py-2">{item.due_date}</td>
             <td className="whitespace-nowrap px-3 py-2">{item.payment_date ?? "-"}</td>
             <StatusCell status={item.derived_status} compact />
-            <FinanceActionCell item={item} primaryLabel="Marcar pago" canEdit={canEdit} canDelete={canDelete} isPending={isPending} onDetails={onDetails} onEdit={onEdit} onPaid={onPaid} onCancel={onCancel} onDelete={onDelete} />
+            <FinanceActionCell item={item} primaryLabel="Dar baixa" canEdit={canEdit} canDelete={canDelete} isPending={isPending} onDetails={onDetails} onEdit={onEdit} onPaid={onPaid} onCancel={onCancel} onDelete={onDelete} />
           </tr>
         )) : <EmptyRow colSpan={10} />}
       </tbody>
@@ -801,7 +880,7 @@ function BalanceTable({ rows }: { rows: BalanceRow[] }) {
         {rows.length > 0 ? rows.map((item) => (
           <tr key={item.key} className="border-t hover:bg-muted/30">
             <TruncatedCell value={item.category} strong />
-            <td className="whitespace-nowrap px-3 py-2">{item.type === "credito" ? "Credito" : "Debito"}</td>
+            <td className="whitespace-nowrap px-3 py-2">{item.type === "credito" ? "Crédito" : "Débito"}</td>
             <td className="whitespace-nowrap px-3 py-2 text-right">{item.count}</td>
             <td className="whitespace-nowrap px-3 py-2 text-right font-semibold">{money(item.total)}</td>
           </tr>
@@ -826,14 +905,14 @@ function PatientPaymentsTable({
       <thead className="bg-muted/60 uppercase text-muted-foreground">
         <tr>
           <th className="px-3 py-2">Paciente</th>
-          <th className="px-3 py-2">Clinica</th>
-          <th className="px-3 py-2">Servico</th>
+          <th className="px-3 py-2">Clínica</th>
+          <th className="px-3 py-2">Serviço</th>
           <th className="px-3 py-2 text-right">Valor total</th>
           <th className="px-3 py-2 text-right">Valor pago</th>
           <th className="px-3 py-2 text-right">Valor em aberto</th>
           <th className="px-3 py-2">Vencimento</th>
           <th className="px-3 py-2">Status</th>
-          <th className="px-3 py-2 text-right">Acoes</th>
+          <th className="px-3 py-2 text-right">Ações</th>
         </tr>
       </thead>
       <tbody>
@@ -1048,6 +1127,85 @@ function FinanceActionCell({
   );
 }
 
+function SettlementModal({
+  item,
+  amount,
+  paymentMethod,
+  notes,
+  isPending,
+  onAmountChange,
+  onPaymentMethodChange,
+  onNotesChange,
+  onSubmit,
+  onClose
+}: {
+  item: FinancialTransaction;
+  amount: string;
+  paymentMethod: PaymentMethod;
+  notes: string;
+  isPending: boolean;
+  onAmountChange: (value: string) => void;
+  onPaymentMethodChange: (value: PaymentMethod) => void;
+  onNotesChange: (value: string) => void;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  onClose: () => void;
+}) {
+  const openAmount = getOpenAmount(item);
+  const paidAmount = numberFromForm(amount);
+  const remainingAmount = Math.max(openAmount - paidAmount, 0);
+  const isPartial = paidAmount > 0 && paidAmount < openAmount;
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm">
+      <Card className="w-full max-w-xl border-none p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b pb-4">
+          <div>
+            <h2 className="text-lg font-semibold tracking-normal">Dar baixa</h2>
+            <p className="text-sm text-muted-foreground">
+              {item.transaction_type === "receita" ? "Recebimento" : "Pagamento"} de {money(openAmount)} em aberto.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <form onSubmit={onSubmit} className="mt-4 grid gap-4">
+          <div className="grid gap-3 rounded-md border bg-muted/30 p-3 text-sm md:grid-cols-2">
+            <DetailItem label="Valor em aberto" value={money(openAmount)} />
+            <DetailItem label="Saldo após baixa" value={money(remainingAmount)} />
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <SelectField
+              label="Forma de pagamento"
+              value={paymentMethod}
+              onChange={(value) => onPaymentMethodChange(value as PaymentMethod)}
+              options={settlementPaymentMethodOptions}
+              required
+            />
+            <TextField
+              label="Valor pago"
+              type="number"
+              step="0.01"
+              value={amount}
+              onChange={onAmountChange}
+              required
+            />
+          </div>
+          <TextAreaField label="Observação" value={notes} onChange={onNotesChange} />
+          <p className="text-sm text-muted-foreground">
+            Tipo de baixa: {isPartial ? "parcial" : "total"}. A data de pagamento será preenchida automaticamente com a data de hoje.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
+            <Button type="submit" disabled={isPending}>{isPending ? "Salvando..." : "Confirmar baixa"}</Button>
+          </div>
+        </form>
+      </Card>
+    </div>
+  );
+}
+
 function TransactionDetailsModal({ item, onClose }: { item: FinancialTransaction; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm">
@@ -1055,18 +1213,18 @@ function TransactionDetailsModal({ item, onClose }: { item: FinancialTransaction
         <div className="flex items-start justify-between gap-4 border-b pb-4">
           <div>
             <h2 className="text-lg font-semibold tracking-normal">Detalhes financeiros</h2>
-            <p className="text-sm text-muted-foreground">{item.description ?? item.service_name ?? item.category ?? "Lancamento financeiro"}</p>
+            <p className="text-sm text-muted-foreground">{item.description ?? item.service_name ?? item.category ?? "Lançamento financeiro"}</p>
           </div>
           <button type="button" onClick={onClose} className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground">
             <X className="h-5 w-5" />
           </button>
         </div>
         <div className="mt-4 grid gap-3 text-sm md:grid-cols-2">
-          <DetailItem label="Clinica" value={item.clinic_name} />
+          <DetailItem label="Clínica" value={item.clinic_name} />
           <DetailItem label="Status" value={statusLabel(item.derived_status)} />
           <DetailItem label="Paciente" value={item.patient_name} />
           <DetailItem label="Profissional" value={item.employee_name} />
-          <DetailItem label="Servico" value={item.service_name} />
+          <DetailItem label="Serviço" value={item.service_name} />
           <DetailItem label="Categoria" value={item.category ?? "-"} />
           <DetailItem label="Valor total" value={money(Number(item.amount ?? 0))} />
           <DetailItem label="Valor pago" value={money(getPaidAmount(item))} />
@@ -1158,13 +1316,13 @@ function FinanceFormModal({
           <div>
             <h2 className="text-lg font-semibold tracking-normal">
               {editingTransaction
-                ? "Editar movimentaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o"
+                ? "Editar movimentação"
                 : isRevenue
                   ? "Nova receita"
                   : "Nova despesa"}
             </h2>
             <p className="text-sm text-muted-foreground">
-              {isRevenue ? "LanÃƒÆ’Ã‚Â§amento manual de entrada." : "LanÃƒÆ’Ã‚Â§amento manual de saÃƒÆ’Ã‚Â­da."}
+              {isRevenue ? "Lançamento manual de entrada." : "Lançamento manual de saída."}
             </p>
           </div>
           <button
@@ -1179,19 +1337,11 @@ function FinanceFormModal({
         <form onSubmit={onSubmit} className="grid gap-4 p-5">
           <div className="grid gap-3 md:grid-cols-2">
             <SelectField
-              label="Clinica"
+              label="Clínica"
               value={form.clinic_id ?? ""}
               onChange={(value) => setForm((current) => ({ ...current, clinic_id: value }))}
               options={clinics.map((clinic) => [clinic.id, clinic.name])}
               disabled={!isAdmMaster}
-            />
-            <SelectField
-              label="Status"
-              value={form.status ?? "pendente"}
-              onChange={(value) =>
-                setForm((current) => ({ ...current, status: value as FinancialStatus }))
-              }
-              options={statusOptions}
             />
             {isRevenue ? (
               <>
@@ -1221,7 +1371,7 @@ function FinanceFormModal({
                   required
                 />
                 <SelectField
-                  label="ServiÃƒÆ’Ã‚Â§o"
+                  label="Serviço"
                   value={form.service_id ?? ""}
                   onChange={(value) =>
                     setForm((current) => ({ ...current, service_id: value }))
@@ -1252,7 +1402,7 @@ function FinanceFormModal({
                   required
                 />
                 <TextField
-                  label="DescriÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o"
+                  label="Descrição"
                   value={form.description ?? ""}
                   onChange={(value) =>
                     setForm((current) => ({ ...current, description: value }))
@@ -1280,18 +1430,20 @@ function FinanceFormModal({
                 required
               />
             ) : null}
-            <TextField
-              label="Data de recebimento/pagamento"
-              type="date"
-              value={form.payment_date ?? ""}
-              onChange={(value) =>
-                setForm((current) => ({ ...current, payment_date: value }))
-              }
-              required={isManualRevenue}
-            />
+            {isManualRevenue ? (
+              <TextField
+                label="Data de recebimento/pagamento"
+                type="date"
+                value={form.payment_date ?? ""}
+                onChange={(value) =>
+                  setForm((current) => ({ ...current, payment_date: value }))
+                }
+                required
+              />
+            ) : null}
           </div>
           <TextAreaField
-            label="ObservaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Âµes"
+            label="Observações"
             value={form.notes ?? ""}
             onChange={(value) => setForm((current) => ({ ...current, notes: value }))}
           />

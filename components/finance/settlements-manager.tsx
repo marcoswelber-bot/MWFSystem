@@ -53,7 +53,7 @@ type Filters = {
 const paymentMethodOptions: Array<[PaymentMethod, string]> = [
   ["pix", "Pix"],
   ["dinheiro", "Dinheiro"],
-  ["cartao", "Cartao"],
+  ["cartao", "Cartão"],
   ["boleto", "Boleto"],
   ["parcelado", "Parcelado"],
   ["transferencia", "Transferencia"],
@@ -61,7 +61,7 @@ const paymentMethodOptions: Array<[PaymentMethod, string]> = [
 ];
 const patientStatusOptions: Array<[string, string]> = [["all", "Todos"], ["pendente", "Em aberto"], ["parcial", "Parcial"], ["vencido", "Vencido"]];
 const staffStatusOptions: Array<[string, string]> = [["all", "Todos"], ["pendente", "Em aberto"], ["parcial", "Parcial"], ["pago", "Pago"]];
-const staffTypeOptions = ["Todos", "Comissao", "Salario fixo", "Bonus", "Desconto", "Ajuste"];
+const staffTypeOptions = ["Todos", "Comissão", "Salário fixo", "Bônus", "Desconto", "Ajuste"];
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -99,9 +99,9 @@ function getStatusLabel(status: string) {
 
 function getStaffType(transaction: FinancialTransaction) {
   const text = normalizeText(`${transaction.category ?? ""} ${transaction.description ?? ""}`);
-  if (text.includes("comiss")) return "Comissao";
-  if (text.includes("salario")) return "Salario fixo";
-  if (text.includes("bonus")) return "Bonus";
+  if (text.includes("comiss")) return "Comissão";
+  if (text.includes("salario")) return "Salário fixo";
+  if (text.includes("bonus")) return "Bônus";
   if (text.includes("desconto")) return "Desconto";
   return "Ajuste";
 }
@@ -221,7 +221,7 @@ export function SettlementsManager({ transactions, clinics, patients, services, 
   function submitSettlement() {
     setMessage(null);
     if (selectedIds.length === 0) {
-      setMessage({ type: "error", text: "Selecione ao menos um lancamento." });
+      setMessage({ type: "error", text: "Selecione ao menos um lançamento." });
       return;
     }
 
@@ -264,25 +264,25 @@ export function SettlementsManager({ transactions, clinics, patients, services, 
 
       <Card className="p-2">
         <div className="grid gap-2 md:grid-cols-2">
-          <TabButton active={tab === "patients"} onClick={() => setTab("patients")}>Recebimentos de Pacientes</TabButton>
-          <TabButton active={tab === "staff"} onClick={() => setTab("staff")}>Repasses de Funcionarios</TabButton>
+          <TabButton active={tab === "patients"} onClick={() => setTab("patients")}>Recebimentos de pacientes</TabButton>
+          <TabButton active={tab === "staff"} onClick={() => setTab("staff")}>Repasses de funcionários</TabButton>
         </div>
       </Card>
 
       <Card className="space-y-4 p-4">
         <div>
           <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200"><Search className="h-4 w-4" />Filtros</div>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Refine os lancamentos por clinica, periodo, pessoa, servico e status.</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Refine os lançamentos por clínica, período, pessoa, serviço e status.</p>
         </div>
         <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-          {isAdmMaster ? <SelectField label="Clinica" value={filters.clinicId} onChange={(value) => updateFilter("clinicId", value)} options={[["all", "Todas"], ...clinics.map((clinic) => [clinic.id, clinic.name] as [string, string])]} /> : null}
-          <InputField label="Inicio" type="date" value={filters.startDate} onChange={(value) => updateFilter("startDate", value)} />
+          {isAdmMaster ? <SelectField label="Clínica" value={filters.clinicId} onChange={(value) => updateFilter("clinicId", value)} options={[["all", "Todas"], ...clinics.map((clinic) => [clinic.id, clinic.name] as [string, string])]} /> : null}
+          <InputField label="Início" type="date" value={filters.startDate} onChange={(value) => updateFilter("startDate", value)} />
           <InputField label="Fim" type="date" value={filters.endDate} onChange={(value) => updateFilter("endDate", value)} />
-          {tab === "patients" ? <SelectField label="Paciente" value={filters.patientId} onChange={(value) => updateFilter("patientId", value)} options={[["all", "Todos"], ...patients.map((patient) => [patient.id, patient.full_name] as [string, string])]} /> : <SelectField label="Funcionario" value={filters.employeeId} onChange={(value) => updateFilter("employeeId", value)} options={[["all", "Todos"], ...employees.map((employee) => [employee.id, employee.name] as [string, string])]} />}
-          <SelectField label="Servico" value={filters.serviceId} onChange={(value) => updateFilter("serviceId", value)} options={[["all", "Todos"], ...services.map((service) => [service.id, service.name] as [string, string])]} />
+          {tab === "patients" ? <SelectField label="Paciente" value={filters.patientId} onChange={(value) => updateFilter("patientId", value)} options={[["all", "Todos"], ...patients.map((patient) => [patient.id, patient.full_name] as [string, string])]} /> : <SelectField label="Funcionário" value={filters.employeeId} onChange={(value) => updateFilter("employeeId", value)} options={[["all", "Todos"], ...employees.map((employee) => [employee.id, employee.name] as [string, string])]} />}
+          <SelectField label="Serviço" value={filters.serviceId} onChange={(value) => updateFilter("serviceId", value)} options={[["all", "Todos"], ...services.map((service) => [service.id, service.name] as [string, string])]} />
           <SelectField label="Status" value={filters.status} onChange={(value) => updateFilter("status", value)} options={tab === "patients" ? patientStatusOptions : staffStatusOptions} />
           {tab === "patients" ? <SelectField label="Forma" value={filters.paymentMethod} onChange={(value) => updateFilter("paymentMethod", value)} options={[["all", "Todas"], ...paymentMethodOptions]} /> : <SelectField label="Tipo" value={filters.type} onChange={(value) => updateFilter("type", value)} options={staffTypeOptions.map((option) => [option, option])} />}
-          <InputField label="Pesquisar" value={filters.search} onChange={(value) => updateFilter("search", value)} placeholder="Nome, servico, origem..." />
+          <InputField label="Pesquisar" value={filters.search} onChange={(value) => updateFilter("search", value)} placeholder="Nome, serviço, origem..." />
         </div>
       </Card>
 
@@ -322,7 +322,7 @@ export function SettlementsManager({ transactions, clinics, patients, services, 
         <div className="overflow-x-auto">
           {tab === "patients" ? <PatientTable rows={rows} selectedIds={selectedIds} onToggle={toggleSelection} onToggleAll={toggleAll} onSingle={selectSingle} /> : <StaffTable rows={rows} selectedIds={selectedIds} onToggle={toggleSelection} onToggleAll={toggleAll} onSingle={selectSingle} />}
         </div>
-        {rows.length === 0 ? <div className="p-8 text-center text-sm text-slate-500 dark:text-slate-400">Nenhum lancamento em aberto encontrado para os filtros selecionados.</div> : null}
+        {rows.length === 0 ? <div className="p-8 text-center text-sm text-slate-500 dark:text-slate-400">Nenhum lançamento em aberto encontrado para os filtros selecionados.</div> : null}
       </Card>
     </div>
   );
@@ -383,7 +383,7 @@ function SelectionHeader({ rows, selectedIds, onToggleAll }: { rows: FinancialTr
 }
 
 function SelectionCell({ id, selectedIds, onToggle }: { id: string; selectedIds: string[]; onToggle: (id: string) => void }) {
-  return <input type="checkbox" aria-label="Selecionar lancamento" checked={selectedIds.includes(id)} onChange={() => onToggle(id)} className="h-4 w-4 rounded border-slate-300" />;
+  return <input type="checkbox" aria-label="Selecionar lançamento" checked={selectedIds.includes(id)} onChange={() => onToggle(id)} className="h-4 w-4 rounded border-slate-300" />;
 }
 
 function PatientTable({ rows, selectedIds, onToggle, onToggleAll, onSingle }: { rows: FinancialTransaction[]; selectedIds: string[]; onToggle: (id: string) => void; onToggleAll: () => void; onSingle: (id: string) => void }) {
@@ -392,7 +392,7 @@ function PatientTable({ rows, selectedIds, onToggle, onToggleAll, onSingle }: { 
       <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-slate-900 dark:text-slate-400">
         <tr>
           <th className="px-3 py-2 text-left"><SelectionHeader rows={rows} selectedIds={selectedIds} onToggleAll={onToggleAll} /></th>
-          <th className="px-3 py-2 text-left">Paciente</th><th className="px-3 py-2 text-left">Clinica</th><th className="px-3 py-2 text-left">Servico</th><th className="px-3 py-2 text-left">Origem</th>
+          <th className="px-3 py-2 text-left">Paciente</th><th className="px-3 py-2 text-left">Clínica</th><th className="px-3 py-2 text-left">Serviço</th><th className="px-3 py-2 text-left">Origem</th>
           <th className="px-3 py-2 text-right">Valor total</th><th className="px-3 py-2 text-right">Valor pago</th><th className="px-3 py-2 text-right">Valor em aberto</th>
           <th className="px-3 py-2 text-left">Vencimento</th><th className="px-3 py-2 text-left">Status</th><th className="px-3 py-2 text-right">Acao</th>
         </tr>
@@ -417,7 +417,7 @@ function StaffTable({ rows, selectedIds, onToggle, onToggleAll, onSingle }: { ro
       <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-slate-900 dark:text-slate-400">
         <tr>
           <th className="px-3 py-2 text-left"><SelectionHeader rows={rows} selectedIds={selectedIds} onToggleAll={onToggleAll} /></th>
-          <th className="px-3 py-2 text-left">Funcionario</th><th className="px-3 py-2 text-left">Clinica</th><th className="px-3 py-2 text-left">Tipo</th><th className="w-48 px-3 py-2 text-left">Descricao</th>
+          <th className="px-3 py-2 text-left">Funcionário</th><th className="px-3 py-2 text-left">Clínica</th><th className="px-3 py-2 text-left">Tipo</th><th className="w-48 px-3 py-2 text-left">Descrição</th>
           <th className="px-3 py-2 text-right">Valor bruto</th><th className="px-3 py-2 text-right">Descontos</th><th className="px-3 py-2 text-right">Valor liquido</th><th className="px-3 py-2 text-right">Valor pago</th><th className="px-3 py-2 text-right">Valor em aberto</th><th className="px-3 py-2 text-left">Status</th><th className="px-3 py-2 text-right">Acao</th>
         </tr>
       </thead>

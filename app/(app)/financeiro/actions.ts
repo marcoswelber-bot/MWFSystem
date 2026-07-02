@@ -86,11 +86,29 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function getAutomaticStatus({
+  amount,
+  paidAmount,
+  dueDate,
+  currentStatus
+}: {
+  amount: number;
+  paidAmount: number;
+  dueDate: string;
+  currentStatus?: FinancialStatus | null;
+}): FinancialStatus {
+  if (currentStatus === "cancelado") return "cancelado";
+  if (paidAmount >= amount) return "pago";
+  if (paidAmount > 0 && paidAmount < amount) return "parcial";
+  if (dueDate < today()) return "vencido";
+  return "pendente";
+}
+
 async function resolveClinicId(inputClinicId?: string): Promise<string> {
   const clinicScope = await getCurrentClinicScope();
 
   if (!clinicScope.isAdmMaster && !clinicScope.clinicId) {
-    throw new Error("Usuario sem clinica vinculada.");
+    throw new Error("Usuário sem clínica vinculada.");
   }
 
   if (!clinicScope.isAdmMaster) {
@@ -100,7 +118,7 @@ async function resolveClinicId(inputClinicId?: string): Promise<string> {
   const clinicId = cleanOptionalValue(inputClinicId) ?? clinicScope.clinicId;
 
   if (!clinicId) {
-    throw new Error("Selecione uma clinica ativa para usar Financeiro.");
+    throw new Error("Selecione uma clínica ativa para usar Financeiro.");
   }
 
   return clinicId;
@@ -110,7 +128,7 @@ async function assertTransactionsInClinicScope(transactions: FinancialTransactio
   const clinicScope = await getCurrentClinicScope();
 
   if (!clinicScope.isAdmMaster && !clinicScope.clinicId) {
-    throw new Error("Usuario sem clinica vinculada.");
+    throw new Error("Usuário sem clínica vinculada.");
   }
 
   if (clinicScope.isAdmMaster || !clinicScope.clinicId) return;
@@ -120,12 +138,13 @@ async function assertTransactionsInClinicScope(transactions: FinancialTransactio
   );
 
   if (hasOutsideClinic) {
-    throw new Error("Voce nao tem permissao para baixar lancamentos desta clinica.");
+    throw new Error("Você não tem permissão para baixar lançamentos desta clínica.");
   }
 }
 
 function getFinancialPayload(
-  input: FinancialTransactionFormInput
+  input: FinancialTransactionFormInput,
+  existingTransaction?: FinancialTransactionRow | null
 ): FinancialTransactionInsert {
   assertRequired(input.amount, "Informe o valor.");
 
@@ -135,7 +154,7 @@ function getFinancialPayload(
     transactionType === "receita" && input.origin === "manual";
 
   if (transactionType !== "receita" && transactionType !== "despesa") {
-    throw new Error("Tipo financeiro invalido.");
+    throw new Error("Tipo financeiro inválido.");
   }
 
   if (amount <= 0) {
@@ -154,12 +173,27 @@ function getFinancialPayload(
 
   if (transactionType === "despesa") {
     assertRequired(input.category, "Informe a categoria da despesa.");
-    assertRequired(input.description, "Informe a descricao da despesa.");
+    assertRequired(input.description, "Informe a descrição da despesa.");
   }
 
   const dueDate = isManualRevenue
     ? cleanOptionalValue(input.payment_date) ?? today()
     : input.due_date;
+  const existingPaidAmount = existingTransaction
+    ? getPaidAmount(existingTransaction)
+    : 0;
+  const paidAmount = isManualRevenue
+    ? amount
+    : Math.min(existingPaidAmount, amount);
+  const paymentDate = isManualRevenue
+    ? cleanOptionalValue(input.payment_date) ?? today()
+    : existingTransaction?.payment_date ?? null;
+  const status = getAutomaticStatus({
+    amount,
+    paidAmount,
+    dueDate,
+    currentStatus: existingTransaction?.status as FinancialStatus | null | undefined
+  });
 
   return {
     clinic_id: "",
@@ -168,23 +202,23 @@ function getFinancialPayload(
       transactionType === "receita" ? cleanOptionalValue(input.patient_id) : null,
     employee_id: cleanOptionalValue(input.employee_id),
     service_id:
-      transactionType === "receita" || input.category === "Comissoes"
+      transactionType === "receita" || input.category === "Comissões"
         ? cleanOptionalValue(input.service_id)
         : null,
     origin: transactionType === "receita" ? input.origin ?? "manual" : null,
     category: transactionType === "despesa" ? cleanOptionalValue(input.category) : null,
     description: cleanOptionalValue(input.description),
     amount,
-    paid_amount: input.status === "pago" ? amount : 0,
+    paid_amount: paidAmount,
     payment_method:
       transactionType === "receita" ? input.payment_method ?? "pix" : null,
     due_date: dueDate,
-    payment_date: cleanOptionalValue(input.payment_date),
+    payment_date: paymentDate,
     appointment_date: cleanOptionalValue(input.appointment_date),
     base_amount: input.base_amount ? cleanMoney(input.base_amount) : null,
     commission_type: cleanOptionalValue(input.commission_type),
     commission_rule_id: cleanOptionalValue(input.commission_rule_id),
-    status: input.status ?? "pendente",
+    status,
     notes: cleanOptionalValue(input.notes),
     future_agenda_source_id: null,
     future_package_source_id: null,
@@ -224,7 +258,7 @@ function validateSettlementTransaction(
   }
 
   if (settlementType === "staff_payout" && transaction.transaction_type !== "despesa") {
-    throw new Error("Selecione apenas repasses de funcionarios para este pagamento.");
+    throw new Error("Selecione apenas repasses de funcionários para este pagamento.");
   }
 }
 
@@ -241,7 +275,7 @@ function allocateSettlementAmounts(
   );
 
   if (totalOpen <= 0) {
-    throw new Error("Nao ha valor em aberto para baixar.");
+    throw new Error("Não há valor em aberto para baixar.");
   }
 
   if (mode === "total") {
@@ -309,7 +343,19 @@ export async function updateFinancialTransaction(
   try {
     await assertCan("financeiro", "edit");
     const supabase = await createClient();
-    const payload = getFinancialPayload(input) satisfies FinancialTransactionUpdate;
+    const { data: existingTransaction, error: readError } = await supabase
+      .from("financial_transactions")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (readError || !existingTransaction) {
+      return { ok: false, message: getErrorMessage(readError) };
+    }
+
+    await assertTransactionsInClinicScope([existingTransaction]);
+
+    const payload = getFinancialPayload(input, existingTransaction) satisfies FinancialTransactionUpdate;
     payload.clinic_id = await resolveClinicId(input.clinic_id);
 
     const { error } = await supabase
@@ -323,7 +369,7 @@ export async function updateFinancialTransaction(
     revalidatePath("/financeiro/baixas");
     revalidatePath("/dashboard");
     revalidatePath("/relatorios");
-    return { ok: true, message: "Movimentacao atualizada com sucesso." };
+    return { ok: true, message: "Movimentação atualizada com sucesso." };
   } catch (error) {
     return { ok: false, message: getErrorMessage(error) };
   }
@@ -362,7 +408,7 @@ export async function markFinancialTransactionAsPaid(
     revalidatePath("/financeiro/baixas");
     revalidatePath("/dashboard");
     revalidatePath("/relatorios");
-    return { ok: true, message: "Movimentacao marcada como paga." };
+    return { ok: true, message: "Movimentação marcada como paga." };
   } catch (error) {
     return { ok: false, message: getErrorMessage(error) };
   }
@@ -376,11 +422,11 @@ export async function settleFinancialTransactions(
 
     const ids = Array.from(new Set(input.ids.filter(Boolean)));
     if (ids.length === 0) {
-      throw new Error("Selecione ao menos um lancamento para baixar.");
+      throw new Error("Selecione ao menos um lançamento para baixar.");
     }
 
     if (input.mode !== "total" && input.mode !== "partial") {
-      throw new Error("Modo de baixa invalido.");
+      throw new Error("Modo de baixa inválido.");
     }
 
     assertRequired(input.paid_at, "Informe a data do pagamento.");
@@ -396,7 +442,7 @@ export async function settleFinancialTransactions(
     if (readError) throw readError;
 
     if (!transactions || transactions.length !== ids.length) {
-      throw new Error("Um ou mais lancamentos selecionados nao foram encontrados.");
+      throw new Error("Um ou mais lançamentos selecionados não foram encontrados.");
     }
 
     await assertTransactionsInClinicScope(transactions);
@@ -409,7 +455,7 @@ export async function settleFinancialTransactions(
     );
 
     if (allocations.length === 0) {
-      throw new Error("Nao ha valor em aberto para baixar.");
+      throw new Error("Não há valor em aberto para baixar.");
     }
 
     const createdBy = (await supabase.auth.getUser()).data.user?.id ?? null;
@@ -483,7 +529,7 @@ export async function cancelFinancialTransaction(
     revalidatePath("/financeiro/baixas");
     revalidatePath("/dashboard");
     revalidatePath("/relatorios");
-    return { ok: true, message: "Movimentacao cancelada com sucesso." };
+    return { ok: true, message: "Movimentação cancelada com sucesso." };
   } catch (error) {
     return { ok: false, message: getErrorMessage(error) };
   }
@@ -506,7 +552,7 @@ export async function deleteFinancialTransaction(
     revalidatePath("/financeiro/baixas");
     revalidatePath("/dashboard");
     revalidatePath("/relatorios");
-    return { ok: true, message: "Movimentacao excluida com sucesso." };
+    return { ok: true, message: "Movimentação excluída com sucesso." };
   } catch (error) {
     return { ok: false, message: getErrorMessage(error) };
   }

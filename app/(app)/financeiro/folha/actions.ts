@@ -45,12 +45,12 @@ export type PayrollActionResult = {
 };
 
 const entryLabels: Record<PayrollEntryType, string> = {
-  salario_fixo: "Salario fixo",
-  comissao_manual: "Comissao manual",
+  salario_fixo: "Salário fixo",
+  comissao_manual: "Comissão manual",
   vale_transporte: "Vale transporte",
   vale_alimentacao: "Vale alimentacao",
   ajuda_custo: "Ajuda de custo",
-  bonus: "Bonus",
+  bonus: "Bônus",
   desconto: "Desconto",
   adiantamento: "Adiantamento",
   inss: "INSS",
@@ -89,7 +89,7 @@ async function resolveClinicId(inputClinicId?: string): Promise<string> {
   const clinicScope = await getCurrentClinicScope();
 
   if (!clinicScope.isAdmMaster && !clinicScope.clinicId) {
-    throw new Error("Usuario sem clinica vinculada.");
+    throw new Error("Usuário sem clínica vinculada.");
   }
 
   if (!clinicScope.isAdmMaster) {
@@ -98,7 +98,7 @@ async function resolveClinicId(inputClinicId?: string): Promise<string> {
 
   const clinicId = cleanOptionalValue(inputClinicId) ?? clinicScope.clinicId;
   if (!clinicId) {
-    throw new Error("Selecione uma clinica ativa para lancar folha.");
+    throw new Error("Selecione uma clínica ativa para lançar folha.");
   }
 
   return clinicId;
@@ -109,7 +109,7 @@ function getFinancialCategory(entryType: PayrollEntryType) {
   if (["vale_transporte", "vale_alimentacao", "ajuda_custo", "bonus"].includes(entryType)) return "Folha - Beneficios";
   if (["inss", "fgts", "irrf"].includes(entryType)) return "Folha - Encargos";
   if (["desconto", "adiantamento"].includes(entryType)) return "Folha - Descontos";
-  if (entryType === "comissao_manual") return "Folha - Comissao manual";
+  if (entryType === "comissao_manual") return "Folha - Comissão manual";
   return "Folha - Outros";
 }
 
@@ -140,7 +140,7 @@ function getPayloads(
 
   const label = entryLabels[input.entry_type] ?? "Folha";
   const competence = `${String(competenceMonth).padStart(2, "0")}/${competenceYear}`;
-  const description = `${label} - ${employeeName ?? "Funcionario"} - Competencia ${competence}`;
+  const description = `${label} - ${employeeName ?? "Funcionário"} - Competencia ${competence}`;
   const status: PayrollStatus = "pendente";
   const paidAmount = 0;
 
@@ -204,9 +204,9 @@ export async function createPayrollEntry(input: PayrollEntryFormInput): Promise<
       .maybeSingle();
 
     if (employeeError) throw employeeError;
-    if (!employee) throw new Error("Funcionario/profissional nao encontrado.");
+    if (!employee) throw new Error("Funcionário/profissional não encontrado.");
     if (!employee.clinic_id || employee.clinic_id !== clinicId) {
-      throw new Error("Funcionario/profissional nao pertence a clinica selecionada.");
+      throw new Error("Funcionário/profissional não pertence à clínica selecionada.");
     }
 
     const payloads = getPayloads(input, clinicId, employee.name, createdBy);

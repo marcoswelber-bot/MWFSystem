@@ -59,7 +59,7 @@ export default async function BaixasFinanceiroPage() {
   let loadError: string | undefined;
 
   if (!clinicScope.isAdmMaster && !clinicScope.clinicId) {
-    loadError = "Usuario sem clinica vinculada.";
+    loadError = "Usuário sem clínica vinculada.";
   } else {
     try {
       const supabase = await createClient();
@@ -98,10 +98,10 @@ export default async function BaixasFinanceiroPage() {
 
   const hydratedTransactions: HydratedFinancialTransaction[] = transactions.map((item) => ({
     ...item,
-    clinic_name: clinicsById.get(item.clinic_id) ?? "Clinica nao encontrada",
+    clinic_name: clinicsById.get(item.clinic_id) ?? "Clínica nao encontrada",
     patient_name: item.patient_id ? patientsById.get(item.patient_id) ?? "Paciente nao encontrado" : "-",
-    employee_name: item.employee_id ? employeesById.get(item.employee_id) ?? "Funcionario nao encontrado" : "-",
-    service_name: item.service_id ? servicesById.get(item.service_id) ?? "Servico nao encontrado" : "-",
+    employee_name: item.employee_id ? employeesById.get(item.employee_id) ?? "Funcionário não encontrado" : "-",
+    service_name: item.service_id ? servicesById.get(item.service_id) ?? "Serviço não encontrado" : "-",
     derived_status: getDerivedStatus(item)
   }));
 

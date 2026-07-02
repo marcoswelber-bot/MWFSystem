@@ -66,7 +66,7 @@ export default async function FolhaFinanceiroPage() {
   let loadError: string | undefined;
 
   if (!clinicScope.isAdmMaster && !clinicScope.clinicId) {
-    loadError = "Usuario sem clinica vinculada.";
+    loadError = "Usuário sem clínica vinculada.";
   } else {
     try {
       const supabase = await createClient();
@@ -104,8 +104,8 @@ export default async function FolhaFinanceiroPage() {
     const transaction = entry.financial_transaction_id ? transactionsById.get(entry.financial_transaction_id) : undefined;
     return {
       ...entry,
-      clinic_name: clinicsById.get(entry.clinic_id) ?? "Clinica nao encontrada",
-      employee_name: employeesById.get(entry.employee_id) ?? "Funcionario nao encontrado",
+      clinic_name: clinicsById.get(entry.clinic_id) ?? "Clínica nao encontrada",
+      employee_name: employeesById.get(entry.employee_id) ?? "Funcionário não encontrado",
       financial_status: transaction?.status ?? entry.status,
       financial_paid_amount: getPaidAmount(transaction),
       financial_open_amount: getOpenAmount(transaction)
@@ -117,8 +117,8 @@ export default async function FolhaFinanceiroPage() {
     .filter((transaction) => transaction.transaction_type === "despesa" && transaction.commission_status === "generated" && !payrollTransactionIds.has(transaction.id))
     .map((transaction) => ({
       ...transaction,
-      clinic_name: clinicsById.get(transaction.clinic_id) ?? "Clinica nao encontrada",
-      employee_name: transaction.employee_id ? employeesById.get(transaction.employee_id) ?? "Funcionario nao encontrado" : "Funcionario nao encontrado"
+      clinic_name: clinicsById.get(transaction.clinic_id) ?? "Clínica nao encontrada",
+      employee_name: transaction.employee_id ? employeesById.get(transaction.employee_id) ?? "Funcionário não encontrado" : "Funcionário não encontrado"
     }));
 
   return (
