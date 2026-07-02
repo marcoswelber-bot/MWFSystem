@@ -89,7 +89,19 @@ const settlementPaymentMethodOptions: Array<[PaymentMethod, string]> = [
 
 const expenseCategoryOptions = [
   "ADM / Funcionários",
-  "Comissões",
+  "Salário",
+  "Comissão manual",
+  "Adiantamento",
+  "Vale transporte",
+  "Vale alimentação",
+  "Ajuda de custo",
+  "INSS",
+  "FGTS",
+  "IRRF",
+  "Férias",
+  "13º",
+  "Bonificação",
+  "Desconto",
   "Aluguel",
   "Energia",
   "Água",
@@ -100,11 +112,30 @@ const expenseCategoryOptions = [
   "Limpeza",
   "Manutenção",
   "Impostos / Taxas",
-  "Salários",
   "Terceirizados",
   "Marketing",
   "Outros"
 ].map((category) => [category, category] as [string, string]);
+
+const employeeExpenseCategories = new Set(
+  [
+    "salario",
+    "comissao manual",
+    "comissao",
+    "adiantamento",
+    "vale transporte",
+    "vale alimentacao",
+    "ajuda de custo",
+    "inss",
+    "fgts",
+    "irrf",
+    "ferias",
+    "13o",
+    "bonificacao",
+    "desconto",
+    "adm / funcionarios"
+  ]
+);
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -173,6 +204,10 @@ function money(value: number) {
     style: "currency",
     currency: "BRL"
   }).format(value);
+}
+
+function isEmployeeExpenseCategory(category?: string | null) {
+  return employeeExpenseCategories.has(normalizeText(category));
 }
 
 function numberFromForm(value?: string) {
@@ -245,15 +280,7 @@ function normalizeText(value: string | null | undefined) {
     .toLowerCase();
 }
 function isCommissionTransaction(item: FinancialTransaction) {
-  const category = `${item.category ?? ""}`
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-
-  return (
-    item.transaction_type === "despesa" &&
-    (item.commission_status === "generated" || category.includes("comiss"))
-  );
+  return item.transaction_type === "despesa" && item.commission_status === "generated";
 }
 function isPayrollTransaction(item: FinancialTransaction) {
   const category = normalizeText(item.category);
@@ -262,7 +289,22 @@ function isPayrollTransaction(item: FinancialTransaction) {
 
   return (
     item.transaction_type === "despesa" &&
-    (origin === "folha" || category.startsWith("folha") || description.includes("competencia"))
+    (origin === "folha" ||
+      category.startsWith("folha") ||
+      category.includes("salario") ||
+      category.includes("comissao manual") ||
+      category.includes("adiantamento") ||
+      category.includes("vale transporte") ||
+      category.includes("vale alimentacao") ||
+      category.includes("ajuda de custo") ||
+      category.includes("inss") ||
+      category.includes("fgts") ||
+      category.includes("irrf") ||
+      category.includes("ferias") ||
+      category.includes("13o") ||
+      category.includes("bonificacao") ||
+      category.includes("desconto") ||
+      description.includes("competencia"))
   );
 }
 
@@ -736,7 +778,7 @@ export function FinanceManager({
           onClose={closeSettlementModal}
         />
       ) : null}
-      {formOpen ? <FinanceFormModal form={form} setForm={setForm} editingTransaction={editingTransaction} clinics={clinics} patients={patients} services={services} isAdmMaster={isAdmMaster} isPending={isPending} onSubmit={submitForm} onClose={closeForm} /> : null}
+      {formOpen ? <FinanceFormModal form={form} setForm={setForm} editingTransaction={editingTransaction} clinics={clinics} patients={patients} services={services} employees={employees} isAdmMaster={isAdmMaster} isPending={isPending} onSubmit={submitForm} onClose={closeForm} /> : null}
       {printPaychecks ? <PaycheckPrintArea summaries={printPaychecks} /> : null}
     </div>
   );
@@ -1289,6 +1331,7 @@ function FinanceFormModal({
   clinics,
   patients,
   services,
+  employees,
   isAdmMaster,
   isPending,
   onSubmit,
@@ -1300,6 +1343,7 @@ function FinanceFormModal({
   clinics: Clinic[];
   patients: Patient[];
   services: Service[];
+  employees: Employee[];
   isAdmMaster: boolean;
   isPending: boolean;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
@@ -1307,7 +1351,12 @@ function FinanceFormModal({
 }) {
   const isRevenue = form.transaction_type === "receita";
   const isManualRevenue = isRevenue && form.origin === "manual";
+  const isEmployeeExpense = !isRevenue && isEmployeeExpenseCategory(form.category);
   const amount = numberFromForm(form.amount);
+  const selectedClinicId = form.clinic_id ?? "";
+  const employeeOptions = employees
+    .filter((employee) => !selectedClinicId || employee.clinic_id === selectedClinicId)
+    .map((employee) => [employee.id, employee.name] as [string, string]);
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm">
@@ -1339,7 +1388,9 @@ function FinanceFormModal({
             <SelectField
               label="Clínica"
               value={form.clinic_id ?? ""}
-              onChange={(value) => setForm((current) => ({ ...current, clinic_id: value }))}
+              onChange={(value) =>
+                setForm((current) => ({ ...current, clinic_id: value, employee_id: "" }))
+              }
               options={clinics.map((clinic) => [clinic.id, clinic.name])}
               disabled={!isAdmMaster}
             />
@@ -1396,11 +1447,26 @@ function FinanceFormModal({
                   label="Categoria"
                   value={form.category ?? ""}
                   onChange={(value) =>
-                    setForm((current) => ({ ...current, category: value }))
+                    setForm((current) => ({
+                      ...current,
+                      category: value,
+                      employee_id: isEmployeeExpenseCategory(value) ? current.employee_id : ""
+                    }))
                   }
                   options={expenseCategoryOptions}
                   required
                 />
+                {isEmployeeExpense ? (
+                  <SelectField
+                    label="Funcionário/Profissional"
+                    value={form.employee_id ?? ""}
+                    onChange={(value) =>
+                      setForm((current) => ({ ...current, employee_id: value }))
+                    }
+                    options={employeeOptions}
+                    required
+                  />
+                ) : null}
                 <TextField
                   label="Descrição"
                   value={form.description ?? ""}

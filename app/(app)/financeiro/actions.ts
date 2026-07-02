@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { getCurrentClinicScope } from "@/lib/access-control";
-import { createFinancialMovement } from "@/lib/financial-integration-engine";
 import { assertCan } from "@/lib/permissions";
 import { getErrorMessage } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
@@ -16,6 +15,8 @@ type FinancialTransactionUpdate =
   Database["public"]["Tables"]["financial_transactions"]["Update"];
 type PaymentSettlementInsert =
   Database["public"]["Tables"]["payment_settlements"]["Insert"];
+type PayrollEntryInsert =
+  Database["public"]["Tables"]["payroll_entries"]["Insert"];
 
 export type FinancialTransactionType = "receita" | "despesa";
 export type FinancialOrigin = "avulso" | "pacote" | "manual";
@@ -84,6 +85,43 @@ function roundMoney(value: number) {
 
 function today() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function normalizeText(value?: string | null) {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+type PayrollSyncConfig = {
+  entryType: PayrollEntryInsert["entry_type"];
+  nature: PayrollEntryInsert["nature"];
+};
+
+function getPayrollSyncConfig(category?: string | null): PayrollSyncConfig | null {
+  const normalizedCategory = normalizeText(category);
+
+  if (!normalizedCategory) return null;
+  if (normalizedCategory.includes("salario")) return { entryType: "salario_fixo", nature: "credito" };
+  if (normalizedCategory.includes("comissao")) return { entryType: "comissao_manual", nature: "credito" };
+  if (normalizedCategory.includes("adiantamento")) return { entryType: "adiantamento", nature: "debito" };
+  if (normalizedCategory.includes("vale transporte")) return { entryType: "vale_transporte", nature: "credito" };
+  if (normalizedCategory.includes("vale alimentacao")) return { entryType: "vale_alimentacao", nature: "credito" };
+  if (normalizedCategory.includes("ajuda de custo")) return { entryType: "ajuda_custo", nature: "credito" };
+  if (normalizedCategory.includes("inss")) return { entryType: "inss", nature: "debito" };
+  if (normalizedCategory.includes("fgts")) return { entryType: "fgts", nature: "debito" };
+  if (normalizedCategory.includes("irrf")) return { entryType: "irrf", nature: "debito" };
+  if (normalizedCategory.includes("desconto")) return { entryType: "desconto", nature: "debito" };
+  if (normalizedCategory.includes("bonificacao")) return { entryType: "bonus", nature: "credito" };
+  if (normalizedCategory.includes("ferias") || normalizedCategory.includes("13o")) return { entryType: "outros", nature: "credito" };
+  return null;
+}
+
+function isEmployeeExpenseCategory(category?: string | null) {
+  const normalizedCategory = normalizeText(category);
+  return Boolean(getPayrollSyncConfig(category)) || normalizedCategory.includes("adm / funcionarios");
 }
 
 function getAutomaticStatus({
@@ -174,6 +212,10 @@ function getFinancialPayload(
   if (transactionType === "despesa") {
     assertRequired(input.category, "Informe a categoria da despesa.");
     assertRequired(input.description, "Informe a descrição da despesa.");
+
+    if (isEmployeeExpenseCategory(input.category)) {
+      assertRequired(input.employee_id, "Selecione o funcionário/profissional.");
+    }
   }
 
   const dueDate = isManualRevenue
@@ -200,7 +242,12 @@ function getFinancialPayload(
     transaction_type: transactionType,
     patient_id:
       transactionType === "receita" ? cleanOptionalValue(input.patient_id) : null,
-    employee_id: cleanOptionalValue(input.employee_id),
+    employee_id:
+      transactionType === "despesa"
+        ? isEmployeeExpenseCategory(input.category)
+          ? cleanOptionalValue(input.employee_id)
+          : null
+        : cleanOptionalValue(input.employee_id),
     service_id:
       transactionType === "receita" || input.category === "Comissões"
         ? cleanOptionalValue(input.service_id)
@@ -249,6 +296,120 @@ function getPaidAmount(transaction: FinancialTransactionRow) {
   return transaction.status === "pago" ? transaction.amount : 0;
 }
 
+async function assertEmployeeBelongsToClinic(employeeId: string | null | undefined, clinicId: string) {
+  if (!employeeId) return;
+
+  const supabase = await createClient();
+  const { data: employee, error } = await supabase
+    .from("employees")
+    .select("id,clinic_id")
+    .eq("id", employeeId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!employee) throw new Error("Funcionário/profissional não encontrado.");
+  if (employee.clinic_id !== clinicId) {
+    throw new Error("Funcionário/profissional não pertence à clínica selecionada.");
+  }
+}
+
+async function insertFinancialTransaction(payload: FinancialTransactionInsert) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("financial_transactions")
+    .insert(payload)
+    .select("id")
+    .single();
+
+  if (error) throw error;
+  return data.id;
+}
+
+function getPayrollCompetence(dueDate: string) {
+  const [year, month] = dueDate.split("-");
+  return {
+    competenceMonth: Number.parseInt(month, 10),
+    competenceYear: Number.parseInt(year, 10)
+  };
+}
+
+function getPayrollPayload(
+  transactionId: string,
+  payload: FinancialTransactionInsert,
+  createdBy: string | null
+): PayrollEntryInsert | null {
+  if (payload.transaction_type !== "despesa" || !payload.employee_id) return null;
+
+  const payrollConfig = getPayrollSyncConfig(payload.category);
+  if (!payrollConfig || !payload.clinic_id || !payload.due_date) return null;
+
+  const amount = Number(payload.amount ?? 0);
+  const status = (payload.status ?? "pendente") as PayrollEntryInsert["status"];
+  const { competenceMonth, competenceYear } = getPayrollCompetence(payload.due_date);
+
+  return {
+    clinic_id: payload.clinic_id,
+    employee_id: payload.employee_id,
+    financial_transaction_id: transactionId,
+    competence_month: competenceMonth,
+    competence_year: competenceYear,
+    entry_type: payrollConfig.entryType,
+    nature: payrollConfig.nature,
+    amount,
+    due_date: payload.due_date,
+    paid_at: payload.payment_date ?? null,
+    status,
+    notes: payload.notes ?? payload.description ?? null,
+    created_by: createdBy
+  };
+}
+
+async function syncPayrollEntryForFinancialTransaction(
+  transactionId: string,
+  payload: FinancialTransactionInsert | FinancialTransactionUpdate,
+  createdBy: string | null
+) {
+  const payrollPayload = getPayrollPayload(
+    transactionId,
+    payload as FinancialTransactionInsert,
+    createdBy
+  );
+  const supabase = await createClient();
+  const { data: existingPayrollEntry, error: readError } = await supabase
+    .from("payroll_entries")
+    .select("id")
+    .eq("financial_transaction_id", transactionId)
+    .maybeSingle();
+
+  if (readError) throw readError;
+
+  if (!payrollPayload) {
+    if (existingPayrollEntry) {
+      const { error } = await supabase
+        .from("payroll_entries")
+        .delete()
+        .eq("id", existingPayrollEntry.id);
+
+      if (error) throw error;
+    }
+
+    return;
+  }
+
+  if (existingPayrollEntry) {
+    const { error } = await supabase
+      .from("payroll_entries")
+      .update(payrollPayload)
+      .eq("id", existingPayrollEntry.id);
+
+    if (error) throw error;
+    return;
+  }
+
+  const { error } = await supabase.from("payroll_entries").insert(payrollPayload);
+  if (error) throw error;
+}
+
 function validateSettlementTransaction(
   transaction: FinancialTransactionRow,
   settlementType: SettlementType
@@ -292,7 +453,7 @@ function allocateSettlementAmounts(
   }
 
   if (amount > totalOpen) {
-    throw new Error("O valor pago nao pode ser maior que o valor em aberto.");
+    throw new Error("O valor pago não pode ser maior que o valor em aberto.");
   }
 
   let remaining = amount;
@@ -315,10 +476,21 @@ export async function createFinancialTransaction(
 ): Promise<FinancialActionResult> {
   try {
     await assertCan("financeiro", "create");
+    const supabase = await createClient();
     const payload = getFinancialPayload(input);
     payload.clinic_id = await resolveClinicId(input.clinic_id);
 
-    await createFinancialMovement(payload);
+    await assertEmployeeBelongsToClinic(payload.employee_id, payload.clinic_id);
+
+    const createdBy = (await supabase.auth.getUser()).data.user?.id ?? null;
+    const transactionId = await insertFinancialTransaction(payload);
+
+    try {
+      await syncPayrollEntryForFinancialTransaction(transactionId, payload, createdBy);
+    } catch (error) {
+      await supabase.from("financial_transactions").delete().eq("id", transactionId);
+      throw error;
+    }
 
     revalidatePath("/financeiro");
     revalidatePath("/financeiro/baixas");
@@ -358,12 +530,17 @@ export async function updateFinancialTransaction(
     const payload = getFinancialPayload(input, existingTransaction) satisfies FinancialTransactionUpdate;
     payload.clinic_id = await resolveClinicId(input.clinic_id);
 
+    await assertEmployeeBelongsToClinic(payload.employee_id, payload.clinic_id);
+
     const { error } = await supabase
       .from("financial_transactions")
       .update(payload)
       .eq("id", id);
 
     if (error) return { ok: false, message: getErrorMessage(error) };
+
+    const createdBy = (await supabase.auth.getUser()).data.user?.id ?? null;
+    await syncPayrollEntryForFinancialTransaction(id, payload, createdBy);
 
     revalidatePath("/financeiro");
     revalidatePath("/financeiro/baixas");
