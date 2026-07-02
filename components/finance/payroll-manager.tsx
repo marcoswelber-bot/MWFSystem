@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
@@ -47,12 +47,12 @@ type PayrollWithKind =
   | (FinancialTransaction & { source: "commission"; competence_month: number; competence_year: number; entry_type: PayrollEntryType; nature: PayrollNature; financial_status: string; financial_paid_amount: number; financial_open_amount: number });
 
 const entryTypeOptions: Array<[PayrollEntryType, string]> = [
-  ["salario_fixo", "Salário fixo"],
-  ["comissao_manual", "Comissão manual"],
+  ["salario_fixo", "SalÃ¡rio fixo"],
+  ["comissao_manual", "ComissÃ£o manual"],
   ["vale_transporte", "Vale transporte"],
   ["vale_alimentacao", "Vale alimentacao"],
   ["ajuda_custo", "Ajuda de custo"],
-  ["bonus", "Bônus"],
+  ["bonus", "BÃ´nus"],
   ["desconto", "Desconto"],
   ["adiantamento", "Adiantamento"],
   ["inss", "INSS"],
@@ -69,7 +69,7 @@ const statusOptions: Array<[PayrollStatus | "all", string]> = [
   ["cancelado", "Cancelado"]
 ];
 
-const natureOptions: Array<[PayrollNature, string]> = [["credito", "Crédito"], ["debito", "Débito"]];
+const natureOptions: Array<[PayrollNature, string]> = [["credito", "CrÃ©dito"], ["debito", "DÃ©bito"]];
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -95,14 +95,14 @@ function entryTypeLabel(type: string) {
 
 function getPayrollDescription(item: PayrollWithKind) {
   if (item.source === "commission") {
-    return item.description ?? "Comissão automática gerada pela Agenda";
+    return item.description ?? "ComissÃ£o automÃ¡tica gerada pela Agenda";
   }
 
   return item.notes ?? entryTypeLabel(item.entry_type);
 }
 
 function payrollSectionTitle(item: PayrollWithKind) {
-  if (item.source === "commission") return "Comissão automática";
+  if (item.source === "commission") return "ComissÃ£o automÃ¡tica";
   if (isCharge(item.entry_type, item.nature)) return getPayrollDescription(item);
   return entryTypeLabel(item.entry_type);
 }
@@ -118,8 +118,16 @@ function statusClass(status: string) {
   return "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-100";
 }
 
+function defaultNatureForEntryType(type: string): PayrollNature {
+  if (["desconto", "adiantamento", "inss", "fgts", "irrf", "vale_transporte", "vale_alimentacao"].includes(type)) {
+    return "debito";
+  }
+
+  return "credito";
+}
+
 function isCredit(type: string, nature: string) {
-  if (["desconto", "adiantamento", "inss", "fgts", "irrf"].includes(type)) return false;
+  if (["desconto", "adiantamento", "inss", "fgts", "irrf", "vale_transporte", "vale_alimentacao"].includes(type)) return false;
   return nature === "credito";
 }
 
@@ -251,8 +259,8 @@ export function PayrollManager({ entries, commissionTransactions, clinics, emplo
 
   function printPayslip() {
     const previousTitle = document.title;
-    const employeeName = payslipEmployee?.name ?? "Funcionário";
-    const clinicName = selectedClinic?.name ?? "Clínica";
+    const employeeName = payslipEmployee?.name ?? "FuncionÃ¡rio";
+    const clinicName = selectedClinic?.name ?? "ClÃ­nica";
     document.title = `${clinicName} - Contracheque - ${employeeName} - ${monthFilter}-${yearFilter}`;
     document.body.classList.add("mwf-payslip-printing");
 
@@ -272,7 +280,7 @@ export function PayrollManager({ entries, commissionTransactions, clinics, emplo
       {message ? <SystemMessage message={message} onClose={() => setMessage(null)} /> : null}
 
       <div className="flex flex-wrap gap-2 print:hidden">
-        {canCreate ? <Button type="button" onClick={openCreateForm}><Plus className="h-4 w-4" />Novo lançamento da folha</Button> : null}
+        {canCreate ? <Button type="button" onClick={openCreateForm}><Plus className="h-4 w-4" />Novo lanÃ§amento da folha</Button> : null}
         <Button type="button" variant="outline" onClick={() => router.push("/financeiro/baixas")}>Baixas e Repasses</Button>
         <Button type="button" variant="outline" onClick={() => router.push("/financeiro")}>Voltar ao Financeiro</Button>
       </div>
@@ -290,10 +298,10 @@ export function PayrollManager({ entries, commissionTransactions, clinics, emplo
 
       <Card className="border-none p-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)] dark:shadow-none print:hidden">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <SelectField label="Clínica" value={clinicFilter} onChange={(value) => { setClinicFilter(value); setEmployeeFilter("all"); }} options={[...(isAdmMaster ? [["all", "Todas as clínicas"] as [string, string]] : []), ...clinics.map((clinic) => [clinic.id, clinic.name] as [string, string])]} disabled={!isAdmMaster} />
-          <SelectField label="Mês" value={monthFilter} onChange={setMonthFilter} options={Array.from({ length: 12 }, (_, index) => [String(index + 1).padStart(2, "0"), String(index + 1).padStart(2, "0")] as [string, string])} />
+          <SelectField label="ClÃ­nica" value={clinicFilter} onChange={(value) => { setClinicFilter(value); setEmployeeFilter("all"); }} options={[...(isAdmMaster ? [["all", "Todas as clÃ­nicas"] as [string, string]] : []), ...clinics.map((clinic) => [clinic.id, clinic.name] as [string, string])]} disabled={!isAdmMaster} />
+          <SelectField label="MÃªs" value={monthFilter} onChange={setMonthFilter} options={Array.from({ length: 12 }, (_, index) => [String(index + 1).padStart(2, "0"), String(index + 1).padStart(2, "0")] as [string, string])} />
           <TextField label="Ano" value={yearFilter} onChange={setYearFilter} />
-          <SelectField label="Funcionário" value={employeeFilter} onChange={setEmployeeFilter} options={[["all", "Todos"], ...filterEmployees.map((employee) => [employee.id, employee.name] as [string, string])]} />
+          <SelectField label="FuncionÃ¡rio" value={employeeFilter} onChange={setEmployeeFilter} options={[["all", "Todos"], ...filterEmployees.map((employee) => [employee.id, employee.name] as [string, string])]} />
           <SelectField label="Status" value={statusFilter} onChange={(value) => setStatusFilter(value as PayrollStatus | "all")} options={statusOptions} />
         </div>
       </Card>
@@ -307,8 +315,8 @@ export function PayrollManager({ entries, commissionTransactions, clinics, emplo
           <table className="w-full min-w-[1050px] text-left text-xs">
             <thead className="bg-muted/60 uppercase text-muted-foreground">
               <tr>
-                <th className="px-3 py-2">Funcionário</th>
-                <th className="px-3 py-2">Clínica</th>
+                <th className="px-3 py-2">FuncionÃ¡rio</th>
+                <th className="px-3 py-2">ClÃ­nica</th>
                 <th className="px-3 py-2">Competencia</th>
                 <th className="px-3 py-2">Tipo</th>
                 <th className="px-3 py-2">Natureza</th>
@@ -317,7 +325,7 @@ export function PayrollManager({ entries, commissionTransactions, clinics, emplo
                 <th className="px-3 py-2 text-right">Em aberto</th>
                 <th className="px-3 py-2">Vencimento</th>
                 <th className="px-3 py-2 print:hidden">Status</th>
-                <th className="px-3 py-2 text-right print:hidden">Ações</th>
+                <th className="px-3 py-2 text-right print:hidden">AÃ§Ãµes</th>
               </tr>
             </thead>
             <tbody>
@@ -326,8 +334,8 @@ export function PayrollManager({ entries, commissionTransactions, clinics, emplo
                   <TruncatedCell value={item.employee_name} strong />
                   <TruncatedCell value={item.clinic_name} />
                   <td className="whitespace-nowrap px-3 py-2">{String(item.competence_month).padStart(2, "0")}/{item.competence_year}</td>
-                  <td className="whitespace-nowrap px-3 py-2">{item.source === "commission" ? "Comissão automática" : entryTypeLabel(item.entry_type)}</td>
-                  <td className="whitespace-nowrap px-3 py-2">{isCredit(item.entry_type, item.nature) ? "Crédito" : "Débito"}</td>
+                  <td className="whitespace-nowrap px-3 py-2">{item.source === "commission" ? "ComissÃ£o automÃ¡tica" : entryTypeLabel(item.entry_type)}</td>
+                  <td className="whitespace-nowrap px-3 py-2">{isCredit(item.entry_type, item.nature) ? "CrÃ©dito" : "DÃ©bito"}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-right font-semibold">{money(item.amount)}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-right">{money(getPaidAmount(item))}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-right font-semibold">{money(getOpenAmount(item))}</td>
@@ -335,7 +343,7 @@ export function PayrollManager({ entries, commissionTransactions, clinics, emplo
                   <td className="whitespace-nowrap px-3 py-2"><StatusBadge status={item.financial_status} /></td>
                   <td className="whitespace-nowrap px-3 py-2 text-right print:hidden"><Button type="button" size="sm" variant="outline" onClick={() => setPayslipEmployeeId(item.employee_id)}>Contracheque</Button></td>
                 </tr>
-              )) : <tr><td colSpan={11} className="px-3 py-8 text-center text-sm text-muted-foreground">Nenhum lançamento de folha encontrado para os filtros selecionados.</td></tr>}
+              )) : <tr><td colSpan={11} className="px-3 py-8 text-center text-sm text-muted-foreground">Nenhum lanÃ§amento de folha encontrado para os filtros selecionados.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -346,7 +354,7 @@ export function PayrollManager({ entries, commissionTransactions, clinics, emplo
       ) : null}
 
       {payslipEmployeeId ? (
-        <PayslipModal employeeName={payslipEmployee?.name ?? "Funcionário"} clinicName={selectedClinic?.name ?? payslipRows[0]?.clinic_name ?? "Clínica"} period={`${monthFilter}/${yearFilter}`} rows={payslipRows} onPrint={printPayslip} onClose={() => setPayslipEmployeeId(null)} />
+        <PayslipModal employeeName={payslipEmployee?.name ?? "FuncionÃ¡rio"} clinicName={selectedClinic?.name ?? payslipRows[0]?.clinic_name ?? "ClÃ­nica"} period={`${monthFilter}/${yearFilter}`} rows={payslipRows} onPrint={printPayslip} onClose={() => setPayslipEmployeeId(null)} />
       ) : null}
     </div>
   );
@@ -361,18 +369,18 @@ function PayrollFormModal({ form, setForm, formMessage, clinics, employees, isAd
       <Card className="max-h-[92vh] w-full max-w-4xl overflow-auto border-none shadow-2xl">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-card p-5">
           <div>
-            <h2 className="text-lg font-semibold tracking-normal">Novo lançamento da folha</h2>
-            <p className="text-sm text-muted-foreground">O lançamento será criado também como despesa no Financeiro.</p>
+            <h2 className="text-lg font-semibold tracking-normal">Novo lanÃ§amento da folha</h2>
+            <p className="text-sm text-muted-foreground">O lanÃ§amento serÃ¡ criado tambÃ©m como despesa no Financeiro.</p>
           </div>
           <button type="button" onClick={onClose} className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"><X className="h-5 w-5" /></button>
         </div>
         <form onSubmit={onSubmit} className="grid gap-4">
           <div className="grid gap-3 px-5 py-5 md:grid-cols-2">
-            <SelectField label="Clínica" value={form.clinic_id ?? ""} onChange={(value) => setForm((current) => ({ ...current, clinic_id: value, employee_id: "" }))} options={clinics.map((clinic) => [clinic.id, clinic.name])} disabled={!isAdmMaster || clinics.length === 1} required />
-            <SelectField label="Funcionário/Profissional" value={form.employee_id ?? ""} onChange={(value) => setForm((current) => ({ ...current, employee_id: value }))} options={employeeOptions} disabled={!form.clinic_id} required />
-            <SelectField label="Mês" value={form.competence_month} onChange={(value) => setForm((current) => ({ ...current, competence_month: value }))} options={Array.from({ length: 12 }, (_, index) => [String(index + 1).padStart(2, "0"), String(index + 1).padStart(2, "0")] as [string, string])} required />
+            <SelectField label="ClÃ­nica" value={form.clinic_id ?? ""} onChange={(value) => setForm((current) => ({ ...current, clinic_id: value, employee_id: "" }))} options={clinics.map((clinic) => [clinic.id, clinic.name])} disabled={!isAdmMaster || clinics.length === 1} required />
+            <SelectField label="FuncionÃ¡rio/Profissional" value={form.employee_id ?? ""} onChange={(value) => setForm((current) => ({ ...current, employee_id: value }))} options={employeeOptions} disabled={!form.clinic_id} required />
+            <SelectField label="MÃªs" value={form.competence_month} onChange={(value) => setForm((current) => ({ ...current, competence_month: value }))} options={Array.from({ length: 12 }, (_, index) => [String(index + 1).padStart(2, "0"), String(index + 1).padStart(2, "0")] as [string, string])} required />
             <TextField label="Ano" value={form.competence_year} onChange={(value) => setForm((current) => ({ ...current, competence_year: value }))} required />
-            <SelectField label="Tipo" value={form.entry_type} onChange={(value) => setForm((current) => ({ ...current, entry_type: value as PayrollEntryType }))} options={entryTypeOptions} required />
+            <SelectField label="Tipo" value={form.entry_type} onChange={(value) => setForm((current) => ({ ...current, entry_type: value as PayrollEntryType, nature: defaultNatureForEntryType(value) }))} options={entryTypeOptions} required />
             <SelectField label="Natureza" value={form.nature} onChange={(value) => setForm((current) => ({ ...current, nature: value as PayrollNature }))} options={natureOptions} required />
             <TextField label="Valor" type="number" step="0.01" value={form.amount} onChange={(value) => setForm((current) => ({ ...current, amount: value }))} required />
             <TextField label="Vencimento" type="date" value={form.due_date} onChange={(value) => setForm((current) => ({ ...current, due_date: value }))} required />
@@ -405,8 +413,8 @@ function PayslipModal({ employeeName, clinicName, period, rows, onPrint, onClose
         <div className="payslip-content space-y-4 print:block">
           <div className="hidden print:block print:mb-3 print:border-b print:pb-2"><strong className="print:block print:text-[13px]">MWFSystem</strong><div className="print:text-[18px] print:font-semibold">Contracheque</div></div>
           <div className="payslip-summary grid gap-3 pt-4 md:grid-cols-4 print:grid-cols-4 print:pt-0">
-            <Detail label="Clínica" value={clinicName} />
-            <Detail label="Funcionário" value={employeeName} />
+            <Detail label="ClÃ­nica" value={clinicName} />
+            <Detail label="FuncionÃ¡rio" value={employeeName} />
             <Detail label="Competencia" value={period} />
             <Detail label="Status" value={rows.some((item) => item.financial_status !== "pago") ? "Em aberto" : "Pago"} />
             <Detail label="Total de creditos" value={money(gross)} />
@@ -414,7 +422,7 @@ function PayslipModal({ employeeName, clinicName, period, rows, onPrint, onClose
             <Detail label="Total liquido" value={money(net)} />
             <Detail label="Emissao" value={today()} />
           </div>
-          <PayslipSection title="Créditos" rows={creditRows} emptyText="Nenhum crédito no período." />
+          <PayslipSection title="CrÃ©ditos" rows={creditRows} emptyText="Nenhum crÃ©dito no perÃ­odo." />
           <PayslipSection title="Descontos" rows={debitRows} emptyText="Nenhum desconto no periodo." />
           <div className="payslip-total grid gap-3 rounded-md border bg-muted/30 p-3 text-sm md:grid-cols-3 print:grid-cols-3">
             <Detail label="Total de creditos" value={money(gross)} />
@@ -423,7 +431,7 @@ function PayslipModal({ employeeName, clinicName, period, rows, onPrint, onClose
           </div>
           <div className="hidden print:grid print:grid-cols-2 print:gap-12 print:pt-10 print:text-center print:text-[11px]">
             <div className="print:border-t print:border-slate-700 print:pt-2">Assinatura do funcionario</div>
-            <div className="print:border-t print:border-slate-700 print:pt-2">Assinatura da clínica</div>
+            <div className="print:border-t print:border-slate-700 print:pt-2">Assinatura da clÃ­nica</div>
           </div>
         </div>
       </Card>
@@ -527,7 +535,7 @@ function PayslipSection({ title, rows, emptyText }: { title: string; rows: Payro
         <thead className="bg-muted/60 uppercase text-muted-foreground">
           <tr>
             <th className="px-3 py-2">Tipo</th>
-            <th className="px-3 py-2">Descrição/Observacao</th>
+            <th className="px-3 py-2">DescriÃ§Ã£o/Observacao</th>
             <th className="px-3 py-2">Origem</th>
             <th className="px-3 py-2 text-right">Valor</th>
             <th className="px-3 py-2 print:hidden">Status</th>
@@ -585,3 +593,4 @@ function TextAreaField({ label, value, onChange }: { label: string; value: strin
 function SelectField({ label, value, onChange, options, required = false, disabled = false }: { label: string; value: string; onChange: (value: string) => void; options: Array<[string, string]>; required?: boolean; disabled?: boolean }) {
   return <FieldShell label={label}><select required={required} disabled={disabled} value={value} onChange={(event) => onChange(event.target.value)} className="h-11 rounded-md border bg-background px-3 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-70"><option value="">Selecione</option>{options.map(([optionValue, optionLabel]) => <option key={optionValue} value={optionValue}>{optionLabel}</option>)}</select></FieldShell>;
 }
+

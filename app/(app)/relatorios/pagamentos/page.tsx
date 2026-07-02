@@ -146,6 +146,8 @@ export default async function RelatorioPagamentosPage() {
       : "-",
     origin: transaction.origin,
     amount: Number(transaction.amount ?? 0),
+    paidAmount: Number(transaction.paid_amount ?? 0),
+    openAmount: Number(transaction.open_amount ?? Math.max(Number(transaction.amount ?? 0) - Number(transaction.paid_amount ?? 0), 0)),
     paymentMethod: transaction.payment_method,
     status: transaction.status,
     dueDate: transaction.due_date,

@@ -106,7 +106,8 @@ async function resolveClinicId(inputClinicId?: string): Promise<string> {
 
 function getFinancialCategory(entryType: PayrollEntryType) {
   if (["salario_fixo"].includes(entryType)) return "Folha - Salarios";
-  if (["vale_transporte", "vale_alimentacao", "ajuda_custo", "bonus"].includes(entryType)) return "Folha - Beneficios";
+  if (["ajuda_custo", "bonus"].includes(entryType)) return "Folha - Beneficios";
+  if (["vale_transporte", "vale_alimentacao"].includes(entryType)) return "Folha - Descontos";
   if (["inss", "fgts", "irrf"].includes(entryType)) return "Folha - Encargos";
   if (["desconto", "adiantamento"].includes(entryType)) return "Folha - Descontos";
   if (entryType === "comissao_manual") return "Folha - Comissão manual";

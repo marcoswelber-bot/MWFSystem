@@ -225,7 +225,7 @@ async function consumePackageSession(appointment: Appointment, state: RollbackSt
     .eq("clinic_id", appointment.clinic_id)
     .eq("patient_id", appointment.patient_id)
     .eq("service_id", appointment.service_id)
-    .eq("status", "active")
+    .in("status", ["active", "ativo", "Ativo"])
     .maybeSingle();
 
   if (packageError) {
@@ -511,8 +511,8 @@ export async function getOperationalFinanceSnapshot() {
         .from("patient_packages")
         .select("*")
         .eq("clinic_id", clinicScope.clinicId)
-        .eq("status", "active")
-    : supabase.from("patient_packages").select("*").eq("status", "active");
+        .in("status", ["active", "ativo", "Ativo"])
+    : supabase.from("patient_packages").select("*").in("status", ["active", "ativo", "Ativo"]);
 
   const [
     { data: transactions, error: transactionsError },

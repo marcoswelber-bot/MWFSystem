@@ -134,11 +134,11 @@ function getPayoutType(row: PayoutTransaction): Exclude<PayoutType, "all"> {
     return "salary";
   }
 
-  if (text.includes("desconto")) {
+  if (["desconto", "adiantamento", "inss", "irrf", "vale transporte", "vale alimentacao", "encargo"].some((term) => text.includes(term))) {
     return "discount";
   }
 
-  if (text.includes("bonus") || text.includes("bonific")) {
+  if (text.includes("bonus") || text.includes("bonific") || text.includes("ferias") || text.includes("13o")) {
     return "bonus";
   }
 
@@ -786,3 +786,4 @@ function SelectFilter({
     </label>
   );
 }
+

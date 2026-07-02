@@ -369,7 +369,10 @@ function buildPaycheckSummaries({
       const automaticCommissions = transactions.filter(isCommissionTransaction);
       const manualCommissions = payrollCredits.filter((item) => normalizeText(item.category).includes("comissao"));
       const baseSalary = payrollCredits.filter((item) => normalizeText(item.category).includes("salario")).reduce((total, item) => total + Number(item.amount ?? 0), 0);
-      const benefits = payrollCredits.filter((item) => normalizeText(item.category).includes("beneficio")).reduce((total, item) => total + Number(item.amount ?? 0), 0);
+      const benefits = payrollCredits.filter((item) => {
+        const text = normalizeText(`${item.category ?? ""} ${item.description ?? ""}`);
+        return ["beneficio", "ajuda de custo", "bonus", "bonificacao", "ferias", "13o"].some((term) => text.includes(term));
+      }).reduce((total, item) => total + Number(item.amount ?? 0), 0);
       const manualCommission = manualCommissions.reduce((total, item) => total + Number(item.amount ?? 0), 0);
       const automaticCommission = automaticCommissions.reduce((total, item) => total + Number(item.amount ?? 0), 0);
       const discounts = payrollDiscounts.reduce((total, item) => total + Number(item.amount ?? 0), 0);
@@ -475,15 +478,16 @@ export function FinanceManager({
   const payrollRows = outflowRows.filter(isPayrollTransaction);
   const balanceRows = buildBalanceRows(filteredTransactions);
 
-  const totalEntries = activeTransactions
-    .filter((item) => item.transaction_type === "receita")
-    .reduce((total, item) => total + Number(item.amount ?? 0), 0);
-  const totalOutflows = activeTransactions
-    .filter((item) => item.transaction_type === "despesa")
-    .reduce((total, item) => total + Number(item.amount ?? 0), 0);
-  const totalPatientReceived = incomeRows
-    .filter((item) => item.derived_status === "pago")
-    .reduce((total, item) => total + getPaidAmount(item), 0);
+  const revenueTransactions = activeTransactions.filter(
+    (item) => item.transaction_type === "receita"
+  );
+  const expenseTransactions = activeTransactions.filter(
+    (item) => item.transaction_type === "despesa"
+  );
+  const totalEntries = revenueTransactions.reduce((total, item) => total + Number(item.amount ?? 0), 0);
+  const totalOutflows = expenseTransactions.reduce((total, item) => total + Number(item.amount ?? 0), 0);
+  const totalEntriesRealized = revenueTransactions.reduce((total, item) => total + getPaidAmount(item), 0);
+  const totalOutflowsRealized = expenseTransactions.reduce((total, item) => total + getPaidAmount(item), 0);
   const totalPayroll = payrollRows
     .filter((item) => item.derived_status !== "cancelado")
     .reduce((total, item) => total + Number(item.amount ?? 0), 0);
@@ -491,14 +495,13 @@ export function FinanceManager({
     .filter((item) => item.derived_status !== "cancelado")
     .reduce((total, item) => total + Number(item.amount ?? 0), 0);
   const periodBalance = totalEntries - totalOutflows;
-  const totalPaidOutflows = outflowRows
-    .filter((item) => item.derived_status === "pago")
-    .reduce((total, item) => total + getPaidAmount(item), 0);
-  const realizedBalance = totalPatientReceived - totalPaidOutflows;
+  const realizedBalance = totalEntriesRealized - totalOutflowsRealized;
 
   const cashFlowTotals = {
-    revenue: totalEntries,
-    expense: totalOutflows,
+    revenueExpected: totalEntries,
+    expenseExpected: totalOutflows,
+    revenueRealized: totalEntriesRealized,
+    expenseRealized: totalOutflowsRealized,
     pendingOutflows: outflowRows
       .filter((item) => item.derived_status !== "pago" && item.derived_status !== "cancelado")
       .reduce((total, item) => total + getOpenAmount(item), 0),
@@ -753,8 +756,8 @@ export function FinanceManager({
       {activeTab === "fluxo" ? (
         <FinanceTable title="Fluxo de caixa" description="Resumo do período com entradas, saídas, saldo e composição do balancete.">
           <section className="grid gap-3 p-4 md:grid-cols-3 xl:grid-cols-5">
-            <SummaryCard label="Receitas" value={money(cashFlowTotals.revenue)} tone="positive" />
-            <SummaryCard label="Despesas" value={money(cashFlowTotals.expense)} tone="danger" />
+            <SummaryCard label="Receitas realizadas" value={money(cashFlowTotals.revenueRealized)} tone="positive" />
+            <SummaryCard label="Despesas realizadas" value={money(cashFlowTotals.expenseRealized)} tone="danger" />
             <SummaryCard label="Pendências" value={money(cashFlowTotals.pendingOutflows)} tone="warning" />
             <SummaryCard label="Saldo realizado" value={money(cashFlowTotals.realized)} tone="neutral" />
             <SummaryCard label="Saldo previsto" value={money(periodBalance)} tone={periodBalance >= 0 ? "positive" : "danger"} />
@@ -1662,3 +1665,7 @@ function IconButton({
     </button>
   );
 }
+
+
+
+

@@ -161,6 +161,8 @@ export default async function RelatorioMulticlinicaPage() {
       category: transaction.category,
       description: transaction.description,
       amount: Number(transaction.amount ?? 0),
+      paidAmount: Number(transaction.paid_amount ?? 0),
+      openAmount: Number(transaction.open_amount ?? Math.max(Number(transaction.amount ?? 0) - Number(transaction.paid_amount ?? 0), 0)),
       status: transaction.status,
       dueDate: transaction.due_date,
       paymentDate: transaction.payment_date,

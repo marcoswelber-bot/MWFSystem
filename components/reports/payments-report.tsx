@@ -32,6 +32,8 @@ export type PaymentReportTransaction = {
   serviceName: string;
   origin: string | null;
   amount: number;
+  paidAmount: number;
+  openAmount: number;
   paymentMethod: string | null;
   status: string;
   dueDate: string;
@@ -117,21 +119,30 @@ function formatDate(value?: string | null) {
 function normalizeStatus(row: PaymentReportTransaction): PaymentStatus {
   const status = normalizeText(row.status).replace(/[^a-z0-9]+/g, "_");
   const dueDate = row.dueDate?.slice(0, 10);
+  const paidAmount = Math.max(Number(row.paidAmount ?? 0), 0);
+  const openAmount = Math.max(
+    Number(row.openAmount ?? Math.max(Number(row.amount ?? 0) - paidAmount, 0)),
+    0
+  );
   const now = today();
 
   if (status.includes("cancel")) {
     return "cancelado";
   }
 
+  if (openAmount <= 0 && (paidAmount > 0 || status.includes("pago") || status.includes("paid"))) {
+    return "pago";
+  }
+
+  if (paidAmount > 0 && openAmount > 0) {
+    return "parcial";
+  }
+
   if (status.includes("parcial")) {
     return "parcial";
   }
 
-  if (status.includes("pago") || status.includes("paid")) {
-    return "pago";
-  }
-
-  if (status.includes("venc") || (dueDate && dueDate < now)) {
+  if (status.includes("venc") || (dueDate && dueDate < now && openAmount > 0)) {
     return "vencido";
   }
 
@@ -163,15 +174,17 @@ function statusClass(status: PaymentStatus) {
 }
 
 function paymentAmounts(row: PaymentReportTransaction, status: PaymentStatus) {
-  if (status === "pago") {
-    return { paidAmount: row.amount, openAmount: 0 };
-  }
-
   if (status === "cancelado") {
     return { paidAmount: 0, openAmount: 0 };
   }
 
-  return { paidAmount: 0, openAmount: row.amount };
+  const paidAmount = Math.max(Number(row.paidAmount ?? 0), 0);
+  const openAmount = Math.max(
+    Number(row.openAmount ?? Math.max(Number(row.amount ?? 0) - paidAmount, 0)),
+    0
+  );
+
+  return { paidAmount, openAmount };
 }
 
 function buildPaymentRow(row: PaymentReportTransaction): PaymentRow {

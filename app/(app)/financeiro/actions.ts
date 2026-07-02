@@ -107,8 +107,8 @@ function getPayrollSyncConfig(category?: string | null): PayrollSyncConfig | nul
   if (normalizedCategory.includes("salario")) return { entryType: "salario_fixo", nature: "credito" };
   if (normalizedCategory.includes("comissao")) return { entryType: "comissao_manual", nature: "credito" };
   if (normalizedCategory.includes("adiantamento")) return { entryType: "adiantamento", nature: "debito" };
-  if (normalizedCategory.includes("vale transporte")) return { entryType: "vale_transporte", nature: "credito" };
-  if (normalizedCategory.includes("vale alimentacao")) return { entryType: "vale_alimentacao", nature: "credito" };
+  if (normalizedCategory.includes("vale transporte")) return { entryType: "vale_transporte", nature: "debito" };
+  if (normalizedCategory.includes("vale alimentacao")) return { entryType: "vale_alimentacao", nature: "debito" };
   if (normalizedCategory.includes("ajuda de custo")) return { entryType: "ajuda_custo", nature: "credito" };
   if (normalizedCategory.includes("inss")) return { entryType: "inss", nature: "debito" };
   if (normalizedCategory.includes("fgts")) return { entryType: "fgts", nature: "debito" };

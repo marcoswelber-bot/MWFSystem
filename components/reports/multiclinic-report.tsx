@@ -39,6 +39,8 @@ export type MulticlinicFinancialTransaction = {
   category: string | null;
   description: string | null;
   amount: number;
+  paidAmount: number;
+  openAmount: number;
   status: string;
   dueDate: string;
   paymentDate: string | null;
@@ -112,6 +114,13 @@ function transactionDate(transaction: MulticlinicFinancialTransaction) {
 
 function isRevenue(transaction: MulticlinicFinancialTransaction) {
   return transaction.transactionType === "receita" && transaction.status !== "cancelado";
+}
+
+function expectedAmount(transaction: MulticlinicFinancialTransaction) {
+  return Math.max(
+    Number(transaction.paidAmount ?? 0) + Number(transaction.openAmount ?? 0),
+    Number(transaction.amount ?? 0)
+  );
 }
 
 function isCommission(transaction: MulticlinicFinancialTransaction) {
@@ -214,7 +223,7 @@ function buildClinicSummary({
   );
   const revenueTotal = transactions
     .filter(isRevenue)
-    .reduce((total, transaction) => total + Number(transaction.amount ?? 0), 0);
+    .reduce((total, transaction) => total + expectedAmount(transaction), 0);
   const commissionTotal = transactions
     .filter(isCommission)
     .reduce((total, transaction) => total + Number(transaction.amount ?? 0), 0);
@@ -743,3 +752,5 @@ function SelectField({
     </label>
   );
 }
+
+
