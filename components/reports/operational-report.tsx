@@ -343,6 +343,43 @@ export function OperationalReport({
     setSortDirection("asc");
   }
 
+
+  function renderOperationalRow(row: OperationalAppointment) {
+    return (
+      <tr key={row.id} className="align-top">
+        <td className="px-4 py-3">{formatDate(row.appointmentDate)}</td>
+        <td className="px-4 py-3">
+          {shortTime(row.startTime)} - {shortTime(row.endTime)}
+        </td>
+        <td className="px-4 py-3">{row.clinicName}</td>
+        <td className="px-4 py-3 font-medium">
+          {row.patientName}
+          {row.participantCount > 1 ? (
+            <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+              {row.participantCount} pacientes
+            </span>
+          ) : null}
+        </td>
+        <td className="px-4 py-3">{row.employeeName}</td>
+        <td className="px-4 py-3">{row.serviceName}</td>
+        <td className="px-4 py-3">{typeLabel(row.type)}</td>
+        <td className="px-4 py-3">
+          <span
+            className={cn(
+              "rounded-full px-2.5 py-1 text-xs font-semibold",
+              statusClass(row.status)
+            )}
+          >
+            {titleCaseStatus(row.status)}
+          </span>
+        </td>
+        <td className="px-4 py-3">{originLabel(row.origin)}</td>
+        <td className="max-w-[260px] px-4 py-3 text-muted-foreground">
+          {row.notes || "-"}
+        </td>
+      </tr>
+    );
+  }
   return (
     <div className="report-print-area space-y-5">
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
@@ -505,42 +542,9 @@ export function OperationalReport({
                 <SortableHeader label="Observacoes" column="notes" onSort={toggleSort} />
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody className="divide-y print:hidden">
               {visibleRows.length > 0 ? (
-                visibleRows.map((row) => (
-                  <tr key={row.id} className="align-top">
-                    <td className="px-4 py-3">{formatDate(row.appointmentDate)}</td>
-                    <td className="px-4 py-3">
-                      {shortTime(row.startTime)} - {shortTime(row.endTime)}
-                    </td>
-                    <td className="px-4 py-3">{row.clinicName}</td>
-                    <td className="px-4 py-3 font-medium">
-                      {row.patientName}
-                      {row.participantCount > 1 ? (
-                        <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                          {row.participantCount} pacientes
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-3">{row.employeeName}</td>
-                    <td className="px-4 py-3">{row.serviceName}</td>
-                    <td className="px-4 py-3">{typeLabel(row.type)}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={cn(
-                          "rounded-full px-2.5 py-1 text-xs font-semibold",
-                          statusClass(row.status)
-                        )}
-                      >
-                        {titleCaseStatus(row.status)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">{originLabel(row.origin)}</td>
-                    <td className="max-w-[260px] px-4 py-3 text-muted-foreground">
-                      {row.notes || "-"}
-                    </td>
-                  </tr>
-                ))
+                visibleRows.map((row) => renderOperationalRow(row))
               ) : (
                 <tr>
                   <td
@@ -551,6 +555,9 @@ export function OperationalReport({
                   </td>
                 </tr>
               )}
+            </tbody>
+            <tbody className="hidden divide-y print:table-row-group">
+              {filteredRows.map((row) => renderOperationalRow(row))}
             </tbody>
           </table>
         </div>
@@ -693,3 +700,4 @@ function SelectField({
     </label>
   );
 }
+

@@ -1,4 +1,4 @@
-"use server";
+﻿"use server";
 
 import { revalidatePath } from "next/cache";
 import { getCurrentClinicScope } from "@/lib/access-control";
@@ -734,3 +734,5 @@ export async function deleteFinancialTransaction(
     return { ok: false, message: getErrorMessage(error) };
   }
 }
+
+

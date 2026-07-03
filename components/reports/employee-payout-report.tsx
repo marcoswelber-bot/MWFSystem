@@ -438,6 +438,33 @@ export function EmployeePayoutReport({
       : employees.find((employee) => employee.id === employeeId)?.name ?? "Funcionario");
   const periodLabel = `${startDate || "inicio"} a ${endDate || "fim"}`;
   const printFileName = `${selectedClinicName} - Contracheque - ${selectedEmployeeName} - ${periodLabel}.pdf`;
+  function renderEmployeeSummaryRow(summary: EmployeeSummary) {
+    return (
+      <tr key={summary.employeeId} className="align-top">
+        <td className="px-4 py-3 font-medium">{summary.employeeName}</td>
+        <td className="px-4 py-3 text-muted-foreground">{summary.clinicName}</td>
+        <td className="px-4 py-3">{summary.appointmentCount}</td>
+        <td className="px-4 py-3">{money(summary.commissionTotal)}</td>
+        <td className="px-4 py-3">{money(summary.salaryTotal)}</td>
+        <td className="px-4 py-3">{money(summary.adjustmentTotal + summary.bonusTotal)}</td>
+        <td className="px-4 py-3">{money(summary.discountTotal)}</td>
+        <td className="px-4 py-3">{money(summary.grossTotal)}</td>
+        <td className="px-4 py-3 font-semibold">{money(summary.netTotal)}</td>
+        <td className="px-4 py-3">
+          <span className={cn("rounded-full px-2 py-1 text-xs font-semibold", statusClass(summary.status))}>
+            {statusLabel(summary.status)}
+          </span>
+        </td>
+        <td className="px-4 py-3 text-muted-foreground">{summary.period}</td>
+        <td className="report-screen-only px-4 py-3">
+          <Button size="sm" variant="outline" onClick={() => setSelectedEmployeeId(summary.employeeId)}>
+            <Eye className="h-4 w-4" />
+            Visualizar detalhes
+          </Button>
+        </td>
+      </tr>
+    );
+  }
 
   return (
     <div className="report-print-area space-y-5">
@@ -566,32 +593,11 @@ export function EmployeePayoutReport({
                     <th className="report-screen-only px-4 py-3">Acao</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y">
-                  {visibleSummaries.map((summary) => (
-                    <tr key={summary.employeeId} className="align-top">
-                      <td className="px-4 py-3 font-medium">{summary.employeeName}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{summary.clinicName}</td>
-                      <td className="px-4 py-3">{summary.appointmentCount}</td>
-                      <td className="px-4 py-3">{money(summary.commissionTotal)}</td>
-                      <td className="px-4 py-3">{money(summary.salaryTotal)}</td>
-                      <td className="px-4 py-3">{money(summary.adjustmentTotal + summary.bonusTotal)}</td>
-                      <td className="px-4 py-3">{money(summary.discountTotal)}</td>
-                      <td className="px-4 py-3">{money(summary.grossTotal)}</td>
-                      <td className="px-4 py-3 font-semibold">{money(summary.netTotal)}</td>
-                      <td className="px-4 py-3">
-                        <span className={cn("rounded-full px-2 py-1 text-xs font-semibold", statusClass(summary.status))}>
-                          {statusLabel(summary.status)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">{summary.period}</td>
-                      <td className="report-screen-only px-4 py-3">
-                        <Button size="sm" variant="outline" onClick={() => setSelectedEmployeeId(summary.employeeId)}>
-                          <Eye className="h-4 w-4" />
-                          Visualizar detalhes
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
+                <tbody className="divide-y print:hidden">
+                  {visibleSummaries.map((summary) => renderEmployeeSummaryRow(summary))}
+                </tbody>
+                <tbody className="hidden divide-y print:table-row-group">
+                  {summaries.map((summary) => renderEmployeeSummaryRow(summary))}
                 </tbody>
               </table>
             </div>
@@ -786,4 +792,5 @@ function SelectFilter({
     </label>
   );
 }
+
 

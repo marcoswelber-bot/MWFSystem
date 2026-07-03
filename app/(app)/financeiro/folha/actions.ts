@@ -1,4 +1,4 @@
-"use server";
+﻿"use server";
 
 import { revalidatePath } from "next/cache";
 import { getCurrentClinicScope } from "@/lib/access-control";
@@ -249,3 +249,4 @@ export async function createPayrollEntry(input: PayrollEntryFormInput): Promise<
     return { ok: false, message: getErrorMessage(error) };
   }
 }
+

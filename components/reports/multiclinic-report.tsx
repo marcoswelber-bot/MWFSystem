@@ -74,6 +74,9 @@ type ClinicSummary = {
   cancelledAppointments: number;
   missedAppointments: number;
   revenueTotal: number;
+  revenueExpected: number;
+  revenueRealized: number;
+  revenueOpen: number;
   commissionTotal: number;
   netEstimated: number;
   attendedPatients: number;
@@ -117,10 +120,15 @@ function isRevenue(transaction: MulticlinicFinancialTransaction) {
 }
 
 function expectedAmount(transaction: MulticlinicFinancialTransaction) {
-  return Math.max(
-    Number(transaction.paidAmount ?? 0) + Number(transaction.openAmount ?? 0),
-    Number(transaction.amount ?? 0)
-  );
+  return Math.max(Number(transaction.amount ?? 0), 0);
+}
+
+function realizedAmount(transaction: MulticlinicFinancialTransaction) {
+  return Math.max(Number(transaction.paidAmount ?? 0), 0);
+}
+
+function openAmount(transaction: MulticlinicFinancialTransaction) {
+  return Math.max(Number(transaction.openAmount ?? Math.max(Number(transaction.amount ?? 0) - Number(transaction.paidAmount ?? 0), 0)), 0);
 }
 
 function isCommission(transaction: MulticlinicFinancialTransaction) {
@@ -172,7 +180,9 @@ function downloadCsv(fileName: string, summaries: ClinicSummary[]) {
     "Atendimentos realizados",
     "Cancelados",
     "Faltas",
-    "Receita total",
+    "Receita prevista",
+    "Receita realizada",
+    "Valor em aberto",
     "Comissoes",
     "Valor liquido estimado",
     "Pacientes atendidos",
@@ -186,7 +196,9 @@ function downloadCsv(fileName: string, summaries: ClinicSummary[]) {
       String(summary.realizedAppointments),
       String(summary.cancelledAppointments),
       String(summary.missedAppointments),
-      String(summary.revenueTotal),
+      String(summary.revenueExpected),
+      String(summary.revenueRealized),
+      String(summary.revenueOpen),
       String(summary.commissionTotal),
       String(summary.netEstimated),
       String(summary.attendedPatients),
@@ -221,11 +233,12 @@ function buildClinicSummary({
   const realizedAppointments = appointments.filter(
     (appointment) => appointment.status === "realizado"
   );
-  const revenueTotal = transactions
-    .filter(isRevenue)
-    .reduce((total, transaction) => total + expectedAmount(transaction), 0);
-  const commissionTotal = transactions
-    .filter(isCommission)
+  const revenueTransactions = transactions.filter(isRevenue);
+  const revenueExpected = revenueTransactions.reduce((total, transaction) => total + expectedAmount(transaction), 0);
+  const revenueRealized = revenueTransactions.reduce((total, transaction) => total + realizedAmount(transaction), 0);
+  const revenueOpen = revenueTransactions.reduce((total, transaction) => total + openAmount(transaction), 0);
+  const revenueTotal = revenueExpected;
+  const commissionTotal = transactions.filter(isCommission)
     .reduce((total, transaction) => total + Number(transaction.amount ?? 0), 0);
   const attendedPatients = new Set(
     realizedAppointments.map((appointment) => appointment.patientId)
@@ -243,6 +256,9 @@ function buildClinicSummary({
     missedAppointments: appointments.filter((appointment) => appointment.status === "faltou")
       .length,
     revenueTotal,
+    revenueExpected,
+    revenueRealized,
+    revenueOpen,
     commissionTotal,
     netEstimated: revenueTotal - commissionTotal,
     attendedPatients,
@@ -268,7 +284,7 @@ export function MulticlinicReport({
   const [status, setStatus] = React.useState("all");
   const [serviceId, setServiceId] = React.useState("all");
   const [query, setQuery] = React.useState("");
-  const [sortKey, setSortKey] = React.useState<SortKey>("revenueTotal");
+  const [sortKey, setSortKey] = React.useState<SortKey>("revenueExpected");
   const [sortDirection, setSortDirection] = React.useState<"asc" | "desc">("desc");
   const [page, setPage] = React.useState(1);
   const [issuedAt, setIssuedAt] = React.useState("");
@@ -323,7 +339,9 @@ export function MulticlinicReport({
             summary.clinicName,
             statusLabel(summary.clinicStatus),
             String(summary.totalAppointments),
-            String(summary.revenueTotal),
+            String(summary.revenueExpected),
+            String(summary.revenueRealized),
+            String(summary.revenueOpen),
             String(summary.netEstimated)
           ].join(" ")
         ).includes(normalizedQuery);
@@ -368,7 +386,7 @@ export function MulticlinicReport({
     );
     const topRevenueClinic = filteredSummaries.reduce<ClinicSummary | null>(
       (best, summary) =>
-        !best || summary.revenueTotal > best.revenueTotal ? summary : best,
+        !best || summary.revenueExpected > best.revenueExpected ? summary : best,
       null
     );
     const topVolumeClinic = filteredSummaries.reduce<ClinicSummary | null>(
@@ -429,6 +447,34 @@ export function MulticlinicReport({
     setSortKey(key);
     setSortDirection("asc");
   }
+  function renderSummaryRow(summary: ClinicSummary) {
+    return (
+      <tr key={summary.clinicId} className="align-top">
+        <td className="px-4 py-3 font-medium">{summary.clinicName}</td>
+        <td className="px-4 py-3">{summary.totalAppointments}</td>
+        <td className="px-4 py-3">{summary.realizedAppointments}</td>
+        <td className="px-4 py-3">{summary.cancelledAppointments}</td>
+        <td className="px-4 py-3">{summary.missedAppointments}</td>
+        <td className="px-4 py-3">{money(summary.revenueExpected)}</td>
+        <td className="px-4 py-3">{money(summary.revenueRealized)}</td>
+        <td className="px-4 py-3">{money(summary.revenueOpen)}</td>
+        <td className="px-4 py-3">{money(summary.commissionTotal)}</td>
+        <td className="px-4 py-3 font-semibold">{money(summary.netEstimated)}</td>
+        <td className="px-4 py-3">{summary.attendedPatients}</td>
+        <td className="px-4 py-3">{money(summary.averageTicket)}</td>
+        <td className="px-4 py-3">
+          <span
+            className={cn(
+              "rounded-full px-2.5 py-1 text-xs font-semibold",
+              statusClass(summary.clinicStatus)
+            )}
+          >
+            {statusLabel(summary.clinicStatus)}
+          </span>
+        </td>
+      </tr>
+    );
+  }
 
   return (
     <div className="report-print-area space-y-5">
@@ -476,7 +522,7 @@ export function MulticlinicReport({
 
       <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-7">
         <MetricCard icon={Building2} label="Clinicas analisadas" value={totals.clinicsAnalyzed} />
-        <MetricCard icon={BadgeDollarSign} label="Receita total" value={money(totals.revenueTotal)} />
+        <MetricCard icon={BadgeDollarSign} label="Receita prevista" value={money(totals.revenueTotal)} />
         <MetricCard icon={CalendarCheck} label="Atend. realizados" value={totals.realizedAppointments} />
         <MetricCard icon={Users} label="Pacientes ativos" value={totals.activePatients} />
         <MetricCard icon={ReceiptText} label="Ticket medio" value={money(totals.averageTicket)} />
@@ -566,7 +612,9 @@ export function MulticlinicReport({
                 <SortableHeader label="Realizados" column="realizedAppointments" onSort={toggleSort} />
                 <SortableHeader label="Cancelados" column="cancelledAppointments" onSort={toggleSort} />
                 <SortableHeader label="Faltas" column="missedAppointments" onSort={toggleSort} />
-                <SortableHeader label="Receita total" column="revenueTotal" onSort={toggleSort} />
+                <SortableHeader label="Receita prevista" column="revenueExpected" onSort={toggleSort} />
+                <SortableHeader label="Receita realizada" column="revenueRealized" onSort={toggleSort} />
+                <SortableHeader label="Valor em aberto" column="revenueOpen" onSort={toggleSort} />
                 <SortableHeader label="Comissoes" column="commissionTotal" onSort={toggleSort} />
                 <SortableHeader label="Liquido estimado" column="netEstimated" onSort={toggleSort} />
                 <SortableHeader label="Pacientes" column="attendedPatients" onSort={toggleSort} />
@@ -574,42 +622,22 @@ export function MulticlinicReport({
                 <SortableHeader label="Status" column="clinicStatus" onSort={toggleSort} />
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody className="divide-y print:hidden">
               {visibleSummaries.length > 0 ? (
-                visibleSummaries.map((summary) => (
-                  <tr key={summary.clinicId} className="align-top">
-                    <td className="px-4 py-3 font-medium">{summary.clinicName}</td>
-                    <td className="px-4 py-3">{summary.totalAppointments}</td>
-                    <td className="px-4 py-3">{summary.realizedAppointments}</td>
-                    <td className="px-4 py-3">{summary.cancelledAppointments}</td>
-                    <td className="px-4 py-3">{summary.missedAppointments}</td>
-                    <td className="px-4 py-3">{money(summary.revenueTotal)}</td>
-                    <td className="px-4 py-3">{money(summary.commissionTotal)}</td>
-                    <td className="px-4 py-3 font-semibold">{money(summary.netEstimated)}</td>
-                    <td className="px-4 py-3">{summary.attendedPatients}</td>
-                    <td className="px-4 py-3">{money(summary.averageTicket)}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={cn(
-                          "rounded-full px-2.5 py-1 text-xs font-semibold",
-                          statusClass(summary.clinicStatus)
-                        )}
-                      >
-                        {statusLabel(summary.clinicStatus)}
-                      </span>
-                    </td>
-                  </tr>
-                ))
+                visibleSummaries.map((summary) => renderSummaryRow(summary))
               ) : (
                 <tr>
                   <td
                     className="px-4 py-8 text-center text-muted-foreground"
-                    colSpan={11}
+                    colSpan={13}
                   >
                     Nenhum dado encontrado para os filtros selecionados.
                   </td>
                 </tr>
               )}
+            </tbody>
+            <tbody className="hidden divide-y print:table-row-group">
+              {filteredSummaries.map((summary) => renderSummaryRow(summary))}
             </tbody>
           </table>
         </div>
@@ -752,5 +780,8 @@ function SelectField({
     </label>
   );
 }
+
+
+
 
 

@@ -393,6 +393,34 @@ export function PaymentsReport({
     setSortDirection("asc");
   }
 
+
+  function renderPaymentRow(row: PaymentRow) {
+    return (
+      <tr key={row.id} className="align-top">
+        <td className="px-4 py-3">{formatDate(row.reportDate)}</td>
+        <td className="px-4 py-3 font-medium">{row.patientName}</td>
+        <td className="px-4 py-3">{row.clinicName}</td>
+        <td className="px-4 py-3">{row.serviceName}</td>
+        <td className="px-4 py-3">{row.origin ?? "-"}</td>
+        <td className="px-4 py-3">{money(row.amount)}</td>
+        <td className="px-4 py-3">{money(row.paidAmount)}</td>
+        <td className="px-4 py-3 font-semibold">{money(row.openAmount)}</td>
+        <td className="px-4 py-3">{row.paymentMethod ?? "-"}</td>
+        <td className="px-4 py-3">
+          <span
+            className={cn(
+              "rounded-full px-2.5 py-1 text-xs font-semibold",
+              statusClass(row.normalizedStatus)
+            )}
+          >
+            {statusLabel(row.normalizedStatus)}
+          </span>
+        </td>
+        <td className="px-4 py-3">{formatDate(row.dueDate)}</td>
+        <td className="px-4 py-3">{formatDate(row.paymentDate)}</td>
+      </tr>
+    );
+  }
   return (
     <div className="report-print-area space-y-5">
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
@@ -537,33 +565,9 @@ export function PaymentsReport({
                 <SortableHeader label="Pagamento" column="paymentDate" onSort={toggleSort} />
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody className="divide-y print:hidden">
               {visibleRows.length > 0 ? (
-                visibleRows.map((row) => (
-                  <tr key={row.id} className="align-top">
-                    <td className="px-4 py-3">{formatDate(row.reportDate)}</td>
-                    <td className="px-4 py-3 font-medium">{row.patientName}</td>
-                    <td className="px-4 py-3">{row.clinicName}</td>
-                    <td className="px-4 py-3">{row.serviceName}</td>
-                    <td className="px-4 py-3">{row.origin ?? "-"}</td>
-                    <td className="px-4 py-3">{money(row.amount)}</td>
-                    <td className="px-4 py-3">{money(row.paidAmount)}</td>
-                    <td className="px-4 py-3 font-semibold">{money(row.openAmount)}</td>
-                    <td className="px-4 py-3">{row.paymentMethod ?? "-"}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={cn(
-                          "rounded-full px-2.5 py-1 text-xs font-semibold",
-                          statusClass(row.normalizedStatus)
-                        )}
-                      >
-                        {statusLabel(row.normalizedStatus)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">{formatDate(row.dueDate)}</td>
-                    <td className="px-4 py-3">{formatDate(row.paymentDate)}</td>
-                  </tr>
-                ))
+                visibleRows.map((row) => renderPaymentRow(row))
               ) : (
                 <tr>
                   <td
@@ -574,6 +578,9 @@ export function PaymentsReport({
                   </td>
                 </tr>
               )}
+            </tbody>
+            <tbody className="hidden divide-y print:table-row-group">
+              {filteredRows.map((row) => renderPaymentRow(row))}
             </tbody>
           </table>
         </div>
@@ -716,3 +723,4 @@ function SelectField({
     </label>
   );
 }
+
