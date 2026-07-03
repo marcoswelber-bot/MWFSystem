@@ -158,6 +158,7 @@ export default async function FinanceiroPage() {
   const patientsById = new Map(
     patients.map((patient) => [patient.id, patient.full_name])
   );
+  const patientsByDetails = new Map(patients.map((patient) => [patient.id, patient]));
   const servicesById = new Map(services.map((service) => [service.id, service.name]));
   const employeesById = new Map(
     employees.map((employee) => [employee.id, employee.name])
@@ -170,6 +171,8 @@ export default async function FinanceiroPage() {
       patient_name: item.patient_id
         ? patientsById.get(item.patient_id) ?? "Paciente nao encontrado"
         : "-",
+      patient_phone: item.patient_id ? patientsByDetails.get(item.patient_id)?.phone ?? null : null,
+      patient_cpf: item.patient_id ? patientsByDetails.get(item.patient_id)?.cpf ?? null : null,
       employee_name: item.employee_id
         ? employeesById.get(item.employee_id) ?? "Funcionário não encontrado"
         : "-",

@@ -3,11 +3,20 @@
 import * as React from "react";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
-import {  Download,
+import {
+  Copy,
+  Download,
   Edit3,
   FileText,
+  MessageCircle,
   Plus,
-  Trash2,  X,} from "lucide-react";
+  Printer,
+  ReceiptText,
+  Send,
+  Share2,
+  Trash2,
+  X
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -31,6 +40,8 @@ type FinancialTransaction =
   Database["public"]["Tables"]["financial_transactions"]["Row"] & {
     clinic_name: string;
     patient_name: string;
+    patient_phone?: string | null;
+    patient_cpf?: string | null;
     employee_name: string;
     service_name: string;
     derived_status: FinancialStatus;
@@ -247,6 +258,108 @@ function getOpenAmount(item: FinancialTransaction) {
   if (["pago", "cancelado"].includes(item.derived_status)) return 0;
   return Math.max(Number(item.amount ?? 0) - getPaidAmount(item), 0);
 }
+type ClinicWithReceiptData = Clinic & {
+  pix_key?: string | null;
+  pix?: string | null;
+  logo_url?: string | null;
+  legal_name?: string | null;
+};
+
+type ReceiptSnapshot = {
+  transaction: FinancialTransaction;
+  clinic: ClinicWithReceiptData | null;
+  paidAmount: number;
+  paymentMethod: PaymentMethod;
+  paidAt: string;
+  receiptNumber: string;
+};
+
+function formatDate(value?: string | null) {
+  if (!value) return "-";
+  return new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" }).format(new Date(`${value.slice(0, 10)}T00:00:00Z`));
+}
+
+function clinicPixKey(clinic: ClinicWithReceiptData | null) {
+  return clinic?.pix_key ?? clinic?.pix ?? "";
+}
+
+function clinicLogoUrl(clinic: ClinicWithReceiptData | null) {
+  return clinic?.logo_url ?? "";
+}
+
+function clinicLegalDetails(clinic: ClinicWithReceiptData | null) {
+  if (!clinic) return "-";
+  return [clinic.cnpj ? `CNPJ: ${clinic.cnpj}` : null, clinic.address, clinic.phone ? `Telefone: ${clinic.phone}` : null, clinic.email].filter(Boolean).join(" | ") || "-";
+}
+
+function normalizePhoneForWhatsApp(value?: string | null) {
+  const digits = (value ?? "").replace(/\D/g, "");
+  if (!digits) return "";
+  return digits.startsWith("55") ? digits : `55${digits}`;
+}
+
+function debitLine(item: FinancialTransaction) {
+  const description = item.description ?? item.service_name ?? item.category ?? "Lançamento financeiro";
+  return `- ${description} | vencimento ${formatDate(item.due_date)} | ${money(getOpenAmount(item))}`;
+}
+
+function buildChargeMessage({ patientName, clinicName, debts, pixKey }: { patientName: string; clinicName: string; debts: FinancialTransaction[]; pixKey: string }) {
+  const total = debts.reduce((sum, item) => sum + getOpenAmount(item), 0);
+  return `Olá, ${patientName}!
+
+Identificamos que existem valores pendentes referentes aos atendimentos realizados na ${clinicName}.
+
+Débitos:
+
+${debts.map(debitLine).join("\n")}
+
+Valor total: ${money(total)}
+
+Caso já tenha realizado o pagamento, por favor desconsidere esta mensagem.
+
+Caso ainda não tenha efetuado, seguem abaixo os dados para pagamento.
+
+PIX:
+${pixKey || "Chave PIX não cadastrada"}
+
+Após realizar o pagamento, por gentileza envie o comprovante por este WhatsApp para que possamos identificar o pagamento e efetuar a baixa em seu cadastro.
+
+Ficamos à disposição.
+
+Atenciosamente,
+${clinicName}`;
+}
+
+const proofRequestMessage = `Assim que realizar o pagamento, por favor envie o comprovante por este WhatsApp.
+
+Nossa equipe fará a conferência e realizará a baixa em seu cadastro o mais breve possível.`;
+
+function buildReceiptMessage(patientName: string, clinicName: string) {
+  return `Olá, ${patientName}!
+
+Recebemos e identificamos o seu pagamento.
+
+Segue em anexo o recibo referente ao pagamento realizado.
+
+Agradecemos pela confiança em nosso trabalho.
+
+Sempre que precisar estaremos à disposição.
+
+Atenciosamente,
+
+${clinicName}`;
+}
+
+function buildThanksMessage(clinicName: string) {
+  return `Obrigado por manter seus pagamentos em dia.
+
+É uma satisfação cuidar da sua saúde.
+
+Conte sempre conosco.
+
+Equipe
+${clinicName}`;
+}
 
 
 type BalanceRow = {
@@ -451,6 +564,8 @@ export function FinanceManager({
   const [settlementPaymentMethod, setSettlementPaymentMethod] =
     React.useState<PaymentMethod>("pix");
   const [settlementNotes, setSettlementNotes] = React.useState("");
+  const [chargeDebts, setChargeDebts] = React.useState<FinancialTransaction[] | null>(null);
+  const [receiptSnapshot, setReceiptSnapshot] = React.useState<ReceiptSnapshot | null>(null);
 
   const canCreate = permissions?.create ?? true;
   const canEdit = permissions?.edit ?? true;
@@ -566,6 +681,80 @@ export function FinanceManager({
   function exportAllPaychecks() {
     if (paycheckSummaries.length > 0) setPrintPaychecks(paycheckSummaries);
   }
+
+  async function copyText(text: string, successMessage: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setMessage({ ok: true, message: successMessage });
+    } catch {
+      setMessage({ ok: false, message: "Não foi possível copiar a mensagem automaticamente." });
+    }
+  }
+
+  function openWhatsappMessage(phone: string | null | undefined, text: string) {
+    const normalizedPhone = normalizePhoneForWhatsApp(phone);
+    if (!normalizedPhone) {
+      setMessage({ ok: false, message: "Paciente sem telefone cadastrado para WhatsApp." });
+      return;
+    }
+
+    window.open(`https://wa.me/${normalizedPhone}?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+  }
+
+  function openChargeModal(item: FinancialTransaction) {
+    if (!item.patient_id) {
+      setMessage({ ok: false, message: "Paciente obrigatório para cobrança via WhatsApp." });
+      return;
+    }
+
+    const debts = patientRows.filter(
+      (row) =>
+        row.patient_id === item.patient_id &&
+        row.clinic_id === item.clinic_id &&
+        row.transaction_type === "receita" &&
+        row.derived_status !== "pago" &&
+        row.derived_status !== "cancelado" &&
+        getOpenAmount(row) > 0
+    );
+
+    if (debts.length === 0) {
+      setMessage({ ok: false, message: "Paciente sem débitos em aberto para cobrança." });
+      return;
+    }
+
+    setChargeDebts(debts);
+    setMessage(null);
+  }
+
+  function clinicForTransaction(item: FinancialTransaction | null | undefined) {
+    if (!item) return null;
+    return (clinics.find((clinic) => clinic.id === item.clinic_id) ?? null) as ClinicWithReceiptData | null;
+  }
+
+  function openReceiptPrint() {
+    if (!receiptSnapshot) return;
+    const previousTitle = document.title;
+    document.title = `${receiptSnapshot.clinic?.name ?? receiptSnapshot.transaction.clinic_name} - Recibo - ${receiptSnapshot.transaction.patient_name} - ${receiptSnapshot.receiptNumber}`;
+    document.body.classList.add("mwf-receipt-printing");
+    const restore = () => {
+      document.body.classList.remove("mwf-receipt-printing");
+      document.title = previousTitle;
+      window.removeEventListener("afterprint", restore);
+    };
+    window.addEventListener("afterprint", restore);
+    window.setTimeout(() => window.print(), 100);
+    window.setTimeout(restore, 900);
+  }
+
+  function shareReceipt() {
+    if (!receiptSnapshot) return;
+    const text = buildReceiptMessage(receiptSnapshot.transaction.patient_name, receiptSnapshot.clinic?.name ?? receiptSnapshot.transaction.clinic_name);
+    if (navigator.share) {
+      void navigator.share({ title: "Recibo", text });
+      return;
+    }
+    void copyText(text, "Mensagem do recibo copiada.");
+  }
   function refresh() {
     router.refresh();
   }
@@ -664,6 +853,16 @@ export function FinanceManager({
       setMessage(result);
 
       if (result.ok) {
+        if (settlementTransaction.transaction_type === "receita") {
+          setReceiptSnapshot({
+            transaction: settlementTransaction,
+            clinic: clinicForTransaction(settlementTransaction),
+            paidAmount,
+            paymentMethod: settlementPaymentMethod,
+            paidAt: today(),
+            receiptNumber: `REC-${settlementTransaction.id.slice(0, 8).toUpperCase()}-${Date.now().toString().slice(-6)}`
+          });
+        }
         closeSettlementModal();
         refresh();
       }
@@ -751,7 +950,7 @@ export function FinanceManager({
 
       {activeTab === "receitas" ? <FinanceTable title="Receitas" description="Entradas de pacientes, avulsos, pacotes pagos e outros créditos."><EntriesTable rows={incomeRows} canEdit={canEdit} canDelete={canDelete} isPending={isPending} onDetails={setDetailTransaction} onEdit={openEditForm} onPaid={markAsPaid} onCancel={cancelTransaction} onDelete={removeTransaction} /></FinanceTable> : null}
       {activeTab === "despesas" ? <FinanceTable title="Despesas" description="Saídas da clínica, folha, encargos e comissões."><OutflowsTable rows={outflowRows} canEdit={canEdit} canDelete={canDelete} isPending={isPending} onDetails={setDetailTransaction} onEdit={openEditForm} onPaid={markAsPaid} onCancel={cancelTransaction} onDelete={removeTransaction} /></FinanceTable> : null}
-      {activeTab === "pacientes" ? <FinanceTable title="Pacientes em aberto" description="Cobrança e baixa de pacientes. Baixas em lote continuam em Baixas e Repasses."><PatientPaymentsTable rows={patientRows} canEdit={canEdit} canDelete={canDelete} isPending={isPending} onDetails={setDetailTransaction} onEdit={openEditForm} onPaid={markAsPaid} onCancel={cancelTransaction} onDelete={removeTransaction} /></FinanceTable> : null}
+      {activeTab === "pacientes" ? <FinanceTable title="Pacientes em aberto" description="Cobrança e baixa de pacientes. Baixas em lote continuam em Baixas e Repasses."><PatientPaymentsTable rows={patientRows} canEdit={canEdit} canDelete={canDelete} isPending={isPending} onDetails={setDetailTransaction} onEdit={openEditForm} onPaid={markAsPaid} onCancel={cancelTransaction} onDelete={removeTransaction} onCharge={openChargeModal} /></FinanceTable> : null}
       {activeTab === "contracheques" ? <PaychecksPanel summaries={paycheckSummaries} canEdit={canEdit} onExportAll={exportAllPaychecks} onPrintOne={(summary) => setPrintPaychecks([summary])} onDetails={openCommissionReport} /> : null}
       {activeTab === "fluxo" ? (
         <FinanceTable title="Fluxo de caixa" description="Resumo do período com entradas, saídas, saldo e composição do balancete.">
@@ -767,6 +966,26 @@ export function FinanceManager({
       ) : null}
 
       {detailTransaction ? <TransactionDetailsModal item={detailTransaction} onClose={() => setDetailTransaction(null)} /> : null}
+      {chargeDebts ? (
+        <ChargeWhatsappModal
+          debts={chargeDebts}
+          clinic={clinicForTransaction(chargeDebts[0])}
+          onClose={() => setChargeDebts(null)}
+          onCopy={(text) => void copyText(text, "Mensagem de cobrança copiada.")}
+          onOpenWhatsapp={openWhatsappMessage}
+        />
+      ) : null}
+
+      {receiptSnapshot ? (
+        <ReceiptModal
+          snapshot={receiptSnapshot}
+          onClose={() => setReceiptSnapshot(null)}
+          onPrint={openReceiptPrint}
+          onCopy={(text) => void copyText(text, "Mensagem copiada.")}
+          onShare={shareReceipt}
+          onOpenWhatsapp={openWhatsappMessage}
+        />
+      ) : null}
       {settlementTransaction ? (
         <SettlementModal
           item={settlementTransaction}
@@ -816,6 +1035,7 @@ type TableActionProps = {
   onPaid: (item: FinancialTransaction) => void;
   onCancel: (item: FinancialTransaction) => void;
   onDelete: (item: FinancialTransaction) => void;
+  onCharge?: (item: FinancialTransaction) => void;
 };
 
 function EntriesTable({
@@ -875,7 +1095,7 @@ function OutflowsTable({
   onDelete
 }: TableActionProps) {
   return (
-    <table className="w-full min-w-[980px] text-left text-xs">
+    <table className="w-full min-w-[1080px] text-left text-xs">
       <thead className="bg-muted/60 uppercase text-muted-foreground">
         <tr>
           <th className="px-3 py-2">Data</th>
@@ -943,10 +1163,11 @@ function PatientPaymentsTable({
   onEdit,
   onPaid,
   onCancel,
-  onDelete
+  onDelete,
+  onCharge
 }: TableActionProps) {
   return (
-    <table className="w-full min-w-[980px] text-left text-xs">
+    <table className="w-full min-w-[1080px] text-left text-xs">
       <thead className="bg-muted/60 uppercase text-muted-foreground">
         <tr>
           <th className="px-3 py-2">Paciente</th>
@@ -971,7 +1192,7 @@ function PatientPaymentsTable({
             <td className="whitespace-nowrap px-3 py-2 text-right font-semibold">{money(getOpenAmount(item))}</td>
             <td className="whitespace-nowrap px-3 py-2">{item.due_date}</td>
             <StatusCell status={item.derived_status} compact />
-            <FinanceActionCell item={item} primaryLabel="Dar baixa" canEdit={canEdit} canDelete={canDelete} isPending={isPending} onDetails={onDetails} onEdit={onEdit} onPaid={onPaid} onCancel={onCancel} onDelete={onDelete} />
+            <FinanceActionCell item={item} primaryLabel="Dar baixa" canEdit={canEdit} canDelete={canDelete} isPending={isPending} onDetails={onDetails} onEdit={onEdit} onPaid={onPaid} onCancel={onCancel} onDelete={onDelete} onCharge={onCharge} />
           </tr>
         )) : <EmptyRow colSpan={9} />}
       </tbody>
@@ -1142,7 +1363,8 @@ function FinanceActionCell({
   onEdit,
   onPaid,
   onCancel,
-  onDelete
+  onDelete,
+  onCharge
 }: {
   item: FinancialTransaction;
   primaryLabel: string;
@@ -1154,11 +1376,13 @@ function FinanceActionCell({
   onPaid: (item: FinancialTransaction) => void;
   onCancel: (item: FinancialTransaction) => void;
   onDelete: (item: FinancialTransaction) => void;
+  onCharge?: (item: FinancialTransaction) => void;
 }) {
   return (
     <td className="whitespace-nowrap px-3 py-2">
       <div className="flex justify-end gap-1">
         <Button type="button" size="sm" variant="outline" onClick={() => onDetails(item)}>Ver detalhes</Button>
+        {onCharge && getOpenAmount(item) > 0 ? <Button type="button" size="sm" variant="outline" onClick={() => onCharge(item)}><MessageCircle className="h-4 w-4" />Cobrar via WhatsApp</Button> : null}
         {canEdit ? (
           <>
             <Button type="button" size="sm" onClick={() => onPaid(item)} disabled={isPending || item.derived_status === "pago"}>{primaryLabel}</Button>
@@ -1172,7 +1396,158 @@ function FinanceActionCell({
   );
 }
 
-function SettlementModal({
+
+function ChargeWhatsappModal({
+  debts,
+  clinic,
+  onClose,
+  onCopy,
+  onOpenWhatsapp
+}: {
+  debts: FinancialTransaction[];
+  clinic: ClinicWithReceiptData | null;
+  onClose: () => void;
+  onCopy: (text: string) => void;
+  onOpenWhatsapp: (phone: string | null | undefined, text: string) => void;
+}) {
+  const [selectedIds, setSelectedIds] = React.useState(() => debts.map((debt) => debt.id));
+  const selectedDebts = debts.filter((debt) => selectedIds.includes(debt.id));
+  const firstDebt = debts[0];
+  const clinicName = clinic?.name ?? firstDebt?.clinic_name ?? "Clínica";
+  const pixKey = clinicPixKey(clinic);
+  const total = selectedDebts.reduce((sum, debt) => sum + getOpenAmount(debt), 0);
+  const message = buildChargeMessage({ patientName: firstDebt?.patient_name ?? "Paciente", clinicName, debts: selectedDebts, pixKey });
+  const phone = firstDebt?.patient_phone ?? null;
+
+  function toggle(id: string) {
+    setSelectedIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm">
+      <Card className="max-h-[90vh] w-full max-w-3xl overflow-y-auto border-none p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b pb-4">
+          <div>
+            <h2 className="text-lg font-semibold tracking-normal">Cobrar via WhatsApp</h2>
+            <p className="text-sm text-muted-foreground">Selecione os débitos e envie uma mensagem pronta ao paciente.</p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"><X className="h-5 w-5" /></button>
+        </div>
+
+        <div className="mt-4 grid gap-3 text-sm md:grid-cols-3">
+          <DetailItem label="Paciente" value={firstDebt?.patient_name ?? "-"} />
+          <DetailItem label="Telefone" value={phone || "Sem telefone cadastrado"} />
+          <DetailItem label="PIX" value={pixKey || "Chave PIX não cadastrada"} />
+        </div>
+
+        <div className="mt-4 rounded-md border">
+          {debts.map((debt) => (
+            <label key={debt.id} className="flex gap-3 border-b p-3 last:border-b-0">
+              <input type="checkbox" checked={selectedIds.includes(debt.id)} onChange={() => toggle(debt.id)} />
+              <span className="grid flex-1 gap-1">
+                <strong>{debt.description ?? debt.service_name ?? debt.category ?? "Lançamento financeiro"}</strong>
+                <span className="text-muted-foreground">Vencimento {formatDate(debt.due_date)} · em aberto {money(getOpenAmount(debt))}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+
+        <div className="mt-4 grid gap-3 rounded-md border bg-muted/30 p-3 md:grid-cols-2">
+          <DetailItem label="Selecionados" value={String(selectedDebts.length)} />
+          <DetailItem label="Valor total" value={money(total)} />
+        </div>
+
+        <textarea className="mt-4 min-h-64 w-full rounded-md border bg-background p-3 text-sm" readOnly value={message} />
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
+          <Button type="button" variant="outline" onClick={() => onCopy(proofRequestMessage)}><Copy className="h-4 w-4" />Copiar mensagem do comprovante</Button>
+          <Button type="button" variant="outline" onClick={() => onCopy(message)} disabled={selectedDebts.length === 0}><Copy className="h-4 w-4" />Copiar mensagem</Button>
+          <Button type="button" onClick={() => onOpenWhatsapp(phone, message)} disabled={selectedDebts.length === 0}><MessageCircle className="h-4 w-4" />Abrir WhatsApp</Button>
+          <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function ReceiptModal({
+  snapshot,
+  onClose,
+  onPrint,
+  onCopy,
+  onShare,
+  onOpenWhatsapp
+}: {
+  snapshot: ReceiptSnapshot;
+  onClose: () => void;
+  onPrint: () => void;
+  onCopy: (text: string) => void;
+  onShare: () => void;
+  onOpenWhatsapp: (phone: string | null | undefined, text: string) => void;
+}) {
+  const { transaction, clinic, paidAmount, paymentMethod, paidAt, receiptNumber } = snapshot;
+  const clinicName = clinic?.name ?? transaction.clinic_name;
+  const receiptMessage = buildReceiptMessage(transaction.patient_name, clinicName);
+  const thanksMessage = buildThanksMessage(clinicName);
+  const logoUrl = clinicLogoUrl(clinic);
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm">
+      <Card className="receipt-print-root max-h-[90vh] w-full max-w-3xl overflow-y-auto border-none p-5 shadow-2xl">
+        <div className="receipt-screen-actions flex items-start justify-between gap-4 border-b pb-4">
+          <div>
+            <h2 className="text-lg font-semibold tracking-normal">Recibo de pagamento</h2>
+            <p className="text-sm text-muted-foreground">Recibo disponível após a baixa financeira.</p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"><X className="h-5 w-5" /></button>
+        </div>
+
+        <article className="receipt-document mt-4 rounded-md border bg-background p-5">
+          <header className="flex items-start justify-between gap-4 border-b pb-4">
+            <div className="flex items-center gap-3">
+              {logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={logoUrl} alt="Logo da clínica" className="h-12 w-12 rounded object-contain" />
+              ) : null}
+              <div><strong className="text-lg">{clinicName}</strong><p className="text-sm text-muted-foreground">{clinicLegalDetails(clinic)}</p></div>
+            </div>
+            <div className="text-right text-sm"><strong>{receiptNumber}</strong><p>{formatDate(paidAt)}</p></div>
+          </header>
+          <div className="mt-4 grid gap-3 text-sm md:grid-cols-2">
+            <DetailItem label="Paciente" value={transaction.patient_name} />
+            <DetailItem label="CPF" value={transaction.patient_cpf ?? "-"} />
+            <DetailItem label="Serviço" value={transaction.service_name ?? "-"} />
+            <DetailItem label="Valor" value={money(paidAmount)} />
+            <DetailItem label="Forma de pagamento" value={paymentMethodOptions.find(([value]) => value === paymentMethod)?.[1] ?? paymentMethod} />
+            <DetailItem label="Data do pagamento" value={formatDate(paidAt)} />
+            <DetailItem label="Responsável pela baixa" value="Financeiro" />
+            <DetailItem label="Observações" value={transaction.notes ?? "-"} />
+          </div>
+        </article>
+
+        <div className="receipt-screen-actions mt-4 flex flex-wrap justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onPrint}><Printer className="h-4 w-4" />Imprimir</Button>
+          <Button type="button" variant="outline" onClick={onPrint}><ReceiptText className="h-4 w-4" />PDF</Button>
+          <Button type="button" variant="outline" onClick={onShare}><Share2 className="h-4 w-4" />Compartilhar</Button>
+          <Button type="button" variant="outline" onClick={() => onCopy(thanksMessage)}><Copy className="h-4 w-4" />Copiar agradecimento</Button>
+          <Button type="button" variant="outline" onClick={() => onCopy(receiptMessage)}><Copy className="h-4 w-4" />Copiar mensagem</Button>
+          <Button type="button" onClick={() => onOpenWhatsapp(transaction.patient_phone, receiptMessage)}><Send className="h-4 w-4" />Enviar recibo</Button>
+          <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
+        </div>
+        <style jsx global>{`
+          @media print {
+            @page { size: A4 portrait; margin: 10mm; }
+            body.mwf-receipt-printing * { visibility: hidden !important; }
+            body.mwf-receipt-printing .receipt-print-root,
+            body.mwf-receipt-printing .receipt-print-root * { visibility: visible !important; }
+            body.mwf-receipt-printing .receipt-screen-actions { display: none !important; }
+            body.mwf-receipt-printing .receipt-print-root { display: block !important; position: absolute !important; inset: 0 auto auto 0 !important; width: 100% !important; max-height: none !important; overflow: visible !important; background: #fff !important; color: #111827 !important; box-shadow: none !important; }
+            body.mwf-receipt-printing .receipt-document { border: 1px solid #111827 !important; }
+          }
+        `}</style>
+      </Card>
+    </div>
+  );
+}function SettlementModal({
   item,
   amount,
   paymentMethod,
@@ -1665,7 +2040,4 @@ function IconButton({
     </button>
   );
 }
-
-
-
 
