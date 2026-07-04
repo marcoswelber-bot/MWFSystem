@@ -69,6 +69,16 @@ export type AppointmentFormInput = {
   original_appointment_id?: string;
 };
 
+export type AppointmentBillingStatus = "pago" | "em_aberto" | "parcial" | "cortesia";
+
+export type FinalizeAppointmentBillingInput = {
+  appointment_id: string;
+  payment_method?: "pix" | "dinheiro" | "cartao" | "boleto" | "parcelado" | "transferencia" | "outro";
+  financial_status: AppointmentBillingStatus;
+  paid_amount?: string;
+  notes?: string;
+};
+
 export type ScheduleBlockFormInput = {
   clinic_id?: string;
   employee_id?: string;
@@ -725,6 +735,98 @@ export async function updateAppointment(
 
     revalidatePath("/agenda");
     return { ok: true, message: "Agendamento atualizado com sucesso." };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
+}
+
+function cleanMoney(value?: string) {
+  const parsed = Number.parseFloat(value?.replace(",", ".") ?? "0");
+  return Number.isFinite(parsed) ? Math.max(parsed, 0) : 0;
+}
+
+export async function finalizeAppointmentBilling(
+  input: FinalizeAppointmentBillingInput
+): Promise<AgendaActionResult> {
+  try {
+    await assertCan("agenda", "edit");
+    assertRequired(input.appointment_id, "Atendimento obrigatório.");
+    const supabase = await createClient();
+    const { data: appointment, error: appointmentError } = await supabase
+      .from("appointments")
+      .select("*")
+      .eq("id", input.appointment_id)
+      .single();
+
+    if (appointmentError) {
+      return { ok: false, message: getErrorMessage(appointmentError) };
+    }
+
+    await completeAppointmentSideEffects(appointment.id, appointment);
+
+    const { data: revenue, error: revenueError } = await supabase
+      .from("financial_transactions")
+      .select("*")
+      .eq("future_agenda_source_id", appointment.id)
+      .eq("transaction_type", "receita")
+      .maybeSingle();
+
+    if (revenueError) {
+      return { ok: false, message: getErrorMessage(revenueError) };
+    }
+
+    if (input.financial_status === "cortesia") {
+      if (revenue?.id) {
+        const { error } = await supabase
+          .from("financial_transactions")
+          .delete()
+          .eq("id", revenue.id);
+        if (error) return { ok: false, message: getErrorMessage(error) };
+      }
+    } else if (revenue?.id) {
+      const amount = Number(revenue.amount ?? 0);
+      const paidAmount =
+        input.financial_status === "pago"
+          ? amount
+          : input.financial_status === "parcial"
+            ? Math.min(cleanMoney(input.paid_amount), amount)
+            : 0;
+
+      if (input.financial_status === "parcial" && paidAmount <= 0) {
+        return { ok: false, message: "Informe o valor pago para atendimento parcial." };
+      }
+
+      const { error } = await supabase
+        .from("financial_transactions")
+        .update({
+          status:
+            input.financial_status === "pago"
+              ? "pago"
+              : input.financial_status === "parcial"
+                ? "parcial"
+                : "pendente",
+          paid_amount: paidAmount,
+          payment_method: input.payment_method ?? revenue.payment_method ?? "pix",
+          payment_date: paidAmount > 0 ? new Date().toISOString().slice(0, 10) : null,
+          notes: [revenue.notes, input.notes].filter(Boolean).join(" ") || revenue.notes
+        })
+        .eq("id", revenue.id);
+
+      if (error) return { ok: false, message: getErrorMessage(error) };
+    }
+
+    if (input.notes?.trim()) {
+      await supabase
+        .from("appointments")
+        .update({ notes: [appointment.notes, input.notes.trim()].filter(Boolean).join(" ") })
+        .eq("id", appointment.id);
+    }
+
+    revalidatePath("/agenda");
+    revalidatePath("/financeiro");
+    revalidatePath("/dashboard");
+    revalidatePath("/relatorios");
+    return { ok: true, message: "Atendimento finalizado com sucesso." };
   } catch (error) {
     return { ok: false, message: getErrorMessage(error) };
   }

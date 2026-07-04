@@ -11,7 +11,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
-  Edit3,
   ListChecks,
   LockKeyhole,
   MoreHorizontal,
@@ -33,9 +32,11 @@ import {
   createScheduleBlock,
   deleteAppointment,
   deleteScheduleBlock,
+  finalizeAppointmentBilling,
   setAppointmentStatus,
   updateAppointment,
   type AgendaActionResult,
+  type AppointmentBillingStatus,
   type AppointmentFormInput,
   type AppointmentOrigin,
   type AppointmentStatus,
@@ -64,6 +65,8 @@ type Employee = Database["public"]["Tables"]["employees"]["Row"];
 type Service = Database["public"]["Tables"]["services"]["Row"];
 type PatientPackage = Database["public"]["Tables"]["patient_packages"]["Row"];
 type ViewMode = "day" | "week" | "month";
+type PaymentMethod = "pix" | "dinheiro" | "cartao" | "boleto" | "parcelado" | "transferencia" | "outro";
+type FinalizeBillingForm = { financial_status: AppointmentBillingStatus; payment_method: PaymentMethod; paid_amount: string; notes: string };
 type VisualStatus =
   | AppointmentStatus
   | "em_andamento"
@@ -86,6 +89,28 @@ type AgendaManagerProps = {
 const calendarStartHour = 7;
 const calendarEndHour = 21;
 const hourHeight = 92;
+
+const currencyFormatter = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL"
+});
+
+const paymentMethodOptions: Array<[PaymentMethod, string]> = [
+  ["pix", "Pix"],
+  ["dinheiro", "Dinheiro"],
+  ["cartao", "Cartão"],
+  ["boleto", "Boleto"],
+  ["parcelado", "Parcelado"],
+  ["transferencia", "Transferência"],
+  ["outro", "Outro"]
+];
+
+const billingStatusOptions: Array<[AppointmentBillingStatus, string]> = [
+  ["pago", "Pago"],
+  ["em_aberto", "Em aberto"],
+  ["parcial", "Parcial"],
+  ["cortesia", "Cortesia"]
+];
 
 const statusOptions: Array<[AppointmentStatus, string]> = [
   ["agendado", "Agendada"],
@@ -652,6 +677,13 @@ export function AgendaManager({
   );
   const [appointmentFormMessage, setAppointmentFormMessage] =
     React.useState<AgendaActionResult | null>(null);
+  const [finalizingAppointment, setFinalizingAppointment] = React.useState<Appointment | null>(null);
+  const [finalizeForm, setFinalizeForm] = React.useState<FinalizeBillingForm>({
+    financial_status: "em_aberto",
+    payment_method: "pix",
+    paid_amount: "0",
+    notes: ""
+  });
 
   const canCreate = permissions?.create ?? true;
   const canEdit = permissions?.edit ?? true;
@@ -913,6 +945,48 @@ export function AgendaManager({
     });
   }
 
+  function getServiceValue(serviceId: string) {
+    const service = services.find((item) => item.id === serviceId) as (Service & { price?: number | null; promotional_price?: number | null }) | undefined;
+    return Number(service?.default_price ?? service?.price ?? service?.promotional_price ?? 0);
+  }
+
+  function openFinalizeAppointment(appointment: Appointment) {
+    const value = getServiceValue(appointment.service_id);
+    setFinalizingAppointment(appointment);
+    setFinalizeForm({
+      financial_status: "em_aberto",
+      payment_method: "pix",
+      paid_amount: value > 0 ? String(value) : "0",
+      notes: ""
+    });
+    setMessage(null);
+  }
+
+  function closeFinalizeAppointment() {
+    setFinalizingAppointment(null);
+    setFinalizeForm({ financial_status: "em_aberto", payment_method: "pix", paid_amount: "0", notes: "" });
+  }
+
+  function submitFinalizeAppointment(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!finalizingAppointment) return;
+
+    startTransition(async () => {
+      const result = await finalizeAppointmentBilling({
+        appointment_id: finalizingAppointment.id,
+        financial_status: finalizeForm.financial_status,
+        payment_method: finalizeForm.payment_method,
+        paid_amount: finalizeForm.paid_amount,
+        notes: finalizeForm.notes
+      });
+      setMessage(getAppointmentMessage(result, "status"));
+      if (result.ok) {
+        closeFinalizeAppointment();
+        refresh();
+      }
+    });
+  }
+
   function changeStatus(appointment: Appointment, status: AppointmentStatus) {
     startTransition(async () => {
       const result = await setAppointmentStatus(appointment.id, status);
@@ -1148,6 +1222,7 @@ export function AgendaManager({
                     onCreateAppointment={openCreateAppointment}
                     onCreateBlock={openBlockForm}
                     onStatus={changeStatus}
+                    onFinalize={openFinalizeAppointment}
                     onEdit={openEditAppointment}
                     onReschedule={openRescheduleAppointment}
                     onReplacement={openReplacementAppointment}
@@ -1193,6 +1268,18 @@ export function AgendaManager({
           isPending={isPending}
           onSubmit={submitAppointment}
           onClose={closeAppointmentForm}
+        />
+      ) : null}
+
+      {finalizingAppointment ? (
+        <FinalizeAppointmentModal
+          appointment={finalizingAppointment}
+          serviceValue={getServiceValue(finalizingAppointment.service_id)}
+          form={finalizeForm}
+          setForm={setFinalizeForm}
+          isPending={isPending}
+          onSubmit={submitFinalizeAppointment}
+          onClose={closeFinalizeAppointment}
         />
       ) : null}
 
@@ -1276,6 +1363,7 @@ function DayTimeline({
   onCreateAppointment,
   onCreateBlock,
   onStatus,
+  onFinalize,
   onEdit,
   onReschedule,
   onReplacement,
@@ -1292,6 +1380,7 @@ function DayTimeline({
   onCreateAppointment: (date?: string, employeeId?: string) => void;
   onCreateBlock: (date?: string, employeeId?: string) => void;
   onStatus: (appointment: Appointment, status: AppointmentStatus) => void;
+  onFinalize: (appointment: Appointment) => void;
   onEdit: (appointment: Appointment) => void;
   onReschedule: (appointment: Appointment) => void;
   onReplacement: (appointment: Appointment) => void;
@@ -1422,6 +1511,7 @@ function DayTimeline({
                       canDelete={canDelete}
                       isPending={isPending}
                       onStatus={(status) => onStatus(appointment, status)}
+                      onFinalize={() => onFinalize(appointment)}
                       onEdit={() => onEdit(appointment)}
                       onReschedule={() => onReschedule(appointment)}
                       onReplacement={() => onReplacement(appointment)}
@@ -1459,6 +1549,7 @@ function TimelineAppointment({
   canDelete,
   isPending,
   onStatus,
+  onFinalize,
   onEdit,
   onReschedule,
   onReplacement,
@@ -1470,6 +1561,7 @@ function TimelineAppointment({
   canDelete: boolean;
   isPending: boolean;
   onStatus: (status: AppointmentStatus) => void;
+  onFinalize: () => void;
   onEdit: () => void;
   onReschedule: () => void;
   onReplacement: () => void;
@@ -1552,13 +1644,13 @@ function TimelineAppointment({
               icon={Check}
             />
             <IconAction
-              label="Realizado"
+              label="Finalizar atendimento"
               disabled={isPending}
-              onClick={() => onStatus("realizado")}
+              onClick={onFinalize}
               icon={UserCheck}
             />
             <IconAction
-              label="Faltou"
+              label="Registrar falta"
               disabled={isPending}
               onClick={() => onStatus("faltou")}
               icon={Ban}
@@ -1572,7 +1664,13 @@ function TimelineAppointment({
                 icon={CalendarPlus}
               />
             ) : null}
-            <IconAction label="Editar" onClick={onEdit} icon={Edit3} />
+            <IconAction label="Ver detalhes" onClick={onEdit} icon={MoreHorizontal} />
+            <IconAction
+              label="Cancelar"
+              disabled={isPending}
+              onClick={() => onStatus("cancelado")}
+              icon={X}
+            />
           </>
         ) : null}
         {canDelete ? (
@@ -1955,6 +2053,90 @@ function IconAction({
       <Icon className="h-3.5 w-3.5" />
       {label}
     </button>
+  );
+}
+
+function FinalizeAppointmentModal({
+  appointment,
+  serviceValue,
+  form,
+  setForm,
+  isPending,
+  onSubmit,
+  onClose
+}: {
+  appointment: Appointment;
+  serviceValue: number;
+  form: FinalizeBillingForm;
+  setForm: React.Dispatch<React.SetStateAction<FinalizeBillingForm>>;
+  isPending: boolean;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  onClose: () => void;
+}) {
+  const isPartial = form.financial_status === "parcial";
+
+  return (
+    <ModalShell title="Finalizar atendimento" icon={UserCheck} onClose={onClose}>
+      <form onSubmit={onSubmit} className="grid gap-4">
+        <div className="grid gap-3 rounded-md border bg-muted/30 p-3 text-sm md:grid-cols-2">
+          <PackageDetail label="Paciente" value={appointment.patient_names.join(", ") || appointment.patient_name || "-"} />
+          <PackageDetail label="Profissional" value={appointment.employee_name ?? "-"} />
+          <PackageDetail label="Serviço" value={appointment.service_name ?? "-"} />
+          <PackageDetail label="Valor" value={currencyFormatter.format(serviceValue)} />
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <SelectField
+            label="Forma de pagamento"
+            value={form.payment_method}
+            onChange={(value) => setForm((current) => ({ ...current, payment_method: value as PaymentMethod }))}
+            options={paymentMethodOptions}
+          />
+          <SelectField
+            label="Status financeiro"
+            value={form.financial_status}
+            onChange={(value) =>
+              setForm((current) => ({
+                ...current,
+                financial_status: value as AppointmentBillingStatus,
+                paid_amount: value === "parcial" ? current.paid_amount : value === "pago" ? String(serviceValue) : "0"
+              }))
+            }
+            options={billingStatusOptions}
+          />
+          {isPartial ? (
+            <TextField
+              label="Valor pago"
+              type="number"
+              value={form.paid_amount}
+              onChange={(value) => setForm((current) => ({ ...current, paid_amount: value }))}
+              minValue="0"
+              required
+            />
+          ) : null}
+          <div className="md:col-span-2">
+            <TextAreaField
+              label="Observação"
+              value={form.notes}
+              onChange={(value) => setForm((current) => ({ ...current, notes: value }))}
+            />
+          </div>
+        </div>
+
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
+          Ao confirmar, o atendimento será marcado como realizado e o financeiro será atualizado conforme o status escolhido.
+        </div>
+
+        <div className="flex justify-end gap-2 border-t pt-3">
+          <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={isPending}>
+            Finalizar atendimento
+          </Button>
+        </div>
+      </form>
+    </ModalShell>
   );
 }
 

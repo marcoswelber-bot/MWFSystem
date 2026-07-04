@@ -299,32 +299,29 @@ function normalizePhoneForWhatsApp(value?: string | null) {
 }
 
 function debitLine(item: FinancialTransaction) {
-  const description = item.description ?? item.service_name ?? item.category ?? "Lançamento financeiro";
-  return `- ${description} | vencimento ${formatDate(item.due_date)} | ${money(getOpenAmount(item))}`;
+  const service = item.service_name ?? item.description ?? item.category ?? "Atendimento";
+  const appointmentDate = item.appointment_date ?? item.due_date;
+  return `- Atendimento em ${formatDate(appointmentDate)}, serviço ${service} | vencimento ${formatDate(item.due_date)} | valor em aberto ${money(getOpenAmount(item))}`;
 }
 
 function buildChargeMessage({ patientName, clinicName, debts, pixKey }: { patientName: string; clinicName: string; debts: FinancialTransaction[]; pixKey: string }) {
   const total = debts.reduce((sum, item) => sum + getOpenAmount(item), 0);
   return `Olá, ${patientName}!
 
-Identificamos que existem valores pendentes referentes aos atendimentos realizados na ${clinicName}.
+Consta em nosso sistema valor em aberto referente aos atendimentos abaixo, realizados na ${clinicName}.
 
 Débitos:
 
 ${debts.map(debitLine).join("\n")}
 
-Valor total: ${money(total)}
+Valor em aberto: ${money(total)}
 
-Caso já tenha realizado o pagamento, por favor desconsidere esta mensagem.
+Caso já tenha realizado o pagamento, por favor envie o comprovante por este WhatsApp para que possamos identificar e dar baixa.
 
-Caso ainda não tenha efetuado, seguem abaixo os dados para pagamento.
+Após a confirmação, enviaremos o recibo.
 
 PIX:
 ${pixKey || "Chave PIX não cadastrada"}
-
-Após realizar o pagamento, por gentileza envie o comprovante por este WhatsApp para que possamos identificar o pagamento e efetuar a baixa em seu cadastro.
-
-Ficamos à disposição.
 
 Atenciosamente,
 ${clinicName}`;
@@ -588,7 +585,7 @@ export function FinanceManager({
   const outflowRows = filteredTransactions.filter(
     (item) => item.transaction_type === "despesa"
   );
-  const patientRows = incomeRows;
+  const patientRows = incomeRows.filter((item) => item.derived_status !== "cancelado" && getOpenAmount(item) > 0);
   const commissionRows = outflowRows.filter(isCommissionTransaction);
   const payrollRows = outflowRows.filter(isPayrollTransaction);
   const balanceRows = buildBalanceRows(filteredTransactions);
@@ -1167,12 +1164,14 @@ function PatientPaymentsTable({
   onCharge
 }: TableActionProps) {
   return (
-    <table className="w-full min-w-[1080px] text-left text-xs">
+    <table className="w-full min-w-[1240px] text-left text-xs">
       <thead className="bg-muted/60 uppercase text-muted-foreground">
         <tr>
           <th className="px-3 py-2">Paciente</th>
           <th className="px-3 py-2">Clínica</th>
+          <th className="px-3 py-2">Data do atendimento</th>
           <th className="px-3 py-2">Serviço</th>
+          <th className="px-3 py-2">Profissional</th>
           <th className="px-3 py-2 text-right">Valor total</th>
           <th className="px-3 py-2 text-right">Valor pago</th>
           <th className="px-3 py-2 text-right">Valor em aberto</th>
@@ -1186,15 +1185,17 @@ function PatientPaymentsTable({
           <tr key={item.id} className="border-t hover:bg-muted/30">
             <TruncatedCell strong value={item.patient_name} />
             <TruncatedCell value={item.clinic_name} />
+            <td className="whitespace-nowrap px-3 py-2">{formatDate(item.appointment_date ?? item.due_date)}</td>
             <TruncatedCell value={item.service_name} />
+            <TruncatedCell value={item.employee_name} />
             <td className="whitespace-nowrap px-3 py-2 text-right font-semibold">{money(Number(item.amount ?? 0))}</td>
             <td className="whitespace-nowrap px-3 py-2 text-right">{money(getPaidAmount(item))}</td>
             <td className="whitespace-nowrap px-3 py-2 text-right font-semibold">{money(getOpenAmount(item))}</td>
-            <td className="whitespace-nowrap px-3 py-2">{item.due_date}</td>
+            <td className="whitespace-nowrap px-3 py-2">{formatDate(item.due_date)}</td>
             <StatusCell status={item.derived_status} compact />
             <FinanceActionCell item={item} primaryLabel="Dar baixa" canEdit={canEdit} canDelete={canDelete} isPending={isPending} onDetails={onDetails} onEdit={onEdit} onPaid={onPaid} onCancel={onCancel} onDelete={onDelete} onCharge={onCharge} />
           </tr>
-        )) : <EmptyRow colSpan={9} />}
+        )) : <EmptyRow colSpan={11} />}
       </tbody>
     </table>
   );
