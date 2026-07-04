@@ -1,9 +1,11 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import type { Route } from "next";
 import type { Database } from "@/types/database";
 import type { PermissionSet } from "@/lib/permission-modules";
+import { PatientIntegratedSheet } from "@/components/patients/patient-integrated-sheet";
 import {
   activatePatient,
   createPatient,
@@ -16,11 +18,23 @@ import {
 
 type Patient = Database["public"]["Tables"]["patients"]["Row"];
 type Clinic = Database["public"]["Tables"]["clinics"]["Row"];
+type Appointment = Database["public"]["Tables"]["appointments"]["Row"];
+type FinancialTransaction = Database["public"]["Tables"]["financial_transactions"]["Row"];
+type PatientPackage = Database["public"]["Tables"]["patient_packages"]["Row"];
+type MedicalRecord = Database["public"]["Tables"]["medical_records"]["Row"];
+type Employee = Database["public"]["Tables"]["employees"]["Row"];
+type Service = Database["public"]["Tables"]["services"]["Row"];
 type StatusFilter = "all" | "active" | "inactive";
 
 type PatientsManagerProps = {
   patients: Patient[];
   clinics: Clinic[];
+  appointments: Appointment[];
+  transactions: FinancialTransaction[];
+  patientPackages: PatientPackage[];
+  medicalRecords: MedicalRecord[];
+  employees: Employee[];
+  services: Service[];
   isAdmMaster: boolean;
   currentClinicId: string | null;
   initialSearch: string;
@@ -63,6 +77,12 @@ function patientToForm(patient: Patient): PatientFormInput {
 export function PatientsManager({
   patients,
   clinics,
+  appointments,
+  transactions,
+  patientPackages,
+  medicalRecords,
+  employees,
+  services,
   isAdmMaster,
   currentClinicId,
   initialSearch,
@@ -76,6 +96,7 @@ export function PatientsManager({
   const [form, setForm] = React.useState<PatientFormInput>(emptyForm);
   const [search, setSearch] = React.useState(initialSearch);
   const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("all");
+  const [selectedPatientId, setSelectedPatientId] = React.useState<string | null>(null);
   const [message, setMessage] = React.useState<PatientActionResult | null>(
     loadError ? { ok: false, message: loadError } : null
   );
@@ -83,6 +104,9 @@ export function PatientsManager({
   const canEdit = permissions?.edit ?? true;
   const canDelete = permissions?.delete ?? true;
   const canToggle = permissions?.toggle ?? true;
+  const selectedPatient = selectedPatientId
+    ? patients.find((patient) => patient.id === selectedPatientId) ?? null
+    : null;
 
   const activeCount = patients.filter((patient) => patient.status === "active").length;
   const inactiveCount = patients.filter(
@@ -317,6 +341,22 @@ export function PatientsManager({
         </div>
       </section>
 
+      {selectedPatient ? (
+        <PatientIntegratedSheet
+          patient={selectedPatient}
+          clinics={clinics}
+          appointments={appointments}
+          transactions={transactions}
+          patientPackages={patientPackages}
+          medicalRecords={medicalRecords}
+          employees={employees}
+          services={services}
+          onClose={() => setSelectedPatientId(null)}
+          onEdit={openEditForm}
+          onNavigate={(href) => router.push(href as Route)}
+        />
+      ) : null}
+
       {formOpen ? (
         <section
           style={{
@@ -529,6 +569,18 @@ export function PatientsManager({
                     }}
                   >
                     <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "flex-end" }}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPatientId(patient.id)}
+                        style={{
+                          ...buttonStyle,
+                          background: "#1D9E75",
+                          borderColor: "#1D9E75",
+                          color: "white"
+                        }}
+                      >
+                        Abrir ficha
+                      </button>
                       {canEdit ? (
                         <button
                           type="button"
