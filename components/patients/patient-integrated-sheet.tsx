@@ -533,7 +533,7 @@ export function PatientIntegratedSheet({
           <div style={{ display: "flex", justifyContent: "space-between", gap: "8px" }}><button type="button" onClick={() => { setSelectedRecord(null); setEditingRecord(true); setRecordForm({ patient_id: patient.id, employee_id: "", title: "", complaint: "", history: "", conduct: "", evolution: "", notes: "", status: "active" }); }} style={primaryButtonStyle}>Novo Prontuário</button><button type="button" onClick={() => onNavigate(`/prontuarios?patientId=${patient.id}`)} style={buttonStyle}>Abrir módulo</button></div>
           <DataTable
             empty="Nenhum registro de prontuario encontrado para este paciente."
-            headers={["Data", "Titulo", "Profissional", "Evolucao", "Status"]}
+            headers={["Data", "Titulo", "Profissional", "Evolucao", "Status", "Ações"]}
             rows={records.map((record) => [
               formatDateTime(record.created_at),
               record.title,
