@@ -229,6 +229,8 @@ export function PatientIntegratedSheet({
   const [selectedRecord, setSelectedRecord] = React.useState<MedicalRecord | null>(null);
   const [editingRecord, setEditingRecord] = React.useState(false);
   const [recordForm, setRecordForm] = React.useState<MedicalRecordFormInput | null>(null);
+  const [recordMessage, setRecordMessage] = React.useState<string | null>(null);
+  const [recordSaving, setRecordSaving] = React.useState(false);
 
   const clinicById = React.useMemo(
     () => new Map(clinics.map((clinic) => [clinic.id, clinic])),
@@ -311,6 +313,14 @@ export function PatientIntegratedSheet({
 
   const billingMessage = `Ola, ${patient.full_name}!\n\nIdentificamos valores pendentes no seu cadastro da ${clinic?.name ?? "clinica"}.\n\nValor em aberto: ${money(totalOpen)}\n\nCaso ja tenha realizado o pagamento, por favor envie o comprovante por este WhatsApp para que possamos identificar e dar baixa.\n\nAtenciosamente,\n${clinic?.name ?? "Equipe"}`;
   const reminderMessage = `Ola, ${patient.full_name}!\n\nLembramos do seu proximo atendimento em ${nextAppointment ? `${formatDate(nextAppointment.appointment_date)} as ${nextAppointment.start_time}` : "data a confirmar"}.\n\nAtenciosamente,\n${clinic?.name ?? "Equipe"}`;
+
+  async function saveRecord() {
+    if (!recordForm?.title?.trim()) { setRecordMessage("Título do prontuário é obrigatório."); return; }
+    setRecordSaving(true); setRecordMessage(null);
+    const result = selectedRecord ? await updateMedicalRecord(selectedRecord.id, recordForm) : await createMedicalRecord({ ...recordForm, patient_id: patient.id });
+    setRecordSaving(false); setRecordMessage(result.message);
+    if (result.ok) { setEditingRecord(false); setSelectedRecord(null); }
+  }
 
   const wrapperStyle: React.CSSProperties = {
     border: "1px solid hsl(var(--border))",
@@ -544,6 +554,12 @@ export function PatientIntegratedSheet({
               <p><b>Conduta:</b> {selectedRecord.conduct ?? "-"}</p>
               <p><b>Observações:</b> {selectedRecord.notes ?? "-"}</p>
               <button type="button" onClick={() => setEditingRecord(true)} style={buttonStyle}>Editar</button>
+              {editingRecord ? <><textarea value={recordForm?.title ?? ""} onChange={(e) => setRecordForm((f) => f ? { ...f, title: e.target.value } : f)} placeholder="Título" />
+              <textarea value={recordForm?.evolution ?? ""} onChange={(e) => setRecordForm((f) => f ? { ...f, evolution: e.target.value } : f)} placeholder="Evolução" />
+              <textarea value={recordForm?.conduct ?? ""} onChange={(e) => setRecordForm((f) => f ? { ...f, conduct: e.target.value } : f)} placeholder="Conduta" />
+              <textarea value={recordForm?.notes ?? ""} onChange={(e) => setRecordForm((f) => f ? { ...f, notes: e.target.value } : f)} placeholder="Observações" />
+              <button type="button" onClick={saveRecord} disabled={recordSaving} style={primaryButtonStyle}>{recordSaving ? "Salvando..." : "Salvar"}</button>
+              {recordMessage ? <p>{recordMessage}</p> : null}</> : null}
             </div>
           ) : null}
         </div>
@@ -711,6 +727,7 @@ function MessageCard({
     </article>
   );
 }
+
 
 
 
