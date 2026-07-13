@@ -257,3 +257,4 @@ export async function getAvailableClinicsForProfile(profile: AccessProfile | nul
 
   return data ?? [];
 }
+

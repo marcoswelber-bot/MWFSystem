@@ -171,10 +171,6 @@ export async function createPatient(
     if (!clinicScope.isAdmMaster && clinicScope.clinicId) {
       payload.clinic_id = clinicScope.clinicId;
     }
-    payload.auth_user_id = await syncPatientAuthUser(
-      payload,
-      input.auth_password
-    );
     const supabaseAdmin = createAdminClient();
     const { error } = await supabaseAdmin.from("patients").insert(payload);
 
@@ -206,7 +202,7 @@ export async function updatePatient(
     }
     const { data: currentPatient, error: loadError } = await supabase
       .from("patients")
-      .select("login_email,auth_user_id")
+      .select("login_email")
       .eq("id", id)
       .maybeSingle();
 
@@ -216,13 +212,6 @@ export async function updatePatient(
     if (!currentPatient) {
       throw new Error("Paciente nao encontrado na clinica autorizada.");
     }
-
-    payload.auth_user_id =
-      (await syncPatientAuthUser(
-        payload,
-        input.auth_password,
-        currentPatient?.login_email ?? null
-      )) ?? currentPatient?.auth_user_id ?? null;
     const supabaseAdmin = createAdminClient();
     const { error } = await supabaseAdmin
       .from("patients")
@@ -296,3 +285,4 @@ export async function deletePatient(id: string): Promise<PatientActionResult> {
     return { ok: false, message: getErrorMessage(error) };
   }
 }
+

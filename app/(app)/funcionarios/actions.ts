@@ -289,10 +289,6 @@ export async function createEmployee(
     if (isAdmRole(payload.role)) {
       throw new Error("Use Permissoes de Usuarios para definir ADM Master.");
     }
-    payload.auth_user_id = await syncEmployeeAuthUser(
-      payload,
-      input.auth_password
-    );
     const supabaseAdmin = createAdminClient();
     const { error } = await supabaseAdmin.from("employees").insert(payload);
 
@@ -327,7 +323,7 @@ export async function updateEmployee(
     }
     const { data: currentEmployee, error: loadError } = await supabase
       .from("employees")
-      .select("login_email,auth_user_id")
+      .select("login_email")
       .eq("id", id)
       .maybeSingle();
 
@@ -337,13 +333,6 @@ export async function updateEmployee(
     if (!currentEmployee) {
       throw new Error("Funcionario nao encontrado na clinica autorizada.");
     }
-
-    payload.auth_user_id =
-      (await syncEmployeeAuthUser(
-        payload,
-        input.auth_password,
-        currentEmployee?.login_email ?? null
-      )) ?? currentEmployee?.auth_user_id ?? null;
     const supabaseAdmin = createAdminClient();
     const { error } = await supabaseAdmin
       .from("employees")
@@ -564,3 +553,4 @@ export async function deleteProfessionalCommission(
     return { ok: false, message: getErrorMessage(error) };
   }
 }
+
