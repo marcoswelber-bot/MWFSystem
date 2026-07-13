@@ -246,3 +246,46 @@
     max-width: none !important;
   }
 }
+
+/* Premium MWFSystem visual language */
+:root {
+  --background: 220 43% 97%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --border: 214 32% 91%;
+  --primary: 221 83% 53%;
+  --ring: 199 89% 48%;
+  --radius: 1rem;
+  --sidebar-bg: 222 47% 11%;
+  --sidebar-fg: 214 32% 91%;
+  --sidebar-accent: 199 89% 62%;
+}
+.dark {
+  --background: 222 47% 5%;
+  --foreground: 210 40% 98%;
+  --card: 222 41% 9%;
+  --card-foreground: 210 40% 98%;
+  --popover: 222 41% 9%;
+  --border: 217 33% 18%;
+  --input: 217 33% 22%;
+  --primary: 199 89% 58%;
+  --secondary: 222 32% 14%;
+  --muted: 222 32% 14%;
+  --muted-foreground: 215 20% 65%;
+  --accent: 222 32% 16%;
+  --ring: 199 89% 58%;
+  --sidebar-bg: 222 47% 7%;
+}
+body { background: radial-gradient(circle at 80% -10%, hsl(252 80% 60% / .08), transparent 35%), hsl(var(--background)); }
+.app-sidebar { background: linear-gradient(180deg, hsl(var(--sidebar-bg)), hsl(230 45% 8%)); border-right: 1px solid hsl(215 25% 20% / .7); }
+.app-sidebar a { border-radius: 12px; transition: all 150ms ease; }
+.app-sidebar a:hover { background: linear-gradient(90deg, hsl(199 89% 58% / .18), hsl(252 83% 65% / .16)); transform: translateX(2px); }
+.app-sidebar a.bg-\[hsl\(var\(--sidebar-accent\)\)\]\/15 { background: linear-gradient(100deg, hsl(199 89% 58% / .28), hsl(252 83% 65% / .28)); box-shadow: 0 0 24px hsl(199 89% 58% / .12); }
+.app-topbar { border-color: hsl(var(--border)); box-shadow: 0 8px 30px hsl(222 47% 5% / .06); }
+.app-main > * { animation: mwf-fade .28s ease both; }
+button, a, select { transition: all 150ms ease; }
+button:not(:disabled):hover { transform: translateY(-1px); }
+input, textarea, select { border-radius: 12px !important; }
+table tbody tr { transition: background 150ms ease; }
+table tbody tr:hover { background: hsl(var(--primary) / .055); }
+@keyframes mwf-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
