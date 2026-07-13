@@ -73,18 +73,36 @@ export async function getAccessProfileByEmail(
     };
   }
 
-  const [{ data: employee }, { data: patient }] = await Promise.all([
-    supabase
+  const employeeByAuth = await supabase
+    .from("employees")
+    .select("*")
+    .eq("auth_user_id", user.id)
+    .maybeSingle();
+  let employee = employeeByAuth.data;
+
+  if (!employee && employeeByAuth.error?.code === "42703") {
+    const byLoginEmail = await supabase
       .from("employees")
       .select("*")
-      .eq("auth_user_id", user.id)
-      .maybeSingle(),
-    supabase
-      .from("patients")
-      .select("*")
-      .eq("auth_user_id", user.id)
-      .maybeSingle()
-  ]);
+      .eq("login_email", normalizedEmail)
+      .maybeSingle();
+    employee = byLoginEmail.data;
+
+    if (!employee) {
+      const byEmail = await supabase
+        .from("employees")
+        .select("*")
+        .eq("email", normalizedEmail)
+        .maybeSingle();
+      employee = byEmail.data;
+    }
+  }
+
+  const { data: patient } = await supabase
+    .from("patients")
+    .select("*")
+    .eq("auth_user_id", user.id)
+    .maybeSingle();
 
   if (
     employee?.status === "active" &&
