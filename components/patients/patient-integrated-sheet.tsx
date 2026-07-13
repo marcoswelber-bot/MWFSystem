@@ -446,6 +446,12 @@ export function PatientIntegratedSheet({
       ) : null}
 
       {activeTab === "agenda" ? (
+        <div style={{ display: "grid", gap: "12px" }}>
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button type="button" onClick={() => onNavigate(`/agenda?patientId=${patient.id}&new=1`)} style={primaryButtonStyle}>
+            Novo Agendamento
+          </button>
+        </div>
         <DataTable
           empty="Nenhum atendimento encontrado para este paciente."
           headers={["Data", "Horario", "Servico", "Profissional", "Tipo", "Status"]}
@@ -460,6 +466,7 @@ export function PatientIntegratedSheet({
           tableCellStyle={tableCellStyle}
           onRowClick={(rowIndex) => { const appointment = patientAppointments[rowIndex]; if (appointment) onNavigate(`/agenda?patientId=${patient.id}&appointmentId=${appointment.id}`); }}
         />
+        </div>
       ) : null}
 
       {activeTab === "financeiro" ? (
