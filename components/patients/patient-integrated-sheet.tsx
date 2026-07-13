@@ -1,7 +1,8 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import type { Database } from "@/types/database";
+import { createMedicalRecord, updateMedicalRecord, type MedicalRecordFormInput } from "@/app/(app)/prontuarios/actions";
 
 type Patient = Database["public"]["Tables"]["patients"]["Row"];
 type Clinic = Database["public"]["Tables"]["clinics"]["Row"];
@@ -225,6 +226,9 @@ export function PatientIntegratedSheet({
 }: PatientIntegratedSheetProps) {
   const [activeTab, setActiveTab] = React.useState<PatientTab>("resumo");
   const [timelineFilter, setTimelineFilter] = React.useState<TimelineFilter>("todos");
+  const [selectedRecord, setSelectedRecord] = React.useState<MedicalRecord | null>(null);
+  const [editingRecord, setEditingRecord] = React.useState(false);
+  const [recordForm, setRecordForm] = React.useState<MedicalRecordFormInput | null>(null);
 
   const clinicById = React.useMemo(
     () => new Map(clinics.map((clinic) => [clinic.id, clinic])),
@@ -516,7 +520,7 @@ export function PatientIntegratedSheet({
 
       {activeTab === "prontuario" ? (
         <div style={{ display: "grid", gap: "14px" }}>
-          <button type="button" onClick={() => onNavigate(`/prontuarios?patientId=${patient.id}`)} style={primaryButtonStyle}>Abrir Prontuarios</button>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "8px" }}><button type="button" onClick={() => { setSelectedRecord(null); setEditingRecord(true); setRecordForm({ patient_id: patient.id, employee_id: "", title: "", complaint: "", history: "", conduct: "", evolution: "", notes: "", status: "active" }); }} style={primaryButtonStyle}>Novo Prontuário</button><button type="button" onClick={() => onNavigate(`/prontuarios?patientId=${patient.id}`)} style={buttonStyle}>Abrir módulo</button></div>
           <DataTable
             empty="Nenhum registro de prontuario encontrado para este paciente."
             headers={["Data", "Titulo", "Profissional", "Evolucao", "Status"]}
@@ -528,8 +532,20 @@ export function PatientIntegratedSheet({
               statusLabel(record.status)
             ])}
             tableCellStyle={tableCellStyle}
-          onRowClick={() => onNavigate(`/prontuarios?patientId=${patient.id}`)} 
+            onRowClick={(rowIndex) => { const record = records[rowIndex]; if (record) { setSelectedRecord(record); setEditingRecord(false); setRecordForm({ patient_id: record.patient_id ?? "", employee_id: record.employee_id ?? "", title: record.title, complaint: record.complaint ?? "", history: record.history ?? "", conduct: record.conduct ?? "", evolution: record.evolution ?? "", notes: record.notes ?? "", status: record.status }); } }}
         />
+          {selectedRecord ? (
+            <div style={{ ...mutedCardStyle, display: "grid", gap: "8px" }}>
+              <strong>{editingRecord ? "Editar prontuário" : "Visualizar prontuário"}</strong>
+              <p><b>Título:</b> {selectedRecord.title}</p>
+              <p><b>Queixa:</b> {selectedRecord.complaint ?? "-"}</p>
+              <p><b>Histórico:</b> {selectedRecord.history ?? "-"}</p>
+              <p><b>Evolução:</b> {selectedRecord.evolution ?? "-"}</p>
+              <p><b>Conduta:</b> {selectedRecord.conduct ?? "-"}</p>
+              <p><b>Observações:</b> {selectedRecord.notes ?? "-"}</p>
+              <button type="button" onClick={() => setEditingRecord(true)} style={buttonStyle}>Editar</button>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -695,6 +711,8 @@ function MessageCard({
     </article>
   );
 }
+
+
 
 
 
