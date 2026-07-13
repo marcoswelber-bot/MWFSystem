@@ -7,6 +7,7 @@ import {
   type PermissionModuleKey,
   type PermissionSet
 } from "@/lib/permission-modules";
+import { getAccessProfileByEmail } from "@/lib/access-control";
 import type { Database } from "@/types/database";
 
 type Employee = Database["public"]["Tables"]["employees"]["Row"];
@@ -37,13 +38,8 @@ export async function getCurrentEmployee() {
     return { user, employee: null as Employee | null };
   }
 
-  const { data } = await supabase
-    .from("employees")
-    .select("*")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  return { user, employee: data };
+  const profile = await getAccessProfileByEmail(user.email ?? "");
+  return { user, employee: profile.employee };
 }
 
 export async function isCurrentUserAdmMaster() {
