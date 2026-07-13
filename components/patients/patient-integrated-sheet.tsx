@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import type { Database } from "@/types/database";
@@ -459,6 +459,7 @@ export function PatientIntegratedSheet({
             statusLabel(appointment.status)
           ])}
           tableCellStyle={tableCellStyle}
+          onRowClick={() => onNavigate("/agenda")} 
         />
       ) : null}
 
@@ -481,7 +482,8 @@ export function PatientIntegratedSheet({
               statusLabel(transaction.status)
             ])}
             tableCellStyle={tableCellStyle}
-          />
+          onRowClick={() => onNavigate("/agenda")} 
+        />
         </div>
       ) : null}
 
@@ -501,7 +503,8 @@ export function PatientIntegratedSheet({
               money(patientPackage.total_value)
             ])}
             tableCellStyle={tableCellStyle}
-          />
+          onRowClick={() => onNavigate("/agenda")} 
+        />
         </div>
       ) : null}
 
@@ -519,7 +522,8 @@ export function PatientIntegratedSheet({
               statusLabel(record.status)
             ])}
             tableCellStyle={tableCellStyle}
-          />
+          onRowClick={() => onNavigate("/agenda")} 
+        />
         </div>
       ) : null}
 
@@ -609,12 +613,14 @@ function DataTable({
   headers,
   rows,
   empty,
-  tableCellStyle
+  tableCellStyle,
+  onRowClick
 }: {
   headers: string[];
   rows: Array<Array<React.ReactNode>>;
   empty: string;
   tableCellStyle: React.CSSProperties;
+  onRowClick?: () => void;
 }) {
   if (rows.length === 0) {
     return <p style={{ color: "hsl(var(--muted-foreground))" }}>{empty}</p>;
@@ -634,7 +640,7 @@ function DataTable({
         </thead>
         <tbody>
           {rows.map((row, rowIndex) => (
-            <tr key={rowIndex}>
+            <tr key={rowIndex} onClick={onRowClick} style={onRowClick ? { cursor: "pointer" } : undefined}>
               {row.map((cell, cellIndex) => (
                 <td key={`${rowIndex}-${cellIndex}`} style={tableCellStyle}>
                   {cell}
@@ -683,3 +689,10 @@ function MessageCard({
     </article>
   );
 }
+
+
+
+
+
+
+
