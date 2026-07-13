@@ -53,7 +53,6 @@ const tabs: Array<{ id: PatientTab; label: string }> = [
   { id: "pacotes", label: "Pacotes" },
   { id: "prontuario", label: "Prontuario" },
   { id: "documentos", label: "Documentos" },
-  { id: "whatsapp", label: "WhatsApp" },
   { id: "timeline", label: "Linha do tempo" }
 ];
 
@@ -426,7 +425,7 @@ export function PatientIntegratedSheet({
             <p>Atendimentos registrados: {patientAppointments.length}</p>
             <p>Prontuarios: {records.length}</p>
             <p>Pacotes cadastrados: {packages.length}</p>
-            <button type="button" onClick={() => onNavigate("/agenda")} style={primaryButtonStyle}>
+            <button type="button" onClick={() => onNavigate(`/agenda?patientId=${patient.id}`)} style={primaryButtonStyle}>
               Abrir Agenda
             </button>
           </div>
@@ -435,7 +434,7 @@ export function PatientIntegratedSheet({
             <p>Em aberto: {money(totalOpen)}</p>
             <p>Pago: {money(totalPaid)}</p>
             <p>Debitos pendentes: {openTransactions.length}</p>
-            <button type="button" onClick={() => onNavigate("/financeiro/baixas")} style={primaryButtonStyle}>
+            <button type="button" onClick={() => onNavigate(`/financeiro/baixas?patientId=${patient.id}`)} style={primaryButtonStyle}>
               Abrir baixas
             </button>
           </div>
@@ -459,15 +458,15 @@ export function PatientIntegratedSheet({
             statusLabel(appointment.status)
           ])}
           tableCellStyle={tableCellStyle}
-          onRowClick={() => onNavigate("/agenda")} 
+          onRowClick={() => onNavigate(`/agenda?patientId=${patient.id}`)} 
         />
       ) : null}
 
       {activeTab === "financeiro" ? (
         <div style={{ display: "grid", gap: "14px" }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-            <button type="button" onClick={() => onNavigate("/financeiro")} style={buttonStyle}>Abrir Financeiro</button>
-            <button type="button" onClick={() => onNavigate("/financeiro/baixas")} style={primaryButtonStyle}>Dar baixa</button>
+            <button type="button" onClick={() => onNavigate(`/financeiro?patientId=${patient.id}`)} style={buttonStyle}>Abrir Financeiro</button>
+            <button type="button" onClick={() => onNavigate(`/financeiro/baixas?patientId=${patient.id}`)} style={primaryButtonStyle}>Dar baixa</button>
           </div>
           <DataTable
             empty="Nenhum lancamento financeiro encontrado para este paciente."
@@ -482,14 +481,14 @@ export function PatientIntegratedSheet({
               statusLabel(transaction.status)
             ])}
             tableCellStyle={tableCellStyle}
-          onRowClick={() => onNavigate("/agenda")} 
+          onRowClick={() => onNavigate(`/financeiro?patientId=${patient.id}`)} 
         />
         </div>
       ) : null}
 
       {activeTab === "pacotes" ? (
         <div style={{ display: "grid", gap: "14px" }}>
-          <button type="button" onClick={() => onNavigate("/pacotes")} style={primaryButtonStyle}>Abrir Pacotes</button>
+          <button type="button" onClick={() => onNavigate(`/pacotes?patientId=${patient.id}`)} style={primaryButtonStyle}>Abrir Pacotes</button>
           <DataTable
             empty="Nenhum pacote encontrado para este paciente."
             headers={["Servico", "Status", "Contratadas", "Realizadas", "Restantes", "Validade", "Valor"]}
@@ -503,14 +502,14 @@ export function PatientIntegratedSheet({
               money(patientPackage.total_value)
             ])}
             tableCellStyle={tableCellStyle}
-          onRowClick={() => onNavigate("/agenda")} 
+          onRowClick={() => onNavigate(`/pacotes?patientId=${patient.id}`)} 
         />
         </div>
       ) : null}
 
       {activeTab === "prontuario" ? (
         <div style={{ display: "grid", gap: "14px" }}>
-          <button type="button" onClick={() => onNavigate("/prontuarios")} style={primaryButtonStyle}>Abrir Prontuarios</button>
+          <button type="button" onClick={() => onNavigate(`/prontuarios?patientId=${patient.id}`)} style={primaryButtonStyle}>Abrir Prontuarios</button>
           <DataTable
             empty="Nenhum registro de prontuario encontrado para este paciente."
             headers={["Data", "Titulo", "Profissional", "Evolucao", "Status"]}
@@ -522,7 +521,7 @@ export function PatientIntegratedSheet({
               statusLabel(record.status)
             ])}
             tableCellStyle={tableCellStyle}
-          onRowClick={() => onNavigate("/agenda")} 
+          onRowClick={() => onNavigate(`/prontuarios?patientId=${patient.id}`)} 
         />
         </div>
       ) : null}
@@ -689,6 +688,7 @@ function MessageCard({
     </article>
   );
 }
+
 
 
 
