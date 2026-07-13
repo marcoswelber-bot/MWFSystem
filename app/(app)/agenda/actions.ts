@@ -6,6 +6,7 @@ import { completeAppointmentAsRealized } from "@/lib/financial-integration-engin
 import { assertCan } from "@/lib/permissions";
 import { getErrorMessage } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/types/database";
 
 type AppointmentInsert = Database["public"]["Tables"]["appointments"]["Insert"];
@@ -559,7 +560,7 @@ async function completeAppointmentSideEffects(
   appointmentId: string,
   appointment: Database["public"]["Tables"]["appointments"]["Row"]
 ) {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   let medicalRecordId = appointment.medical_record_id;
   const financeIntegrationStatus = appointment.is_billable
     ? "pending"

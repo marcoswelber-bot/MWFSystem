@@ -78,10 +78,6 @@ export function isAdmRole(role?: string | null) {
   return normalizedRole === "adm_master" || normalizedRole === "admin_master";
 }
 
-export function isAdmEmail(email?: string | null) {
-  return email?.trim().toLowerCase() === "admin@clinica.com";
-}
-
 export type PermissionMap = Record<PermissionModuleKey, PermissionSet>;
 
 export function getEmptyPermissionMap() {

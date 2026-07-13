@@ -51,7 +51,7 @@ const emptyForm: PatientFormInput = {
   email: "",
   portal_access: false,
   login_email: "",
-  temporary_password: "",
+  auth_password: "",
   address: "",
   notes: "",
   status: "active"
@@ -67,7 +67,7 @@ function patientToForm(patient: Patient): PatientFormInput {
     email: patient.email ?? "",
     portal_access: patient.portal_access,
     login_email: patient.login_email ?? "",
-    temporary_password: patient.temporary_password ?? "",
+    auth_password: "",
     address: patient.address ?? "",
     notes: patient.notes ?? "",
     status: patient.status
@@ -471,10 +471,11 @@ export function PatientsManager({
             <label>
               Senha provisoria
               <input
-                type="text"
-                value={form.temporary_password}
+                type="password"
+                autoComplete="new-password"
+                value={form.auth_password}
                 onChange={(event) =>
-                  updateForm("temporary_password", event.target.value)
+                  updateForm("auth_password", event.target.value)
                 }
                 style={inputStyle}
               />

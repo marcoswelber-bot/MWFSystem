@@ -2,7 +2,6 @@ import { createClient } from "@/lib/supabase/server";
 import {
   getEmptyPermissionMap,
   getFullPermissionMap,
-  isAdmEmail,
   isAdmRole,
   type PermissionAction,
   type PermissionModuleKey,
@@ -13,7 +12,7 @@ import type { Database } from "@/types/database";
 type Employee = Database["public"]["Tables"]["employees"]["Row"];
 type UserPermission = Database["public"]["Tables"]["user_permissions"]["Row"];
 
-export { getEmptyPermissionMap, getFullPermissionMap, isAdmEmail, isAdmRole };
+export { getEmptyPermissionMap, getFullPermissionMap, isAdmRole };
 export type { PermissionMap } from "@/lib/permission-modules";
 
 function rowToPermissionSet(row: UserPermission): PermissionSet {
@@ -34,32 +33,25 @@ export async function getCurrentEmployee() {
     data: { user }
   } = await supabase.auth.getUser();
 
-  if (!user?.email) {
+  if (!user) {
     return { user, employee: null as Employee | null };
   }
 
   const { data } = await supabase
     .from("employees")
     .select("*")
-    .or(`login_email.eq.${user.email.toLowerCase()},email.eq.${user.email}`)
+    .eq("auth_user_id", user.id)
     .maybeSingle();
 
   return { user, employee: data };
 }
 
 export async function isCurrentUserAdmMaster() {
-  const { user, employee } = await getCurrentEmployee();
-  const metadataRole =
-    typeof user?.app_metadata?.role === "string"
-      ? user.app_metadata.role
-      : typeof user?.user_metadata?.role === "string"
-        ? user.user_metadata.role
-        : null;
-
-  return (
-    isAdmEmail(user?.email) ||
-    isAdmRole(metadataRole) ||
-    isAdmRole(employee?.role)
+  const { employee } = await getCurrentEmployee();
+  return Boolean(
+    employee?.status === "active" &&
+      employee.system_access &&
+      isAdmRole(employee.role)
   );
 }
 

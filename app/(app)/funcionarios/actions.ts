@@ -23,7 +23,7 @@ export type EmployeeFormInput = {
   email?: string;
   system_access?: boolean;
   login_email?: string;
-  temporary_password?: string;
+  auth_password?: string;
   role?: string;
   commission_type?: string;
   commission_value?: string;
@@ -86,7 +86,6 @@ function getEmployeePayload(input: EmployeeFormInput): EmployeeInsert {
     email: cleanOptionalValue(input.email),
     system_access: Boolean(input.system_access),
     login_email: cleanOptionalValue(input.login_email),
-    temporary_password: cleanOptionalValue(input.temporary_password),
     role: cleanOptionalValue(input.role),
     commission_type: cleanOptionalValue(input.commission_type),
     commission_value: cleanOptionalNumber(input.commission_value),
@@ -140,10 +139,11 @@ async function findAuthUserByEmail(email: string) {
 
 async function syncEmployeeAuthUser(
   payload: EmployeeInsert | EmployeeUpdate,
+  authPassword?: string,
   previousLoginEmail?: string | null
 ) {
   if (!payload.system_access) {
-    return;
+    return null;
   }
 
   const loginEmail = cleanOptionalValue(payload.login_email ?? undefined);
@@ -153,7 +153,7 @@ async function syncEmployeeAuthUser(
   }
 
   const temporaryPassword = cleanOptionalValue(
-    payload.temporary_password ?? undefined
+    authPassword
   );
   const supabaseAdmin = createAdminClient();
   const existingUser =
@@ -162,7 +162,6 @@ async function syncEmployeeAuthUser(
 
   const userMetadata = {
     name: payload.name ?? "",
-    role: payload.role ?? "Funcionario",
     access_type: "employee"
   };
 
@@ -173,7 +172,7 @@ async function syncEmployeeAuthUser(
         email: loginEmail,
         ...(temporaryPassword ? { password: temporaryPassword } : {}),
         email_confirm: true,
-        app_metadata: { role: "employee" },
+        app_metadata: { access_type: "employee" },
         user_metadata: userMetadata
       }
     );
@@ -182,7 +181,7 @@ async function syncEmployeeAuthUser(
       throw error;
     }
 
-    return;
+    return existingUser.id;
   }
 
   if (!temporaryPassword) {
@@ -191,17 +190,19 @@ async function syncEmployeeAuthUser(
     );
   }
 
-  const { error } = await supabaseAdmin.auth.admin.createUser({
+  const { data, error } = await supabaseAdmin.auth.admin.createUser({
     email: loginEmail,
     password: temporaryPassword,
     email_confirm: true,
-    app_metadata: { role: "employee" },
+    app_metadata: { access_type: "employee" },
     user_metadata: userMetadata
   });
 
   if (error) {
     throw error;
   }
+
+  return data.user.id;
 }
 
 function getCommissionPayload(
@@ -277,7 +278,6 @@ export async function createEmployee(
 ): Promise<EmployeeActionResult> {
   try {
     await assertCan("funcionarios", "create");
-    const supabase = await createClient();
     const payload = getEmployeePayload(input);
     const clinicScope = await getCurrentClinicScope();
     if (!clinicScope.isAdmMaster && !clinicScope.clinicId) {
@@ -289,10 +289,12 @@ export async function createEmployee(
     if (isAdmRole(payload.role)) {
       throw new Error("Use Permissoes de Usuarios para definir ADM Master.");
     }
-    await syncEmployeeAuthUser(payload);
-    // Limpa a senha temporária antes de salvar no banco (segurança)
-    payload.temporary_password = null;
-    const { error } = await supabase.from("employees").insert(payload);
+    payload.auth_user_id = await syncEmployeeAuthUser(
+      payload,
+      input.auth_password
+    );
+    const supabaseAdmin = createAdminClient();
+    const { error } = await supabaseAdmin.from("employees").insert(payload);
 
     if (error) {
       return { ok: false, message: getErrorMessage(error) };
@@ -325,18 +327,25 @@ export async function updateEmployee(
     }
     const { data: currentEmployee, error: loadError } = await supabase
       .from("employees")
-      .select("login_email")
+      .select("login_email,auth_user_id")
       .eq("id", id)
       .maybeSingle();
 
     if (loadError) {
       return { ok: false, message: getErrorMessage(loadError) };
     }
+    if (!currentEmployee) {
+      throw new Error("Funcionario nao encontrado na clinica autorizada.");
+    }
 
-    await syncEmployeeAuthUser(payload, currentEmployee?.login_email ?? null);
-    // Limpa a senha temporária antes de salvar no banco (segurança)
-    payload.temporary_password = null;
-    const { error } = await supabase
+    payload.auth_user_id =
+      (await syncEmployeeAuthUser(
+        payload,
+        input.auth_password,
+        currentEmployee?.login_email ?? null
+      )) ?? currentEmployee?.auth_user_id ?? null;
+    const supabaseAdmin = createAdminClient();
+    const { error } = await supabaseAdmin
       .from("employees")
       .update(payload)
       .eq("id", id);

@@ -56,7 +56,7 @@ const emptyForm: EmployeeFormInput = {
   email: "",
   system_access: false,
   login_email: "",
-  temporary_password: "",
+  auth_password: "",
   role: "",
   commission_type: "percentual",
   commission_value: "",
@@ -86,7 +86,7 @@ function employeeToForm(employee: Employee): EmployeeFormInput {
     email: employee.email ?? "",
     system_access: employee.system_access,
     login_email: employee.login_email ?? "",
-    temporary_password: employee.temporary_password ?? "",
+    auth_password: "",
     role: employee.role ?? "",
     commission_type: employee.commission_type ?? "percentual",
     commission_value:
@@ -692,10 +692,11 @@ export function EmployeesManager({
             <label>
               Senha provisoria
               <input
-                type="text"
-                value={form.temporary_password}
+                type="password"
+                autoComplete="new-password"
+                value={form.auth_password}
                 onChange={(event) =>
-                  updateForm("temporary_password", event.target.value)
+                  updateForm("auth_password", event.target.value)
                 }
                 style={inputStyle}
               />

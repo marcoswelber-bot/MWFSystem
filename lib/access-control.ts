@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { isAdmEmail, isAdmRole } from "@/lib/permission-modules";
+import { isAdmRole } from "@/lib/permission-modules";
 import type { Database } from "@/types/database";
 import { cookies } from "next/headers";
 
@@ -43,10 +43,6 @@ export type AccessProfile =
       reason: string;
     };
 
-function sameEmail(value: string | null | undefined, email: string) {
-  return value?.trim().toLowerCase() === email.trim().toLowerCase();
-}
-
 export async function getAccessProfileByEmail(
   email: string
 ): Promise<AccessProfile> {
@@ -63,20 +59,38 @@ export async function getAccessProfileByEmail(
   }
 
   const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user || user.email?.trim().toLowerCase() !== normalizedEmail) {
+    return {
+      kind: "unknown",
+      employee: null,
+      patient: null,
+      email: normalizedEmail,
+      reason: "Usuario autenticado nao corresponde ao cadastro solicitado."
+    };
+  }
+
   const [{ data: employee }, { data: patient }] = await Promise.all([
     supabase
       .from("employees")
       .select("*")
-      .or(`login_email.eq.${normalizedEmail},email.eq.${normalizedEmail}`)
+      .eq("auth_user_id", user.id)
       .maybeSingle(),
     supabase
       .from("patients")
       .select("*")
-      .or(`login_email.eq.${normalizedEmail},email.eq.${normalizedEmail}`)
+      .eq("auth_user_id", user.id)
       .maybeSingle()
   ]);
 
-  if (isAdmEmail(normalizedEmail) || isAdmRole(employee?.role)) {
+  if (
+    employee?.status === "active" &&
+    employee.system_access &&
+    isAdmRole(employee.role)
+  ) {
     return {
       kind: "adm_master",
       employee: employee ?? null,
@@ -85,7 +99,7 @@ export async function getAccessProfileByEmail(
     };
   }
 
-  if (employee && (sameEmail(employee.login_email, normalizedEmail) || sameEmail(employee.email, normalizedEmail))) {
+  if (employee) {
     if (employee.status !== "active") {
       return {
         kind: "blocked",
@@ -114,7 +128,7 @@ export async function getAccessProfileByEmail(
     };
   }
 
-  if (patient && (sameEmail(patient.login_email, normalizedEmail) || sameEmail(patient.email, normalizedEmail))) {
+  if (patient) {
     if (patient.status !== "active") {
       return {
         kind: "blocked",

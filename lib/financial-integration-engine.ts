@@ -1,4 +1,7 @@
+import "server-only";
+
 import { getCurrentClinicScope } from "@/lib/access-control";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getErrorMessage } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database";
@@ -65,7 +68,7 @@ function getServiceAmount(
 }
 
 async function insertFinancialTransaction(payload: FinancialTransactionInsert) {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("financial_transactions")
     .insert(payload)
@@ -106,7 +109,7 @@ function validateRealizedAppointment(appointment: Appointment) {
 }
 
 async function rollbackIntegration(state: RollbackState) {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   if (state.financialTransactionIds.length > 0) {
     const { error } = await supabase
@@ -146,7 +149,7 @@ async function createSingleRevenue(appointment: Appointment, state: RollbackStat
     return appointment.is_billable ? "not_applicable" : "not_billable";
   }
 
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data: existingRevenue, error: existingRevenueError } = await supabase
     .from("financial_transactions")
     .select("id")
@@ -217,7 +220,7 @@ async function consumePackageSession(appointment: Appointment, state: RollbackSt
     return appointment.package_session_status ?? "not_applied";
   }
 
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data: patientPackage, error: packageError } = await supabase
     .from("patient_packages")
     .select("completed_sessions,remaining_sessions")
@@ -261,7 +264,7 @@ async function consumePackageSession(appointment: Appointment, state: RollbackSt
 }
 
 async function createCommissionPayable(appointment: Appointment, state: RollbackState) {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data: existingCommission, error: existingCommissionError } = await supabase
     .from("financial_transactions")
     .select("id")
@@ -402,7 +405,7 @@ async function updateAppointmentAsRealized(
   appointment: Appointment,
   integration: FinancialIntegrationResult
 ) {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const sessionsContracted = appointment.sessions_contracted ?? 1;
   const sessionsCompleted =
     appointment.sessions_completed > 0

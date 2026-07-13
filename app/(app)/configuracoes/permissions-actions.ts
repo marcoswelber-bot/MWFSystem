@@ -6,7 +6,6 @@ import { getErrorMessage, isMissingSupabaseTableError } from "@/lib/supabase/env
 import {
   permissionModules,
   getEmptyPermissionMap,
-  isAdmEmail,
   type PermissionModuleKey,
   type PermissionSet
 } from "@/lib/permission-modules";
@@ -83,15 +82,13 @@ async function getEmployeeAccess(employeeId: string) {
 }
 
 async function assertCanManageEmployeeAccess(employeeId: string) {
-  const { user, employee: currentEmployee } = await getCurrentEmployee();
+  const { employee: currentEmployee } = await getCurrentEmployee();
   const targetEmployee = await getEmployeeAccess(employeeId);
 
   if (
     targetEmployee &&
     (isAdmRole(targetEmployee.role) ||
-      isAdmEmail(targetEmployee.email) ||
-      targetEmployee.id === currentEmployee?.id ||
-      targetEmployee.email?.toLowerCase() === user?.email?.toLowerCase())
+      targetEmployee.id === currentEmployee?.id)
   ) {
     throw new Error("Nao e permitido editar ou remover permissoes do proprio ADM Master.");
   }
@@ -106,27 +103,22 @@ export async function updateEmployeeRole(
   try {
     await assertAdmMaster();
 
-    const { user, employee: currentEmployee } = await getCurrentEmployee();
+    const { employee: currentEmployee } = await getCurrentEmployee();
     const targetEmployee = await getEmployeeAccess(employeeId);
     const currentRole = targetEmployee?.role ?? null;
     const nextRole = toStoredRole(role);
 
     if (
-      targetEmployee?.id === currentEmployee?.id ||
-      targetEmployee?.email?.toLowerCase() === user?.email?.toLowerCase()
+      targetEmployee?.id === currentEmployee?.id
     ) {
       throw new Error("Nao e permitido alterar o proprio cargo do ADM Master.");
     }
 
     if (
-      (isAdmRole(currentRole) || isAdmEmail(targetEmployee?.email)) &&
+      isAdmRole(currentRole) &&
       nextRole !== "adm_master"
     ) {
       throw new Error("O ADM Master nao pode perder o acesso total.");
-    }
-
-    if (isAdmEmail(targetEmployee?.email) && nextRole !== "adm_master") {
-      throw new Error("O usuario admin@clinica.com deve permanecer ADM Master.");
     }
 
     const payload: EmployeeUpdate = { role: nextRole };

@@ -20,7 +20,7 @@ export type PatientFormInput = {
   email?: string;
   portal_access?: boolean;
   login_email?: string;
-  temporary_password?: string;
+  auth_password?: string;
   address?: string;
   notes?: string;
   status?: string;
@@ -52,7 +52,6 @@ function getPatientPayload(input: PatientFormInput): PatientInsert {
     email: cleanOptionalValue(input.email),
     portal_access: Boolean(input.portal_access),
     login_email: cleanOptionalValue(input.login_email),
-    temporary_password: cleanOptionalValue(input.temporary_password),
     address: cleanOptionalValue(input.address),
     notes: cleanOptionalValue(input.notes),
     status: input.status ?? "active"
@@ -93,10 +92,11 @@ async function findAuthUserByEmail(email: string) {
 
 async function syncPatientAuthUser(
   payload: PatientInsert | PatientUpdate,
+  authPassword?: string,
   previousLoginEmail?: string | null
 ) {
   if (!payload.portal_access) {
-    return;
+    return null;
   }
 
   const loginEmail = cleanOptionalValue(payload.login_email ?? undefined);
@@ -106,7 +106,7 @@ async function syncPatientAuthUser(
   }
 
   const temporaryPassword = cleanOptionalValue(
-    payload.temporary_password ?? undefined
+    authPassword
   );
   const supabaseAdmin = createAdminClient();
   const existingUser =
@@ -125,7 +125,7 @@ async function syncPatientAuthUser(
         email: loginEmail,
         ...(temporaryPassword ? { password: temporaryPassword } : {}),
         email_confirm: true,
-        app_metadata: { role: "patient" },
+        app_metadata: { access_type: "patient" },
         user_metadata: userMetadata
       }
     );
@@ -134,7 +134,7 @@ async function syncPatientAuthUser(
       throw error;
     }
 
-    return;
+    return existingUser.id;
   }
 
   if (!temporaryPassword) {
@@ -143,17 +143,19 @@ async function syncPatientAuthUser(
     );
   }
 
-  const { error } = await supabaseAdmin.auth.admin.createUser({
+  const { data, error } = await supabaseAdmin.auth.admin.createUser({
     email: loginEmail,
     password: temporaryPassword,
     email_confirm: true,
-    app_metadata: { role: "patient" },
+    app_metadata: { access_type: "patient" },
     user_metadata: userMetadata
   });
 
   if (error) {
     throw error;
   }
+
+  return data.user.id;
 }
 
 export async function createPatient(
@@ -161,7 +163,6 @@ export async function createPatient(
 ): Promise<PatientActionResult> {
   try {
     await assertCan("pacientes", "create");
-    const supabase = await createClient();
     const payload = getPatientPayload(input);
     const clinicScope = await getCurrentClinicScope();
     if (!clinicScope.isAdmMaster && !clinicScope.clinicId) {
@@ -170,10 +171,12 @@ export async function createPatient(
     if (!clinicScope.isAdmMaster && clinicScope.clinicId) {
       payload.clinic_id = clinicScope.clinicId;
     }
-    await syncPatientAuthUser(payload);
-    // Limpa a senha temporária antes de salvar no banco (segurança)
-    payload.temporary_password = null;
-    const { error } = await supabase.from("patients").insert(payload);
+    payload.auth_user_id = await syncPatientAuthUser(
+      payload,
+      input.auth_password
+    );
+    const supabaseAdmin = createAdminClient();
+    const { error } = await supabaseAdmin.from("patients").insert(payload);
 
     if (error) {
       return { ok: false, message: getErrorMessage(error) };
@@ -203,18 +206,25 @@ export async function updatePatient(
     }
     const { data: currentPatient, error: loadError } = await supabase
       .from("patients")
-      .select("login_email")
+      .select("login_email,auth_user_id")
       .eq("id", id)
       .maybeSingle();
 
     if (loadError) {
       return { ok: false, message: getErrorMessage(loadError) };
     }
+    if (!currentPatient) {
+      throw new Error("Paciente nao encontrado na clinica autorizada.");
+    }
 
-    await syncPatientAuthUser(payload, currentPatient?.login_email ?? null);
-    // Limpa a senha temporária antes de salvar no banco (segurança)
-    payload.temporary_password = null;
-    const { error } = await supabase
+    payload.auth_user_id =
+      (await syncPatientAuthUser(
+        payload,
+        input.auth_password,
+        currentPatient?.login_email ?? null
+      )) ?? currentPatient?.auth_user_id ?? null;
+    const supabaseAdmin = createAdminClient();
+    const { error } = await supabaseAdmin
       .from("patients")
       .update(payload)
       .eq("id", id);

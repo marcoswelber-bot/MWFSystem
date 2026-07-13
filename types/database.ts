@@ -249,7 +249,7 @@ export type Database = {
           role: string | null;
           system_access: boolean;
           login_email: string | null;
-          temporary_password: string | null;
+          auth_user_id: string | null;
           commission_type: string | null;
           commission_value: number | null;
           status: string;
@@ -266,7 +266,7 @@ export type Database = {
           role?: string | null;
           system_access?: boolean;
           login_email?: string | null;
-          temporary_password?: string | null;
+          auth_user_id?: string | null;
           commission_type?: string | null;
           commission_value?: number | null;
           status?: string;
@@ -283,7 +283,7 @@ export type Database = {
           role?: string | null;
           system_access?: boolean;
           login_email?: string | null;
-          temporary_password?: string | null;
+          auth_user_id?: string | null;
           commission_type?: string | null;
           commission_value?: number | null;
           status?: string;
@@ -1485,7 +1485,7 @@ export type Database = {
           email: string | null;
           portal_access: boolean;
           login_email: string | null;
-          temporary_password: string | null;
+          auth_user_id: string | null;
           address: string | null;
           notes: string | null;
           status: string;
@@ -1502,7 +1502,7 @@ export type Database = {
           email?: string | null;
           portal_access?: boolean;
           login_email?: string | null;
-          temporary_password?: string | null;
+          auth_user_id?: string | null;
           address?: string | null;
           notes?: string | null;
           status?: string;
@@ -1519,7 +1519,7 @@ export type Database = {
           email?: string | null;
           portal_access?: boolean;
           login_email?: string | null;
-          temporary_password?: string | null;
+          auth_user_id?: string | null;
           address?: string | null;
           notes?: string | null;
           status?: string;

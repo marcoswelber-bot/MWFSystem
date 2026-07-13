@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getCurrentClinicScope } from "@/lib/access-control";
 import { createClient } from "@/lib/supabase/server";
 import { getErrorMessage } from "@/lib/supabase/env";
-import { assertCan } from "@/lib/permissions";
+import { assertAdmMaster, assertCan } from "@/lib/permissions";
 import type { Database } from "@/types/database";
 
 type ServiceInsert = Database["public"]["Tables"]["services"]["Insert"];
@@ -158,64 +158,6 @@ type DeletableTable =
 function cleanOptionalValue(value?: string) {
   const cleanValue = value?.trim();
   return cleanValue ? cleanValue : null;
-}
-
-function isAdmRole(role?: string | null) {
-  const normalizedRole = role
-    ?.normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_|_$/g, "");
-
-  return normalizedRole === "adm_master" || normalizedRole === "admin_master";
-}
-
-async function getCurrentUserRole() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error: userError
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    return null;
-  }
-
-  if (user.email?.trim().toLowerCase() === "admin@clinica.com") {
-    return "adm_master";
-  }
-
-  const metadataRole =
-    typeof user.app_metadata?.role === "string"
-      ? user.app_metadata.role
-      : typeof user.user_metadata?.role === "string"
-        ? user.user_metadata.role
-        : null;
-
-  if (isAdmRole(metadataRole)) {
-    return metadataRole;
-  }
-
-  if (!user.email) {
-    return metadataRole;
-  }
-
-  const { data } = await supabase
-    .from("employees")
-    .select("role")
-    .eq("email", user.email)
-    .maybeSingle();
-
-  return data?.role ?? metadataRole ?? null;
-}
-
-async function assertAdmMaster() {
-  const role = await getCurrentUserRole();
-
-  if (!isAdmRole(role)) {
-    throw new Error("Apenas o ADM pode cadastrar, editar ou excluir tipos de servico.");
-  }
 }
 
 function cleanOptionalNumber(value?: string) {
