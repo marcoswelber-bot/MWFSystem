@@ -84,6 +84,9 @@ type AgendaManagerProps = {
   isAdmMaster: boolean;
   loadError?: string;
   permissions?: PermissionSet;
+  initialPatientId?: string | null;
+  initialAppointmentId?: string | null;
+  initialOpenNew?: boolean;
 };
 
 const calendarStartHour = 7;
@@ -656,7 +659,10 @@ export function AgendaManager({
   currentClinicId,
   isAdmMaster,
   loadError,
-  permissions
+  permissions,
+  initialPatientId,
+  initialAppointmentId,
+  initialOpenNew
 }: AgendaManagerProps) {
   const router = useRouter();
   const [isPending, startTransition] = React.useTransition();
@@ -810,6 +816,17 @@ export function AgendaManager({
     setAppointmentFormMessage(null);
     setAppointmentFormOpen(true);
   }
+
+  React.useEffect(() => {
+    const selected = initialAppointmentId ? appointments.find((item) => item.id === initialAppointmentId) : null;
+    if (selected) {
+      openEditAppointment(selected);
+    } else if (initialOpenNew && initialPatientId) {
+      setEditingAppointment(null);
+      setAppointmentForm((current) => ({ ...current, patient_id: initialPatientId, patient_ids: [initialPatientId], clinic_id: currentClinicId ?? "" }));
+      setAppointmentFormOpen(true);
+    }
+  }, [initialAppointmentId, initialOpenNew, initialPatientId, appointments, currentClinicId]);
 
   function openRescheduleAppointment(appointment: Appointment) {
     openEditAppointment(appointment);
@@ -2849,3 +2866,4 @@ function MultiSelectField({
     </FieldShell>
   );
 }
+

@@ -245,7 +245,7 @@ export function PatientIntegratedSheet({
     .sort((a, b) => `${b.appointment_date} ${b.start_time}`.localeCompare(`${a.appointment_date} ${a.start_time}`));
   const patientTransactions = transactions
     .filter((transaction) => transaction.patient_id === patient.id)
-    .sort((a, b) => (b.due_date ?? "").localeCompare(a.due_date ?? ""));
+    .filter((transaction) => transaction.patient_id === patient.id && transaction.commission_status !== "generated" && !(transaction.transaction_type === "despesa" && transaction.employee_id))
   const packages = patientPackages
     .filter((patientPackage) => patientPackage.patient_id === patient.id)
     .sort((a, b) => (b.purchase_date ?? "").localeCompare(a.purchase_date ?? ""));
@@ -458,7 +458,7 @@ export function PatientIntegratedSheet({
             statusLabel(appointment.status)
           ])}
           tableCellStyle={tableCellStyle}
-          onRowClick={() => onNavigate(`/agenda?patientId=${patient.id}`)} 
+          onRowClick={(rowIndex) => { const appointment = patientAppointments[rowIndex]; if (appointment) onNavigate(`/agenda?patientId=${patient.id}&appointmentId=${appointment.id}`); }}
         />
       ) : null}
 
@@ -619,7 +619,7 @@ function DataTable({
   rows: Array<Array<React.ReactNode>>;
   empty: string;
   tableCellStyle: React.CSSProperties;
-  onRowClick?: () => void;
+  onRowClick?: (rowIndex: number) => void;
 }) {
   if (rows.length === 0) {
     return <p style={{ color: "hsl(var(--muted-foreground))" }}>{empty}</p>;
@@ -639,7 +639,7 @@ function DataTable({
         </thead>
         <tbody>
           {rows.map((row, rowIndex) => (
-            <tr key={rowIndex} onClick={onRowClick} style={onRowClick ? { cursor: "pointer" } : undefined}>
+            <tr key={rowIndex} onClick={() => onRowClick?.(rowIndex)} style={onRowClick ? { cursor: "pointer" } : undefined}>
               {row.map((cell, cellIndex) => (
                 <td key={`${rowIndex}-${cellIndex}`} style={tableCellStyle}>
                   {cell}
@@ -688,6 +688,7 @@ function MessageCard({
     </article>
   );
 }
+
 
 
 

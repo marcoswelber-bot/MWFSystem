@@ -58,7 +58,8 @@ async function readSupabaseList<T>(
   }
 }
 
-export default async function AgendaPage() {
+export default async function AgendaPage({ searchParams }: { searchParams: Promise<{ patientId?: string; appointmentId?: string; new?: string }> }) {
+  const params = await searchParams;
   const permissions = await getCurrentPermissionMap();
   const clinicScope = await getCurrentClinicScope();
   let clinics: Clinic[] = [];
@@ -218,7 +219,8 @@ export default async function AgendaPage() {
   const rawAppointmentsById = new Map(
     rawAppointments.map((appointment) => [appointment.id, appointment])
   );
-  const appointments: Appointment[] = rawAppointments.map((appointment) => ({
+  const scopedRawAppointments = params.patientId ? rawAppointments.filter((appointment) => appointment.patient_id === params.patientId || (participantsByAppointmentId.get(appointment.id) ?? []).includes(params.patientId!)) : rawAppointments;
+  const appointments: Appointment[] = scopedRawAppointments.map((appointment) => ({
     ...appointment,
     patient_ids:
       participantsByAppointmentId.get(appointment.id) ?? [appointment.patient_id],
@@ -274,7 +276,11 @@ export default async function AgendaPage() {
         isAdmMaster={clinicScope.isAdmMaster}
         loadError={loadError}
         permissions={permissions.agenda}
+        initialPatientId={params.patientId ?? null}
+        initialAppointmentId={params.appointmentId ?? null}
+        initialOpenNew={params.new === "1"}
       />
     </div>
   );
 }
+
