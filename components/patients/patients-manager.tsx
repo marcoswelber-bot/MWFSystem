@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
@@ -243,6 +243,8 @@ export function PatientsManager({
 
   return (
     <div style={{ display: "grid", gap: "24px" }}>
+      {!selectedPatient ? (
+        <>
       <div
         style={{
           display: "flex",
@@ -341,6 +343,9 @@ export function PatientsManager({
         </div>
       </section>
 
+        </>
+      ) : null}
+
       {selectedPatient ? (
         <PatientIntegratedSheet
           patient={selectedPatient}
@@ -357,6 +362,8 @@ export function PatientsManager({
         />
       ) : null}
 
+      {!selectedPatient ? (
+        <>
       {formOpen ? (
         <section
           style={{
@@ -629,6 +636,8 @@ export function PatientsManager({
           </tbody>
         </table>
       </div>
+        </>
+      ) : null}
     </div>
   );
 }
