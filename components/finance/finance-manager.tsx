@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import type { Route } from "next";
@@ -64,6 +64,7 @@ type FinanceManagerProps = {
 };
 
 type FinanceTab = "receitas" | "despesas" | "pacientes" | "contracheques" | "fluxo";
+type ChargeTemplate = "friendly" | "overdue" | "reminder" | "confirmation";
 
 const statusOptions: Array<[FinancialStatus, string]> = [
   ["pendente", "Pendente"],
@@ -304,15 +305,19 @@ function debitLine(item: FinancialTransaction) {
   return `- Atendimento em ${formatDate(appointmentDate)}, serviço ${service} | vencimento ${formatDate(item.due_date)} | valor em aberto ${money(getOpenAmount(item))}`;
 }
 
-function buildChargeMessage({ patientName, clinicName, debts, pixKey }: { patientName: string; clinicName: string; debts: FinancialTransaction[]; pixKey: string }) {
+function buildChargeMessage({ patientName, clinicName, debts, pixKey, template = "friendly" }: { patientName: string; clinicName: string; debts: FinancialTransaction[]; pixKey: string; template?: ChargeTemplate }) {
   const total = debts.reduce((sum, item) => sum + getOpenAmount(item), 0);
+  const details = debts.map(debitLine).join("\n");
+  if (template === "overdue") return `Olá, ${patientName}! Identificamos uma cobrança vencida na ${clinicName}.\n\n${details}\n\nTotal vencido: ${money(total)}\n\nCaso já tenha pago, desconsidere e envie o comprovante. PIX: ${pixKey || "consulte a clínica"}.`;
+  if (template === "reminder") return `Olá, ${patientName}! Este é um lembrete de vencimento da ${clinicName}.\n\n${details}\n\nTotal: ${money(total)}\n\nSe precisar de ajuda, fale conosco.`;
+  if (template === "confirmation") return `Olá, ${patientName}! A ${clinicName} confirma o recebimento do seu pagamento no valor de ${money(total)}. Obrigado!`;
   return `Olá, ${patientName}!
 
 Consta em nosso sistema valor em aberto referente aos atendimentos abaixo, realizados na ${clinicName}.
 
 Débitos:
 
-${debts.map(debitLine).join("\n")}
+${details}
 
 Valor em aberto: ${money(total)}
 
@@ -586,8 +591,6 @@ export function FinanceManager({
     (item) => item.transaction_type === "despesa"
   );
   const patientRows = incomeRows.filter((item) => item.derived_status !== "cancelado" && getOpenAmount(item) > 0);
-  const commissionRows = outflowRows.filter(isCommissionTransaction);
-  const payrollRows = outflowRows.filter(isPayrollTransaction);
   const balanceRows = buildBalanceRows(filteredTransactions);
 
   const revenueTransactions = activeTransactions.filter(
@@ -600,12 +603,6 @@ export function FinanceManager({
   const totalOutflows = expenseTransactions.reduce((total, item) => total + Number(item.amount ?? 0), 0);
   const totalEntriesRealized = revenueTransactions.reduce((total, item) => total + getPaidAmount(item), 0);
   const totalOutflowsRealized = expenseTransactions.reduce((total, item) => total + getPaidAmount(item), 0);
-  const totalPayroll = payrollRows
-    .filter((item) => item.derived_status !== "cancelado")
-    .reduce((total, item) => total + Number(item.amount ?? 0), 0);
-  const totalCommissions = commissionRows
-    .filter((item) => item.derived_status !== "cancelado")
-    .reduce((total, item) => total + Number(item.amount ?? 0), 0);
   const periodBalance = totalEntries - totalOutflows;
   const realizedBalance = totalEntriesRealized - totalOutflowsRealized;
 
@@ -623,15 +620,21 @@ export function FinanceManager({
   const selectedClinic = clinicFilter === "all" ? null : clinics.find((clinic) => clinic.id === clinicFilter) ?? null;
   const selectedClinicName = selectedClinic?.name ?? (clinicFilter === "all" ? "Todas as clínicas" : "Clínica não encontrada");
   const referenceLabel = `${periodStart} ate ${periodEnd}`;
-  const totalReceivable = incomeRows
-    .filter((item) => item.derived_status !== "pago" && item.derived_status !== "cancelado")
-    .reduce((total, item) => total + getOpenAmount(item), 0);
-  const totalPaidAccounts = activeTransactions
-    .filter((item) => item.derived_status === "pago")
-    .reduce((total, item) => total + getPaidAmount(item), 0);
   const totalOverdueAccounts = filteredTransactions
     .filter((item) => item.derived_status === "vencido")
     .reduce((total, item) => total + getOpenAmount(item), 0);
+  const now = new Date();
+  const todayKey = now.toISOString().slice(0, 10);
+  const yearKey = todayKey.slice(0, 4);
+  const monthKey = todayKey.slice(0, 7);
+  const scopedActive = transactions.filter((item) => item.derived_status !== "cancelado" && (clinicFilter === "all" || item.clinic_id === clinicFilter));
+  const realizedFor = (type: FinancialTransactionType, prefix: string) => scopedActive
+    .filter((item) => item.transaction_type === type && (item.payment_date ?? item.due_date).startsWith(prefix))
+    .reduce((total, item) => total + getPaidAmount(item), 0);
+  const openRows = scopedActive.filter((item) => item.transaction_type === "receita" && getOpenAmount(item) > 0);
+  const dueSoon = openRows.filter((item) => item.due_date >= todayKey).reduce((total, item) => total + getOpenAmount(item), 0);
+  const debtorPatients = new Set(openRows.map((item) => item.patient_id).filter(Boolean)).size;
+  const currentBalance = scopedActive.reduce((total, item) => total + (item.transaction_type === "receita" ? getPaidAmount(item) : -getPaidAmount(item)), 0);
   const ratioTotal = totalEntries + totalOutflows;
   const revenueRatio = ratioTotal > 0 ? Math.round((totalEntries / ratioTotal) * 100) : 50;
   const expenseRatio = ratioTotal > 0 ? 100 - revenueRatio : 50;
@@ -923,12 +926,28 @@ export function FinanceManager({
         </div>
       </Card>
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard label="Contas a receber" value={money(totalReceivable)} tone="neutral" />
-        <SummaryCard label="Contas pagas" value={money(totalPaidAccounts)} tone="positive" />
-        <SummaryCard label="Contas vencidas" value={money(totalOverdueAccounts)} tone="danger" />
-        <SummaryCard label="Folha de pagamento" value={money(totalPayroll + totalCommissions)} tone="warning" />
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <SummaryCard label="Receitas do dia" value={money(realizedFor("receita", todayKey))} tone="positive" onClick={() => { setActiveTab("receitas"); setPeriodStart(todayKey); setPeriodEnd(todayKey); }} />
+        <SummaryCard label="Receitas do mês" value={money(realizedFor("receita", monthKey))} tone="positive" onClick={() => { setActiveTab("receitas"); setPeriodStart(monthStart()); setPeriodEnd(monthEnd()); }} />
+        <SummaryCard label="Receitas do ano" value={money(realizedFor("receita", yearKey))} tone="positive" onClick={() => { setActiveTab("receitas"); setPeriodStart(`${yearKey}-01-01`); setPeriodEnd(`${yearKey}-12-31`); }} />
+        <SummaryCard label="Despesas do dia" value={money(realizedFor("despesa", todayKey))} tone="danger" onClick={() => { setActiveTab("despesas"); setPeriodStart(todayKey); setPeriodEnd(todayKey); }} />
+        <SummaryCard label="Despesas do mês" value={money(realizedFor("despesa", monthKey))} tone="danger" onClick={() => { setActiveTab("despesas"); setPeriodStart(monthStart()); setPeriodEnd(monthEnd()); }} />
+        <SummaryCard label="Despesas do ano" value={money(realizedFor("despesa", yearKey))} tone="danger" onClick={() => { setActiveTab("despesas"); setPeriodStart(`${yearKey}-01-01`); setPeriodEnd(`${yearKey}-12-31`); }} />
+        <SummaryCard label="Saldo atual" value={money(currentBalance)} tone={currentBalance >= 0 ? "positive" : "danger"} onClick={() => setActiveTab("fluxo")} />
+        <SummaryCard label="Contas vencidas" value={money(totalOverdueAccounts)} tone="danger" onClick={() => { setActiveTab("pacientes"); setStatusFilter("vencido"); setPeriodStart(""); setPeriodEnd(""); }} />
+        <SummaryCard label="Contas a vencer" value={money(dueSoon)} tone="warning" onClick={() => { setActiveTab("pacientes"); setStatusFilter("pendente"); setPeriodStart(todayKey); setPeriodEnd(""); }} />
+        <SummaryCard label="Pacientes devedores" value={String(debtorPatients)} tone="neutral" onClick={() => { setActiveTab("pacientes"); setStatusFilter("all"); setPeriodStart(""); setPeriodEnd(""); }} />
       </section>
+
+      <Card className="border p-4 shadow-none">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div><strong className="text-sm">Relatórios financeiros</strong><p className="text-xs text-muted-foreground">Receitas, despesas, fluxo de caixa, inadimplência e análises por clínica, profissional, serviço e forma de pagamento.</p></div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" variant="outline" onClick={() => router.push("/relatorios/financeiro" as Route)}><FileText className="h-4 w-4" />Visão financeira</Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => router.push("/relatorios/pagamentos" as Route)}><Download className="h-4 w-4" />Pagamentos e exportações</Button>
+          </div>
+        </div>
+      </Card>
 
       <Card className="border p-4 shadow-none">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -1321,7 +1340,7 @@ function PaycheckPrintArea({ summaries }: { summaries: PaycheckSummary[] }) {
   );
 }
 
-function SummaryCard({ label, value, tone }: { label: string; value: string; tone: "neutral" | "positive" | "warning" | "danger" }) {
+function SummaryCard({ label, value, tone, onClick }: { label: string; value: string; tone: "neutral" | "positive" | "warning" | "danger"; onClick?: () => void }) {
   const toneClass = {
     neutral: "text-foreground",
     positive: "text-emerald-700 dark:text-emerald-300",
@@ -1330,7 +1349,7 @@ function SummaryCard({ label, value, tone }: { label: string; value: string; ton
   }[tone];
 
   return (
-    <Card className="border p-4 shadow-none">
+    <Card className={cn("border p-4 shadow-none", onClick && "cursor-pointer transition-colors hover:border-[#1D9E75]")} onClick={onClick}>
       <p className="text-sm text-muted-foreground">{label}</p>
       <strong className={cn("mt-2 block font-mono text-xl tracking-normal", toneClass)}>{value}</strong>
     </Card>
@@ -1412,12 +1431,13 @@ function ChargeWhatsappModal({
   onOpenWhatsapp: (phone: string | null | undefined, text: string) => void;
 }) {
   const [selectedIds, setSelectedIds] = React.useState(() => debts.map((debt) => debt.id));
+  const [template, setTemplate] = React.useState<ChargeTemplate>("friendly");
   const selectedDebts = debts.filter((debt) => selectedIds.includes(debt.id));
   const firstDebt = debts[0];
   const clinicName = clinic?.name ?? firstDebt?.clinic_name ?? "Clínica";
   const pixKey = clinicPixKey(clinic);
   const total = selectedDebts.reduce((sum, debt) => sum + getOpenAmount(debt), 0);
-  const message = buildChargeMessage({ patientName: firstDebt?.patient_name ?? "Paciente", clinicName, debts: selectedDebts, pixKey });
+  const message = buildChargeMessage({ patientName: firstDebt?.patient_name ?? "Paciente", clinicName, debts: selectedDebts, pixKey, template });
   const phone = firstDebt?.patient_phone ?? null;
 
   function toggle(id: string) {
@@ -1441,6 +1461,9 @@ function ChargeWhatsappModal({
           <DetailItem label="PIX" value={pixKey || "Chave PIX não cadastrada"} />
         </div>
 
+        <div className="mt-4">
+          <SelectField label="Modelo da mensagem" value={template} onChange={(value) => setTemplate(value as ChargeTemplate)} options={[["friendly", "Cobrança amigável"], ["overdue", "Cobrança vencida"], ["reminder", "Lembrete de vencimento"], ["confirmation", "Confirmação de pagamento"]]} />
+        </div>
         <div className="mt-4 rounded-md border">
           {debts.map((debt) => (
             <label key={debt.id} className="flex gap-3 border-b p-3 last:border-b-0">
