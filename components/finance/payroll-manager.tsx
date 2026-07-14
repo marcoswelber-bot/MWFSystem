@@ -1,8 +1,8 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDownRight, ArrowUpRight, CheckCircle2, FileText, Plus, Printer, WalletCards, X, XCircle } from "lucide-react";
+import { CheckCircle2, FileText, Plus, Printer, X, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -174,6 +174,11 @@ export function PayrollManager({ entries, commissionTransactions, clinics, emplo
   const [message, setMessage] = React.useState<PayrollActionResult | null>(loadError ? { ok: false, message: loadError } : null);
   const [formMessage, setFormMessage] = React.useState<PayrollActionResult | null>(null);
   const [formOpen, setFormOpen] = React.useState(false);
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = React.useState<string[]>([]);
+  const [moreOptionsOpen, setMoreOptionsOpen] = React.useState(false);
+  const [periodMode, setPeriodMode] = React.useState<"current" | "previous" | "custom">("current");
+  const [customStart, setCustomStart] = React.useState(`${currentYear()}-${currentMonth()}-01`);
+  const [customEnd, setCustomEnd] = React.useState(today());
   const [payslipEmployeeId, setPayslipEmployeeId] = React.useState<string | null>(null);
   const [clinicFilter, setClinicFilter] = React.useState(currentClinicId ?? "all");
   const [monthFilter, setMonthFilter] = React.useState(currentMonth());
@@ -229,6 +234,33 @@ export function PayrollManager({ entries, commissionTransactions, clinics, emplo
   const payslipEmployee = employees.find((employee) => employee.id === payslipEmployeeId);
   const selectedClinic = clinics.find((clinic) => clinic.id === clinicFilter);
   const filterEmployees = clinicFilter === "all" ? employees : employees.filter((employee) => employee.clinic_id === clinicFilter);
+  const employeeSummaries = filterEmployees.map((employee) => {
+    const rows = filteredRows.filter((item) => item.employee_id === employee.id);
+    const salaries = rows.filter((item) => item.entry_type === "salario_fixo" && isCredit(item.entry_type, item.nature)).reduce((total, item) => total + item.amount, 0);
+    const commissions = rows.filter((item) => item.entry_type === "comissao_manual" && isCredit(item.entry_type, item.nature)).reduce((total, item) => total + item.amount, 0);
+    const discounts = rows.filter((item) => isCharge(item.entry_type, item.nature)).reduce((total, item) => total + item.amount, 0);
+    const total = rows.filter((item) => isCredit(item.entry_type, item.nature)).reduce((sum, item) => sum + item.amount, 0) - discounts;
+    const paid = rows.reduce((sum, item) => sum + getPaidAmount(item), 0);
+    const open = rows.reduce((sum, item) => sum + getOpenAmount(item), 0);
+    return { employee, rows, salaries, commissions, discounts, total, paid, open, status: open <= 0 && rows.length > 0 ? "pago" : paid > 0 ? "parcial" : "pendente" };
+  }).filter((summary) => summary.rows.length > 0);
+  const selectedSummaries = employeeSummaries.filter((summary) => selectedEmployeeIds.includes(summary.employee.id));
+  const selectedOpen = selectedSummaries.reduce((total, summary) => total + summary.open, 0);
+
+  function toggleEmployee(employeeId: string) {
+    setSelectedEmployeeIds((current) => current.includes(employeeId) ? current.filter((id) => id !== employeeId) : [...current, employeeId]);
+  }
+
+  function toggleAllEmployees() {
+    setSelectedEmployeeIds((current) => current.length === employeeSummaries.length ? [] : employeeSummaries.map((summary) => summary.employee.id));
+  }
+
+  function openSelectedPayments() {
+    if (selectedEmployeeIds.length === 0 || selectedOpen <= 0) return;
+    if (!window.confirm(`Confirmar pagamento de ${money(selectedOpen)} para ${selectedEmployeeIds.length} funcionário(s)?`)) return;
+    const params = new URLSearchParams({ tab: "staff", employees: selectedEmployeeIds.join(","), month: monthFilter, year: yearFilter });
+    router.push(`/financeiro/baixas?${params.toString()}`);
+  }
 
   function openCreateForm() {
     setForm({ ...emptyForm(defaultClinicId), clinic_id: defaultClinicId });
@@ -280,75 +312,59 @@ export function PayrollManager({ entries, commissionTransactions, clinics, emplo
       {message ? <SystemMessage message={message} onClose={() => setMessage(null)} /> : null}
 
       <div className="flex flex-wrap gap-2 print:hidden">
-        {canCreate ? <Button type="button" onClick={openCreateForm}><Plus className="h-4 w-4" />Novo lançamento da folha</Button> : null}
-        <Button type="button" variant="outline" onClick={() => router.push("/financeiro/baixas")}>Baixas e Repasses</Button>
-        <Button type="button" variant="outline" onClick={() => router.push("/financeiro")}>Voltar ao Financeiro</Button>
+        {canCreate ? <Button type="button" onClick={openCreateForm}><Plus className="h-4 w-4" />Novo lançamento</Button> : null}
+        <Button type="button" variant="outline" onClick={openCreateForm}>Gerar folha do mês</Button>
+        <Button type="button" onClick={openSelectedPayments} disabled={selectedEmployeeIds.length === 0 || selectedOpen <= 0}>Pagar selecionados</Button>
+        <Button type="button" variant="outline" onClick={() => selectedEmployeeIds.length === 1 && setPayslipEmployeeId(selectedEmployeeIds[0])} disabled={selectedEmployeeIds.length !== 1}>Ver contracheques</Button>
+        <div className="relative">
+          <Button type="button" variant="outline" onClick={() => setMoreOptionsOpen((open) => !open)}>Mais opções</Button>
+          {moreOptionsOpen ? <div className="absolute right-0 z-20 mt-2 grid min-w-52 gap-1 rounded-md border bg-card p-2 shadow-xl"><Button type="button" variant="ghost" onClick={() => router.push("/financeiro/baixas")}>Baixas e Repasses</Button><Button type="button" variant="ghost" onClick={() => router.push("/financeiro")}>Voltar ao Financeiro</Button><Button type="button" variant="ghost" onClick={() => window.print()}><Printer className="h-4 w-4" />Imprimir</Button></div> : null}
+        </div>
       </div>
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-8 print:hidden">
-        <MetricCard label="Total salarios" value={money(totals.salaries)} icon={WalletCards} />
-        <MetricCard label="Total comissoes" value={money(totals.commissions)} icon={ArrowUpRight} />
-        <MetricCard label="Total beneficios" value={money(totals.benefits)} icon={CheckCircle2} />
-        <MetricCard label="Total descontos" value={money(totals.discounts)} icon={ArrowDownRight} />
-        <MetricCard label="INSS/encargos" value={money(totals.charges)} icon={XCircle} />
-        <MetricCard label="Liquido da folha" value={money(net)} icon={FileText} />
+      <section className="grid gap-3 md:grid-cols-3 print:hidden">
+        <MetricCard label="Total líquido" value={money(net)} icon={FileText} />
         <MetricCard label="Total pago" value={money(totals.paid)} icon={CheckCircle2} />
-        <MetricCard label="Total em aberto" value={money(totals.open)} icon={XCircle} />
+        <MetricCard label="Pendente de pagamento" value={money(totals.open)} icon={XCircle} />
       </section>
 
+      <Card className="border p-4 shadow-none print:hidden">
+        <h2 className="text-sm font-semibold">Composição da folha</h2>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <Metric label="Salários" value={money(totals.salaries)} />
+          <Metric label="Comissões" value={money(totals.commissions)} />
+          <Metric label="Benefícios" value={money(totals.benefits)} />
+          <Metric label="Descontos" value={money(totals.discounts)} />
+          <Metric label="Encargos" value={money(totals.charges)} />
+        </div>
+      </Card>
+
       <Card className="border-none p-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)] dark:shadow-none print:hidden">
+        <div className="mb-3 flex flex-wrap gap-2">
+          <Button type="button" size="sm" variant="outline" onClick={() => { setPeriodMode("current"); setMonthFilter(currentMonth()); setYearFilter(currentYear()); }}>Este mês</Button>
+          <Button type="button" size="sm" variant="outline" onClick={() => { setPeriodMode("previous"); const date = new Date(); date.setMonth(date.getMonth() - 1); setMonthFilter(String(date.getMonth() + 1).padStart(2, "0")); setYearFilter(String(date.getFullYear())); }}>Mês anterior</Button>
+          <Button type="button" size="sm" variant={periodMode === "custom" ? "default" : "outline"} onClick={() => setPeriodMode("custom")}>Personalizado</Button>
+        </div>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <SelectField label="Clínica" value={clinicFilter} onChange={(value) => { setClinicFilter(value); setEmployeeFilter("all"); }} options={[...(isAdmMaster ? [["all", "Todas as clínicas"] as [string, string]] : []), ...clinics.map((clinic) => [clinic.id, clinic.name] as [string, string])]} disabled={!isAdmMaster} />
-          <SelectField label="Mês" value={monthFilter} onChange={setMonthFilter} options={Array.from({ length: 12 }, (_, index) => [String(index + 1).padStart(2, "0"), String(index + 1).padStart(2, "0")] as [string, string])} />
-          <TextField label="Ano" value={yearFilter} onChange={setYearFilter} />
+          <SelectField label="Clínica" value={clinicFilter} onChange={(value) => { setClinicFilter(value); setEmployeeFilter("all"); setSelectedEmployeeIds([]); }} options={[...(isAdmMaster ? [["all", "Todas as clínicas"] as [string, string]] : []), ...clinics.map((clinic) => [clinic.id, clinic.name] as [string, string])]} disabled={!isAdmMaster} />
+          <SelectField label="Mês" value={monthFilter} onChange={(value) => { setMonthFilter(value); setSelectedEmployeeIds([]); }} options={Array.from({ length: 12 }, (_, index) => [String(index + 1).padStart(2, "0"), new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(new Date(2024, index, 1))] as [string, string])} />
+          <TextField label="Ano" value={yearFilter} onChange={(value) => { setYearFilter(value); setSelectedEmployeeIds([]); }} />
           <SelectField label="Funcionário" value={employeeFilter} onChange={setEmployeeFilter} options={[["all", "Todos"], ...filterEmployees.map((employee) => [employee.id, employee.name] as [string, string])]} />
           <SelectField label="Status" value={statusFilter} onChange={(value) => setStatusFilter(value as PayrollStatus | "all")} options={statusOptions} />
         </div>
+        {periodMode === "custom" ? <div className="mt-3 grid gap-3 sm:grid-cols-2"><TextField label="Data inicial" type="date" value={customStart} onChange={setCustomStart} /><TextField label="Data final" type="date" value={customEnd} onChange={setCustomEnd} /></div> : null}
       </Card>
 
-      <Card className="overflow-hidden border-none shadow-[0_18px_55px_rgba(15,23,42,0.08)] dark:shadow-none print:hidden">
-        <div className="border-b p-4">
-          <h2 className="text-lg font-semibold tracking-normal">Folha / Contracheque</h2>
-          <p className="text-sm text-muted-foreground">Lancamentos de folha e comissoes automaticas ja existentes, sem duplicar valores.</p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1050px] text-left text-xs">
-            <thead className="bg-muted/60 uppercase text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2">Funcionário</th>
-                <th className="px-3 py-2">Clínica</th>
-                <th className="px-3 py-2">Competencia</th>
-                <th className="px-3 py-2">Tipo</th>
-                <th className="px-3 py-2">Natureza</th>
-                <th className="px-3 py-2 text-right">Valor</th>
-                <th className="px-3 py-2 text-right">Pago</th>
-                <th className="px-3 py-2 text-right">Em aberto</th>
-                <th className="px-3 py-2">Vencimento</th>
-                <th className="px-3 py-2 print:hidden">Status</th>
-                <th className="px-3 py-2 text-right print:hidden">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRows.length > 0 ? filteredRows.map((item) => (
-                <tr key={`${item.source}-${item.id}`} className="border-t hover:bg-muted/30">
-                  <TruncatedCell value={item.employee_name} strong />
-                  <TruncatedCell value={item.clinic_name} />
-                  <td className="whitespace-nowrap px-3 py-2">{String(item.competence_month).padStart(2, "0")}/{item.competence_year}</td>
-                  <td className="whitespace-nowrap px-3 py-2">{item.source === "commission" ? "Comissão automática" : entryTypeLabel(item.entry_type)}</td>
-                  <td className="whitespace-nowrap px-3 py-2">{isCredit(item.entry_type, item.nature) ? "Crédito" : "Débito"}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right font-semibold">{money(item.amount)}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right">{money(getPaidAmount(item))}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right font-semibold">{money(getOpenAmount(item))}</td>
-                  <td className="whitespace-nowrap px-3 py-2">{item.due_date}</td>
-                  <td className="whitespace-nowrap px-3 py-2"><StatusBadge status={item.financial_status} /></td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right print:hidden"><Button type="button" size="sm" variant="outline" onClick={() => setPayslipEmployeeId(item.employee_id)}>Contracheque</Button></td>
-                </tr>
-              )) : <tr><td colSpan={11} className="px-3 py-8 text-center text-sm text-muted-foreground">Nenhum lançamento de folha encontrado para os filtros selecionados.</td></tr>}
-            </tbody>
-          </table>
+      {selectedEmployeeIds.length > 0 ? <Card className="flex flex-wrap items-center justify-between gap-3 border p-4 print:hidden"><div><p className="text-sm font-semibold">{selectedEmployeeIds.length} funcionário(s) selecionado(s)</p><p className="text-sm text-muted-foreground">Pendente de pagamento: {money(selectedOpen)}</p></div><div className="flex flex-wrap gap-2"><Button type="button" onClick={openSelectedPayments} disabled={selectedOpen <= 0}>Pagar selecionados</Button><Button type="button" variant="outline" onClick={() => selectedEmployeeIds.length === 1 && setPayslipEmployeeId(selectedEmployeeIds[0])} disabled={selectedEmployeeIds.length !== 1}>Gerar contracheques</Button><Button type="button" variant="outline" onClick={() => window.print()}><Printer className="h-4 w-4" />Imprimir</Button></div></Card> : null}
+
+      <Card className="border-none p-4 shadow-[0_18px_55px_rgba(15,23,42,0.08)] dark:shadow-none print:hidden">
+        <div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">Funcionários</h2><p className="text-sm text-muted-foreground">Resumo da folha por funcionário.</p></div><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={employeeSummaries.length > 0 && selectedEmployeeIds.length === employeeSummaries.length} onChange={toggleAllEmployees} />Selecionar todos</label></div>
+        <div className="hidden grid-cols-[auto_minmax(130px,1.4fr)_repeat(6,minmax(100px,1fr))] gap-3 border-b pb-2 text-xs font-semibold text-muted-foreground lg:grid"><span></span><span>Funcionário</span><span>Salário</span><span>Comissões</span><span>Descontos</span><span>Total líquido</span><span>Pago</span><span>Pendente / Status</span></div>
+        <div className="grid gap-3">
+          {employeeSummaries.map((summary) => <article key={summary.employee.id} className="grid gap-3 rounded-md border p-3 lg:grid-cols-[auto_minmax(130px,1.4fr)_repeat(6,minmax(100px,1fr))] lg:items-center"><input type="checkbox" aria-label={`Selecionar ${summary.employee.name}`} checked={selectedEmployeeIds.includes(summary.employee.id)} onChange={() => toggleEmployee(summary.employee.id)} /><strong className="text-sm">{summary.employee.name}</strong><Metric label="Salário" value={money(summary.salaries)} /><Metric label="Comissões" value={money(summary.commissions)} /><Metric label="Descontos" value={money(summary.discounts)} /><Metric label="Total líquido" value={money(summary.total)} /><Metric label="Pago" value={money(summary.paid)} /><div><Metric label="Pendente" value={money(summary.open)} /><StatusBadge status={summary.status} /></div></article>)}
+          {employeeSummaries.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">Nenhum lançamento de folha encontrado.</p> : null}
         </div>
       </Card>
-
       {formOpen ? (
         <PayrollFormModal form={form} setForm={setForm} formMessage={formMessage} clinics={clinics} employees={formEmployees} isAdmMaster={isAdmMaster} isPending={isPending} onSubmit={submitForm} onClose={closeForm} />
       ) : null}
@@ -566,6 +582,9 @@ function StatusBadge({ status }: { status: string }) {
   return <span className={cn("rounded-md px-2 py-1 text-xs font-semibold", statusClass(status))}>{statusLabel(status)}</span>;
 }
 
+function Metric({ label, value }: { label: string; value: string }) {
+  return <div className="min-w-0"><p className="text-xs text-muted-foreground">{label}</p><strong className="mt-1 block truncate font-mono text-sm">{value}</strong></div>;
+}
 function MetricCard({ label, value, icon: Icon }: { label: string; value: string; icon: React.ElementType }) {
   return <Card className="border-none p-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)] dark:shadow-none"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-medium text-muted-foreground">{label}</p><strong className="mt-2 block text-xl font-semibold tracking-normal">{value}</strong></div><span className="rounded-md bg-primary/10 p-2 text-primary"><Icon className="h-5 w-5" /></span></div></Card>;
 }
@@ -574,9 +593,6 @@ function Detail({ label, value }: { label: string; value: string }) {
   return <div className="rounded-md border bg-background p-3 print:p-2"><div className="text-xs font-semibold uppercase text-muted-foreground">{label}</div><div className="mt-1 break-words font-medium text-foreground">{value}</div></div>;
 }
 
-function TruncatedCell({ value, strong = false }: { value: string; strong?: boolean }) {
-  return <td className={cn("max-w-44 truncate px-3 py-2", strong && "font-semibold text-foreground")} title={value}>{value}</td>;
-}
 
 function FieldShell({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="grid gap-1.5 text-xs font-semibold uppercase text-muted-foreground">{label}{children}</label>;

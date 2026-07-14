@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Search } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -70,6 +70,10 @@ function today() {
 function monthStart() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+}
+
+function monthEnd(year: string, month: string) {
+  return new Date(Number(year), Number(month), 0).toISOString().slice(0, 10);
 }
 
 function formatCurrency(value: number) {
@@ -148,6 +152,11 @@ export function SettlementsManager({ transactions, clinics, patients, services, 
   const [paymentMethod, setPaymentMethod] = React.useState<PaymentMethod>("pix");
   const [paidAt, setPaidAt] = React.useState(today());
   const [notes, setNotes] = React.useState("");
+  const [periodMode, setPeriodMode] = React.useState<"current" | "previous" | "custom">("current");
+  const [periodMonth, setPeriodMonth] = React.useState(String(new Date().getMonth() + 1).padStart(2, "0"));
+  const [periodYear, setPeriodYear] = React.useState(String(new Date().getFullYear()));
+  const [moreFiltersOpen, setMoreFiltersOpen] = React.useState(false);
+  const [initialSelectionApplied, setInitialSelectionApplied] = React.useState(false);
   const [filters, setFilters] = React.useState<Filters>({
     clinicId: "all",
     startDate: monthStart(),
@@ -189,7 +198,6 @@ export function SettlementsManager({ transactions, clinics, patients, services, 
   const rows = tab === "patients" ? patientRows : staffRows;
   const selectedRows = rows.filter((row) => selectedIds.includes(row.id));
   const selectedOpenAmount = selectedRows.reduce((total, row) => total + getOpenAmount(row), 0);
-  const selectedPaidAmount = selectedRows.reduce((total, row) => total + getPaidAmount(row), 0);
   const parsedSettlementAmount = Number.parseFloat(amount.replace(",", "."));
   const informedAmount = mode === "total" ? selectedOpenAmount : Number.isFinite(parsedSettlementAmount) ? parsedSettlementAmount : 0;
   const remainingAfterSettlement = Math.max(selectedOpenAmount - informedAmount, 0);
@@ -198,7 +206,31 @@ export function SettlementsManager({ transactions, clinics, patients, services, 
     setSelectedIds([]);
     setMessage(null);
   }, [tab]);
+  React.useEffect(() => {
+    if (initialSelectionApplied) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("tab") !== "staff") { setInitialSelectionApplied(true); return; }
+    if (tab !== "staff") { setTab("staff"); return; }
+    const employeeIds = (params.get("employees") ?? "").split(",").filter(Boolean);
+    if (employeeIds.length > 0) {
+      setSelectedIds(staffRows.filter((row) => row.employee_id && employeeIds.includes(row.employee_id)).map((row) => row.id));
+    }
+    setInitialSelectionApplied(true);
+  }, [initialSelectionApplied, staffRows, tab]);
 
+  function applyMonth(year: string, month: string, mode: "current" | "previous" | "custom") {
+    setPeriodYear(year);
+    setPeriodMonth(month);
+    setPeriodMode(mode);
+    setFilters((current) => ({ ...current, startDate: `${year}-${month}-01`, endDate: monthEnd(year, month) }));
+    setSelectedIds([]);
+  }
+
+  function choosePreviousMonth() {
+    const date = new Date();
+    date.setMonth(date.getMonth() - 1);
+    applyMonth(String(date.getFullYear()), String(date.getMonth() + 1).padStart(2, "0"), "previous");
+  }
   function updateFilter(key: keyof Filters, value: string) {
     setFilters((current) => ({ ...current, [key]: value }));
     setSelectedIds([]);
@@ -236,6 +268,8 @@ export function SettlementsManager({ transactions, clinics, patients, services, 
       return;
     }
 
+    const actionLabel = tab === "patients" ? "receber" : "pagar";
+    if (!window.confirm(`Confirmar ${actionLabel} ${formatCurrency(informedAmount)} para ${selectedIds.length} lançamento(s)?`)) return;
     startTransition(async () => {
       const result = await settleFinancialTransactions({
         ids: selectedIds,
@@ -270,58 +304,49 @@ export function SettlementsManager({ transactions, clinics, patients, services, 
       </Card>
 
       <Card className="space-y-4 p-4">
-        <div>
-          <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200"><Search className="h-4 w-4" />Filtros</div>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Refine os lançamentos por clínica, período, pessoa, serviço e status.</p>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" size="sm" variant={periodMode === "current" ? "default" : "outline"} onClick={() => applyMonth(String(new Date().getFullYear()), String(new Date().getMonth() + 1).padStart(2, "0"), "current")}>Este mês</Button>
+          <Button type="button" size="sm" variant={periodMode === "previous" ? "default" : "outline"} onClick={choosePreviousMonth}>Mês anterior</Button>
+          <Button type="button" size="sm" variant={periodMode === "custom" ? "default" : "outline"} onClick={() => setPeriodMode("custom")}>Personalizado</Button>
         </div>
-        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {isAdmMaster ? <SelectField label="Clínica" value={filters.clinicId} onChange={(value) => updateFilter("clinicId", value)} options={[["all", "Todas"], ...clinics.map((clinic) => [clinic.id, clinic.name] as [string, string])]} /> : null}
-          <InputField label="Início" type="date" value={filters.startDate} onChange={(value) => updateFilter("startDate", value)} />
-          <InputField label="Fim" type="date" value={filters.endDate} onChange={(value) => updateFilter("endDate", value)} />
+          <SelectField label="Mês" value={periodMonth} onChange={(value) => applyMonth(periodYear, value, "current")} options={Array.from({ length: 12 }, (_, index) => [String(index + 1).padStart(2, "0"), new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(new Date(2024, index, 1))] as [string, string])} />
+          <InputField label="Ano" value={periodYear} onChange={(value) => value.length <= 4 && applyMonth(value, periodMonth, "current")} />
           {tab === "patients" ? <SelectField label="Paciente" value={filters.patientId} onChange={(value) => updateFilter("patientId", value)} options={[["all", "Todos"], ...patients.map((patient) => [patient.id, patient.full_name] as [string, string])]} /> : <SelectField label="Funcionário" value={filters.employeeId} onChange={(value) => updateFilter("employeeId", value)} options={[["all", "Todos"], ...employees.map((employee) => [employee.id, employee.name] as [string, string])]} />}
-          <SelectField label="Serviço" value={filters.serviceId} onChange={(value) => updateFilter("serviceId", value)} options={[["all", "Todos"], ...services.map((service) => [service.id, service.name] as [string, string])]} />
           <SelectField label="Status" value={filters.status} onChange={(value) => updateFilter("status", value)} options={tab === "patients" ? patientStatusOptions : staffStatusOptions} />
-          {tab === "patients" ? <SelectField label="Forma" value={filters.paymentMethod} onChange={(value) => updateFilter("paymentMethod", value)} options={[["all", "Todas"], ...paymentMethodOptions]} /> : <SelectField label="Tipo" value={filters.type} onChange={(value) => updateFilter("type", value)} options={staffTypeOptions.map((option) => [option, option])} />}
-          <InputField label="Pesquisar" value={filters.search} onChange={(value) => updateFilter("search", value)} placeholder="Nome, serviço, origem..." />
+          <InputField label="Pesquisar" value={filters.search} onChange={(value) => updateFilter("search", value)} placeholder="Nome ou serviço" />
         </div>
+        {periodMode === "custom" ? <div className="grid gap-3 sm:grid-cols-2"><InputField label="Início" type="date" value={filters.startDate} onChange={(value) => updateFilter("startDate", value)} /><InputField label="Fim" type="date" value={filters.endDate} onChange={(value) => updateFilter("endDate", value)} /></div> : null}
+        <Button type="button" size="sm" variant="ghost" onClick={() => setMoreFiltersOpen((open) => !open)}>{moreFiltersOpen ? "Ocultar filtros" : "Mais filtros"}</Button>
+        {moreFiltersOpen ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"><SelectField label="Serviço" value={filters.serviceId} onChange={(value) => updateFilter("serviceId", value)} options={[["all", "Todos"], ...services.map((service) => [service.id, service.name] as [string, string])]} />{tab === "patients" ? <SelectField label="Forma de pagamento" value={filters.paymentMethod} onChange={(value) => updateFilter("paymentMethod", value)} options={[["all", "Todas"], ...paymentMethodOptions]} /> : <SelectField label="Tipo" value={filters.type} onChange={(value) => updateFilter("type", value)} options={staffTypeOptions.map((option) => [option, option])} />}</div> : null}
       </Card>
-
-      <Card className="space-y-3 p-4">
-        <div>
-          <div className="text-sm font-semibold text-slate-900 dark:text-white">Resumo da selecao</div>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Confira o saldo antes de confirmar a baixa.</p>
-        </div>
-        <div className="grid gap-3 text-sm text-slate-700 dark:text-slate-200 md:grid-cols-5">
-          <Metric label="Selecionados" value={String(selectedIds.length)} />
-          <Metric label="Total em aberto" value={formatCurrency(selectedOpenAmount)} />
-          <Metric label="Ja pago" value={formatCurrency(selectedPaidAmount)} />
-          <Metric label="Valor informado" value={formatCurrency(informedAmount)} />
+      <Card className="space-y-4 p-4">
+        <div><h2 className="text-sm font-semibold">Resumo da baixa</h2><p className="text-xs text-muted-foreground">Confira os valores antes de confirmar.</p></div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Metric label="Quantidade selecionada" value={String(selectedIds.length)} />
+          <Metric label="Pendente de pagamento" value={formatCurrency(selectedOpenAmount)} />
+          <Metric label={tab === "patients" ? "Valor a receber" : "Valor a pagar"} value={formatCurrency(informedAmount)} />
           <Metric label="Saldo restante" value={formatCurrency(remainingAfterSettlement)} />
         </div>
-      </Card>
-
-      <Card className="space-y-4 p-4">
-        <div>
-          <div className="text-sm font-semibold text-slate-900 dark:text-white">{tab === "patients" ? "Baixa de recebimentos" : "Pagamento de repasses"}</div>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Escolha baixa total para quitar todo o saldo selecionado ou baixa parcial para informar um valor menor.</p>
-        </div>
-        <div className="grid gap-3 md:grid-cols-5">
-          <SelectField label="Tipo" value={mode} onChange={(value) => setMode(value as SettlementMode)} options={[["total", "Baixa total"], ["partial", "Baixa parcial"]]} />
-          <InputField label="Valor pago" value={mode === "total" ? formatCurrency(selectedOpenAmount) : amount} onChange={setAmount} disabled={mode === "total"} placeholder="0,00" />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <SelectField label="Forma de pagamento" value={paymentMethod} onChange={(value) => setPaymentMethod(value as PaymentMethod)} options={paymentMethodOptions} />
           <InputField label="Data" type="date" value={paidAt} onChange={setPaidAt} />
-          <InputField label="Observacao" value={notes} onChange={setNotes} placeholder="Opcional" />
+          {mode === "partial" ? <InputField label="Valor parcial" value={amount} onChange={setAmount} placeholder="0,00" /> : null}
+          {moreFiltersOpen ? <InputField label="Observação" value={notes} onChange={setNotes} placeholder="Opcional" /> : null}
         </div>
-        <div className="flex justify-end">
-          <Button type="button" onClick={submitSettlement} disabled={isPending || selectedIds.length === 0}>{isPending ? "Processando..." : tab === "patients" ? "Baixar recebimentos selecionados" : "Pagar repasses selecionados"}</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" onClick={submitSettlement} disabled={isPending || selectedIds.length === 0}>{isPending ? "Processando..." : "Confirmar"}</Button>
+          <Button type="button" variant={mode === "partial" ? "default" : "outline"} onClick={() => { setMode("partial"); setAmount(""); }}>Baixa parcial</Button>
+          <Button type="button" variant="outline" onClick={() => { setSelectedIds([]); setMode("total"); setAmount(""); }}>Cancelar seleção</Button>
         </div>
         {message ? <Alert type={message.type} text={message.text} /> : null}
       </Card>
-
       <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="hidden xl:block">
           {tab === "patients" ? <PatientTable rows={rows} selectedIds={selectedIds} onToggle={toggleSelection} onToggleAll={toggleAll} onSingle={selectSingle} /> : <StaffTable rows={rows} selectedIds={selectedIds} onToggle={toggleSelection} onToggleAll={toggleAll} onSingle={selectSingle} />}
         </div>
+        <div className="grid gap-3 p-3 xl:hidden">{rows.map((row) => <article key={row.id} className="grid gap-2 rounded-md border p-3"><div className="flex items-start justify-between gap-3"><label className="flex items-center gap-2 text-sm font-semibold"><SelectionCell id={row.id} selectedIds={selectedIds} onToggle={toggleSelection} />{tab === "patients" ? row.patient_name : row.employee_name}</label><span className="text-xs">{getStatusLabel(row.derived_status)}</span></div><Metric label="Pendente" value={formatCurrency(getOpenAmount(row))} /><p className="text-xs text-muted-foreground">{row.clinic_name} · {row.service_name || getStaffType(row)} · vencimento {row.due_date}</p><Button type="button" size="sm" variant="outline" onClick={() => selectSingle(row.id)}>{tab === "patients" ? "Receber" : "Pagar"}</Button></article>)}</div>
         {rows.length === 0 ? <div className="p-8 text-center text-sm text-slate-500 dark:text-slate-400">Nenhum lançamento em aberto encontrado para os filtros selecionados.</div> : null}
       </Card>
     </div>
