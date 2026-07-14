@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import type { Database } from "@/types/database";
 import { createMedicalRecord, updateMedicalRecord, type MedicalRecordFormInput } from "@/app/(app)/prontuarios/actions";
 
@@ -119,6 +120,16 @@ function normalizePhone(value: string | null | undefined) {
   return (value ?? "").replace(/\D/g, "");
 }
 
+function ageFromBirthDate(value: string | null | undefined) {
+  if (!value) return "Não informada";
+  const birth = new Date(`${value.split("T")[0]}T12:00:00`);
+  if (Number.isNaN(birth.getTime())) return "Não informada";
+  const now = new Date();
+  let age = now.getFullYear() - birth.getFullYear();
+  if (now.getMonth() < birth.getMonth() || (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate())) age--;
+  return `${Math.max(age, 0)} anos`;
+}
+
 function statusLabel(value: string | null | undefined) {
   const labels: Record<string, string> = {
     active: "Ativo",
@@ -205,6 +216,7 @@ export function PatientIntegratedSheet({
   onEdit,
   onNavigate
 }: PatientIntegratedSheetProps) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = React.useState<PatientTab>("resumo");
   const [timelineFilter, setTimelineFilter] = React.useState<TimelineFilter>("todos");
   const [selectedRecord, setSelectedRecord] = React.useState<MedicalRecord | null>(null);
@@ -213,6 +225,9 @@ export function PatientIntegratedSheet({
   const [recordMessage, setRecordMessage] = React.useState<string | null>(null);
   const [recordSaving, setRecordSaving] = React.useState(false);
   const [freeMessage, setFreeMessage] = React.useState("");
+  const [quickForm, setQuickForm] = React.useState<MedicalRecordFormInput>({ patient_id: patient.id, employee_id: "", title: "Evolução clínica", complaint: "", history: "", conduct: "", evolution: "", notes: "", status: "active" });
+  const [quickSaving, setQuickSaving] = React.useState(false);
+  const [quickMessage, setQuickMessage] = React.useState<string | null>(null);
 
   const clinicById = React.useMemo(
     () => new Map(clinics.map((clinic) => [clinic.id, clinic])),
@@ -253,6 +268,9 @@ export function PatientIntegratedSheet({
   const totalPaid = paidTransactions.reduce((sum, transaction) => sum + getPaidAmount(transaction), 0);
   const lastPayment = paidTransactions[0] ?? null;
   const lastEvolution = records[0] ?? null;
+  const responsibleEmployee = employeeById.get(nextAppointment?.employee_id ?? lastAppointment?.employee_id ?? records[0]?.employee_id ?? "");
+  const completedSessions = packages.reduce((sum, item) => sum + Number(item.completed_sessions ?? 0), 0);
+  const remainingSessions = packages.reduce((sum, item) => sum + Number(item.remaining_sessions ?? 0), 0);
   const phone = normalizePhone(patient.phone);
   const whatsappHref = phone ? `https://wa.me/${phone.startsWith("55") ? phone : `55${phone}`}` : null;
 
@@ -314,7 +332,7 @@ export function PatientIntegratedSheet({
     const escape = (value: string) => '"' + value.replaceAll('"', '""') + '"';
     const rows = [["Data", "Tipo", "Titulo", "Descricao"], ...visibleTimeline.map((item) => [formatDateTime(item.date), item.type, item.title, item.description])];
     const csv = rows.map((row) => row.map(escape).join(";")).join(String.fromCharCode(10));
-    const url = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
+    const url = URL.createObjectURL(new Blob(["ï»¿" + csv], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a"); link.href = url; link.download = "historico-" + patient.full_name.replaceAll(" ", "-").toLowerCase() + ".csv"; link.click(); URL.revokeObjectURL(url);
   }
 
@@ -330,6 +348,18 @@ export function PatientIntegratedSheet({
     const result = selectedRecord ? await updateMedicalRecord(selectedRecord.id, recordForm) : await createMedicalRecord({ ...recordForm, patient_id: patient.id });
     setRecordSaving(false); setRecordMessage(result.message);
     if (result.ok) { setEditingRecord(false); setSelectedRecord(null); }
+  }
+
+  async function saveQuickEvolution(keepForm: boolean) {
+    if (!quickForm.complaint?.trim() && !quickForm.evolution?.trim() && !quickForm.conduct?.trim() && !quickForm.notes?.trim()) { setQuickMessage("Preencha ao menos um campo da evolução."); return; }
+    setQuickSaving(true); setQuickMessage(null);
+    const result = await createMedicalRecord({ ...quickForm, patient_id: patient.id, title: quickForm.complaint?.trim() || "Evolução clínica" });
+    setQuickSaving(false); setQuickMessage(result.message);
+    if (result.ok) {
+      setQuickForm({ patient_id: patient.id, employee_id: quickForm.employee_id, title: "Evolução clínica", complaint: "", history: "", conduct: "", evolution: "", notes: "", status: "active" });
+      if (keepForm) setQuickMessage("Evolução salva. Pronto para o próximo registro.");
+      router.refresh();
+    }
   }
 
   const wrapperStyle: React.CSSProperties = {
@@ -388,7 +418,7 @@ export function PatientIntegratedSheet({
             <p style={{ color: "hsl(var(--muted-foreground))", margin: 0 }}>Ficha integrada do paciente</p>
             <h2 style={{ fontSize: "28px", fontWeight: 800, margin: "2px 0" }}>{patient.full_name}</h2>
             <p style={{ margin: 0 }}>
-              {patient.cpf ? `CPF ${patient.cpf}` : "CPF nao informado"} - {statusLabel(patient.status)}
+              {ageFromBirthDate(patient.birth_date)} · {statusLabel(patient.status)}
             </p>
           </div>
         </div>
@@ -408,8 +438,10 @@ export function PatientIntegratedSheet({
       </div>
 
       <div style={{ display: "grid", gap: "10px", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
-        {field("Telefone / WhatsApp", compactText(patient.phone, "Nao informado"))}
-        {field("Clinica", compactText(clinic?.name, "Nao vinculada"))}
+        {field("Idade", ageFromBirthDate(patient.birth_date))}
+        {field("Telefone / WhatsApp", compactText(patient.phone, "Não informado"))}
+        {field("Convênio", "Particular")}
+        {field("Profissional responsável", compactText(responsibleEmployee?.name, "Não informado"))}
         {field("Status", statusLabel(patient.status))}
         {field("Proximo atendimento", nextAppointment ? formatDate(nextAppointment.appointment_date) + " " + nextAppointment.start_time : "-")}
         {field("Ultimo atendimento", lastAppointment ? formatDate(lastAppointment.appointment_date) : "-")}
@@ -419,10 +451,11 @@ export function PatientIntegratedSheet({
         {field("Total pago", money(totalPaid))}
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-        <button type="button" onClick={() => onNavigate("/agenda?patientId=" + patient.id + "&new=1")} style={primaryButtonStyle}>Agendar</button>
+        <button type="button" onClick={() => onNavigate("/agenda?patientId=" + patient.id + "&new=1")} style={primaryButtonStyle}>Agendar retorno</button>
         <button type="button" onClick={() => onNavigate("/financeiro/baixas?patientId=" + patient.id)} style={primaryButtonStyle}>Receber</button>
         <button type="button" onClick={() => whatsappHref && window.open(whatsappHref + "?text=" + encodeURIComponent(billingMessage), "_blank")} disabled={!whatsappHref || totalOpen <= 0} style={buttonStyle}>Cobrar via WhatsApp</button>
-        <button type="button" onClick={() => onNavigate("/prontuarios?q=" + encodeURIComponent(patient.full_name))} style={buttonStyle}>Abrir prontuario</button>
+        <button type="button" onClick={printCurrentView} style={buttonStyle}>Imprimir ficha</button>
+        <button type="button" onClick={printCurrentView} style={buttonStyle}>Gerar PDF</button>
         <button type="button" onClick={() => onNavigate("/financeiro/baixas?patientId=" + patient.id)} style={buttonStyle}>Gerar recibo</button>
         <button type="button" onClick={() => setActiveTab("whatsapp")} disabled={!whatsappHref} style={buttonStyle}>Enviar WhatsApp</button>
         <button type="button" onClick={() => onNavigate("/pacotes?patientId=" + patient.id)} style={buttonStyle}>Renovar pacote</button>
@@ -445,13 +478,27 @@ export function PatientIntegratedSheet({
         ))}
       </div>
 
+      <aside style={{ ...mutedCardStyle, display: "grid", gap: "10px" }}>
+        <h3 style={{ fontWeight: 800, margin: 0 }}>Ações rápidas</h3>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+          <button type="button" onClick={() => onNavigate(`/agenda?patientId=${patient.id}&new=1`)} style={primaryButtonStyle}>Novo agendamento</button>
+          <button type="button" onClick={() => onNavigate(`/financeiro/baixas?patientId=${patient.id}`)} style={buttonStyle}>Receber pagamento</button>
+          <button type="button" onClick={() => onNavigate(`/pacotes?patientId=${patient.id}`)} style={buttonStyle}>Pacotes</button>
+          <button type="button" onClick={() => onNavigate(`/financeiro?patientId=${patient.id}`)} style={buttonStyle}>Histórico financeiro</button>
+          <button type="button" onClick={() => setActiveTab("timeline")} style={buttonStyle}>Histórico de atendimentos</button>
+          <button type="button" onClick={() => whatsappHref && window.open(whatsappHref, "_blank")} disabled={!whatsappHref} style={buttonStyle}>WhatsApp</button>
+          <button type="button" onClick={printCurrentView} style={buttonStyle}>Imprimir</button>
+        </div>
+      </aside>
+
       {activeTab === "resumo" ? (
         <div style={{ display: "grid", gap: "10px", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
+          <div style={{ textAlign: "left" }}>{metric("Sessões realizadas", completedSessions)}</div>
           <button type="button" onClick={() => nextAppointment && onNavigate("/agenda?patientId=" + patient.id + "&appointmentId=" + nextAppointment.id)} disabled={!nextAppointment} style={{ ...mutedCardStyle, textAlign: "left" }}>{metric("Proximo atendimento", nextAppointment ? formatDate(nextAppointment.appointment_date) + " " + nextAppointment.start_time : "-")}</button>
           <button type="button" onClick={() => lastAppointment && onNavigate("/agenda?patientId=" + patient.id + "&appointmentId=" + lastAppointment.id)} disabled={!lastAppointment} style={{ ...mutedCardStyle, textAlign: "left" }}>{metric("Ultimo atendimento", lastAppointment ? formatDate(lastAppointment.appointment_date) : "-")}</button>
-          <button type="button" onClick={() => activePackage && onNavigate("/pacotes?patientId=" + patient.id)} disabled={!activePackage} style={{ ...mutedCardStyle, textAlign: "left" }}>{metric("Sessoes restantes", activePackage?.remaining_sessions ?? 0)}</button>
-          <button type="button" onClick={() => activePackage && onNavigate("/pacotes?patientId=" + patient.id)} disabled={!activePackage} style={{ ...mutedCardStyle, textAlign: "left" }}>{metric("Pacote ativo", activePackage ? statusLabel(activePackage.status) : "Nenhum")}</button>
-          <button type="button" onClick={() => totalOpen > 0 && onNavigate("/financeiro/baixas?patientId=" + patient.id)} disabled={totalOpen <= 0} style={{ ...mutedCardStyle, textAlign: "left" }}>{metric("Valor em aberto", money(totalOpen), totalOpen > 0 ? "danger" : "success")}</button>
+          <button type="button" onClick={() => activePackage && onNavigate("/pacotes?patientId=" + patient.id)} disabled={!activePackage} style={{ ...mutedCardStyle, textAlign: "left" }}>{metric("Sessões restantes", remainingSessions)}</button>
+          <button type="button" onClick={() => activePackage && onNavigate("/pacotes?patientId=" + patient.id)} disabled={!activePackage} style={{ ...mutedCardStyle, textAlign: "left" }}>{metric("Pacotes ativos", packages.filter(isActivePackage).length)}</button>
+          <button type="button" onClick={() => totalOpen > 0 && onNavigate("/financeiro/baixas?patientId=" + patient.id)} disabled={totalOpen <= 0} style={{ ...mutedCardStyle, textAlign: "left" }}>{metric("Pendências financeiras", money(totalOpen), totalOpen > 0 ? "danger" : "success")}</button>
           <button type="button" onClick={() => paidTransactions.length > 0 && onNavigate("/financeiro?patientId=" + patient.id)} disabled={paidTransactions.length === 0} style={{ ...mutedCardStyle, textAlign: "left" }}>{metric("Total pago", money(totalPaid), "success")}</button>
           <button type="button" onClick={() => lastPayment && onNavigate("/financeiro?patientId=" + patient.id)} disabled={!lastPayment} style={{ ...mutedCardStyle, textAlign: "left" }}>{metric("Ultimo pagamento", lastPayment ? formatDate(lastPayment.updated_at ?? lastPayment.due_date) : "-")}</button>
           <button type="button" onClick={() => lastEvolution && setActiveTab("prontuario")} disabled={!lastEvolution} style={{ ...mutedCardStyle, textAlign: "left" }}>{metric("Ultima evolucao", lastEvolution ? formatDateTime(lastEvolution.created_at) : "-")}</button>
@@ -531,42 +578,31 @@ export function PatientIntegratedSheet({
       ) : null}
 
       {activeTab === "prontuario" ? (
-        <div style={{ display: "grid", gap: "14px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "8px" }}><button type="button" onClick={() => { setSelectedRecord(null); setEditingRecord(true); setRecordForm({ patient_id: patient.id, employee_id: "", title: "", complaint: "", history: "", conduct: "", evolution: "", notes: "", status: "active" }); }} style={primaryButtonStyle}>Novo Prontuário</button><button type="button" onClick={() => onNavigate("/prontuarios?q=" + encodeURIComponent(patient.full_name))} style={buttonStyle}>Abrir prontuario completo</button><button type="button" onClick={printCurrentView} style={buttonStyle}>Imprimir / Gerar PDF</button></div>
-          <DataTable
-            empty="Nenhum registro de prontuario encontrado para este paciente."
-            headers={["Data", "Titulo", "Profissional", "Evolucao", "Status", "Ações"]}
-            rows={records.map((record) => [
-              formatDateTime(record.created_at),
-              record.title,
-              record.employee_id ? compactText(employeeById.get(record.employee_id)?.name, "Profissional") : "-",
-              compactText(record.evolution ?? record.conduct ?? record.notes, "-"),
-              statusLabel(record.status)
-            ])}
-            tableCellStyle={tableCellStyle}
-            onRowClick={(rowIndex) => { const record = records[rowIndex]; if (record) { setSelectedRecord(record); setEditingRecord(false); setRecordForm({ patient_id: record.patient_id ?? "", employee_id: record.employee_id ?? "", title: record.title, complaint: record.complaint ?? "", history: record.history ?? "", conduct: record.conduct ?? "", evolution: record.evolution ?? "", notes: record.notes ?? "", status: record.status }); } }}
-        />
-          {selectedRecord ? (
-            <div style={{ ...mutedCardStyle, display: "grid", gap: "8px" }}>
-              <strong>{editingRecord ? "Editar prontuário" : "Visualizar prontuário"}</strong>
-              <p><b>Título:</b> {selectedRecord.title}</p>
-              <p><b>Queixa:</b> {selectedRecord.complaint ?? "-"}</p>
-              <p><b>Histórico:</b> {selectedRecord.history ?? "-"}</p>
-              <p><b>Evolução:</b> {selectedRecord.evolution ?? "-"}</p>
-              <p><b>Conduta:</b> {selectedRecord.conduct ?? "-"}</p>
-              <p><b>Observações:</b> {selectedRecord.notes ?? "-"}</p>
-              <button type="button" onClick={() => setEditingRecord(true)} style={buttonStyle}>Editar</button>
-              {editingRecord ? <><textarea value={recordForm?.title ?? ""} onChange={(e) => setRecordForm((f) => f ? { ...f, title: e.target.value } : f)} placeholder="Título" />
-              <textarea value={recordForm?.evolution ?? ""} onChange={(e) => setRecordForm((f) => f ? { ...f, evolution: e.target.value } : f)} placeholder="Evolução" />
-              <textarea value={recordForm?.conduct ?? ""} onChange={(e) => setRecordForm((f) => f ? { ...f, conduct: e.target.value } : f)} placeholder="Conduta" />
-              <textarea value={recordForm?.notes ?? ""} onChange={(e) => setRecordForm((f) => f ? { ...f, notes: e.target.value } : f)} placeholder="Observações" />
-              <button type="button" onClick={saveRecord} disabled={recordSaving} style={primaryButtonStyle}>{recordSaving ? "Salvando..." : "Salvar"}</button>
-              {recordMessage ? <p>{recordMessage}</p> : null}</> : null}
+        <div style={{ display: "grid", gap: "18px" }}>
+          <section style={{ ...mutedCardStyle, display: "grid", gap: "12px" }}>
+            <div><h3 style={{ fontSize: "20px", fontWeight: 800, margin: 0 }}>Nova evolução</h3><p style={{ color: "hsl(var(--muted-foreground))", margin: "4px 0 0" }}>Data automática: {formatDateTime(new Date().toISOString())}</p></div>
+            <label>Profissional<select value={quickForm.employee_id ?? ""} onChange={(e) => setQuickForm((f) => ({ ...f, employee_id: e.target.value }))} style={{ width: "100%", padding: "10px" }}><option value="">Selecione</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}</select></label>
+            <label>Queixa principal<textarea value={quickForm.complaint ?? ""} onChange={(e) => setQuickForm((f) => ({ ...f, complaint: e.target.value }))} style={{ minHeight: "64px", width: "100%" }} /></label>
+            <label>Evolução<textarea value={quickForm.evolution ?? ""} onChange={(e) => setQuickForm((f) => ({ ...f, evolution: e.target.value }))} style={{ minHeight: "110px", width: "100%" }} /></label>
+            <div style={{ display: "grid", gap: "12px", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+              <label>Conduta<textarea value={quickForm.conduct ?? ""} onChange={(e) => setQuickForm((f) => ({ ...f, conduct: e.target.value }))} style={{ minHeight: "80px", width: "100%" }} /></label>
+              <label>Observações<textarea value={quickForm.notes ?? ""} onChange={(e) => setQuickForm((f) => ({ ...f, notes: e.target.value }))} style={{ minHeight: "80px", width: "100%" }} /></label>
             </div>
-          ) : null}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}><button type="button" onClick={() => saveQuickEvolution(false)} disabled={quickSaving} style={primaryButtonStyle}>{quickSaving ? "Salvando..." : "Salvar evolução"}</button><button type="button" onClick={() => saveQuickEvolution(true)} disabled={quickSaving} style={buttonStyle}>Salvar e nova evolução</button></div>
+            {quickMessage ? <p style={{ margin: 0 }}>{quickMessage}</p> : null}
+          </section>
+
+          <section style={{ display: "grid", gap: "12px" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "8px" }}><h3 style={{ fontSize: "20px", fontWeight: 800, margin: 0 }}>Linha do tempo</h3><button type="button" onClick={() => onNavigate("/prontuarios?q=" + encodeURIComponent(patient.full_name))} style={buttonStyle}>Abrir prontuário completo</button></div>
+            {records.length ? records.map((record) => <article key={record.id} style={{ borderLeft: "3px solid #1D9E75", padding: "4px 0 12px 16px" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "8px" }}><div><strong>{formatDateTime(record.created_at)}</strong><p style={{ color: "hsl(var(--muted-foreground))", margin: "3px 0" }}>{record.employee_id ? compactText(employeeById.get(record.employee_id)?.name, "Profissional") : "Profissional não informado"}</p></div><div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}><button type="button" onClick={() => { setSelectedRecord(record); setEditingRecord(false); }} style={buttonStyle}>Visualizar</button><button type="button" onClick={() => { setSelectedRecord(record); setEditingRecord(true); setRecordForm({ patient_id: record.patient_id ?? "", employee_id: record.employee_id ?? "", title: record.title, complaint: record.complaint ?? "", history: record.history ?? "", conduct: record.conduct ?? "", evolution: record.evolution ?? "", notes: record.notes ?? "", status: record.status }); }} style={buttonStyle}>Editar</button><button type="button" onClick={printCurrentView} style={buttonStyle}>Imprimir</button></div></div>
+              <p style={{ margin: "6px 0 0" }}>{compactText(record.evolution ?? record.complaint ?? record.conduct ?? record.notes, "Registro clínico")}</p>
+            </article>) : <p>Nenhuma evolução registrada.</p>}
+          </section>
+
+          {selectedRecord ? <section style={{ ...mutedCardStyle, display: "grid", gap: "8px" }}><strong>{editingRecord ? "Editar evolução" : "Detalhes da evolução"}</strong>{editingRecord ? <><textarea value={recordForm?.complaint ?? ""} onChange={(e) => setRecordForm((f) => f ? { ...f, complaint: e.target.value } : f)} placeholder="Queixa principal" /><textarea value={recordForm?.evolution ?? ""} onChange={(e) => setRecordForm((f) => f ? { ...f, evolution: e.target.value } : f)} placeholder="Evolução" /><textarea value={recordForm?.conduct ?? ""} onChange={(e) => setRecordForm((f) => f ? { ...f, conduct: e.target.value } : f)} placeholder="Conduta" /><textarea value={recordForm?.notes ?? ""} onChange={(e) => setRecordForm((f) => f ? { ...f, notes: e.target.value } : f)} placeholder="Observações" /><button type="button" onClick={saveRecord} disabled={recordSaving} style={primaryButtonStyle}>{recordSaving ? "Salvando..." : "Salvar alterações"}</button></> : <><p><b>Queixa:</b> {selectedRecord.complaint ?? "-"}</p><p><b>Evolução:</b> {selectedRecord.evolution ?? "-"}</p><p><b>Conduta:</b> {selectedRecord.conduct ?? "-"}</p><p><b>Observações:</b> {selectedRecord.notes ?? "-"}</p></>}{recordMessage ? <p>{recordMessage}</p> : null}</section> : null}
         </div>
       ) : null}
-
       {activeTab === "documentos" ? (
         <div style={{ ...mutedCardStyle, display: "grid", gap: "10px" }}>
           <h3 style={{ fontWeight: 800, margin: 0 }}>Documentos</h3>
