@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import type { Database } from "@/types/database";
@@ -23,7 +23,7 @@ type PatientTab =
   | "whatsapp"
   | "timeline";
 
-type TimelineFilter = "todos" | "agenda" | "financeiro" | "pacotes" | "prontuario";
+type TimelineFilter = "todos" | "cadastro" | "agenda" | "financeiro" | "pacotes" | "prontuario";
 
 type TimelineItem = {
   id: string;
@@ -54,11 +54,13 @@ const tabs: Array<{ id: PatientTab; label: string }> = [
   { id: "pacotes", label: "Pacotes" },
   { id: "prontuario", label: "Prontuario" },
   { id: "documentos", label: "Documentos" },
+  { id: "whatsapp", label: "WhatsApp" },
   { id: "timeline", label: "Linha do tempo" }
 ];
 
 const timelineFilters: Array<{ id: TimelineFilter; label: string }> = [
   { id: "todos", label: "Todos" },
+  { id: "cadastro", label: "Cadastro" },
   { id: "agenda", label: "Agenda" },
   { id: "financeiro", label: "Financeiro" },
   { id: "pacotes", label: "Pacotes" },
@@ -117,27 +119,6 @@ function normalizePhone(value: string | null | undefined) {
   return (value ?? "").replace(/\D/g, "");
 }
 
-function getAge(birthDate: string | null) {
-  if (!birthDate) {
-    return null;
-  }
-
-  const birth = new Date(`${birthDate}T00:00:00`);
-  if (Number.isNaN(birth.getTime())) {
-    return null;
-  }
-
-  const today = new Date();
-  let age = today.getFullYear() - birth.getFullYear();
-  const monthDiff = today.getMonth() - birth.getMonth();
-
-  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
-    age -= 1;
-  }
-
-  return age;
-}
-
 function statusLabel(value: string | null | undefined) {
   const labels: Record<string, string> = {
     active: "Ativo",
@@ -173,7 +154,7 @@ function getPaidAmount(transaction: FinancialTransaction) {
 }
 
 function isActivePackage(patientPackage: PatientPackage) {
-  if (!patientPackage.status || patientPackage.status.toLowerCase() !== "ativo") {
+  if (!patientPackage.status || !["active", "ativo"].includes(patientPackage.status.toLowerCase())) {
     return false;
   }
 
@@ -231,6 +212,7 @@ export function PatientIntegratedSheet({
   const [recordForm, setRecordForm] = React.useState<MedicalRecordFormInput | null>(null);
   const [recordMessage, setRecordMessage] = React.useState<string | null>(null);
   const [recordSaving, setRecordSaving] = React.useState(false);
+  const [freeMessage, setFreeMessage] = React.useState("");
 
   const clinicById = React.useMemo(
     () => new Map(clinics.map((clinic) => [clinic.id, clinic])),
@@ -269,9 +251,10 @@ export function PatientIntegratedSheet({
   const paidTransactions = patientTransactions.filter((transaction) => getPaidAmount(transaction) > 0 || transaction.status === "pago");
   const totalOpen = openTransactions.reduce((sum, transaction) => sum + getOpenAmount(transaction), 0);
   const totalPaid = paidTransactions.reduce((sum, transaction) => sum + getPaidAmount(transaction), 0);
-  const age = getAge(patient.birth_date);
+  const lastPayment = paidTransactions[0] ?? null;
+  const lastEvolution = records[0] ?? null;
   const phone = normalizePhone(patient.phone);
-  const whatsappHref = phone ? `https://wa.me/55${phone}` : null;
+  const whatsappHref = phone ? `https://wa.me/${phone.startsWith("55") ? phone : `55${phone}`}` : null;
 
   const timeline = React.useMemo<TimelineItem[]>(() => {
     const appointmentItems = patientAppointments.map((appointment) => ({
@@ -306,14 +289,41 @@ export function PatientIntegratedSheet({
       description: compactText(record.evolution ?? record.conduct ?? record.notes, "Registro clinico")
     }));
 
-    return [...appointmentItems, ...financialItems, ...packageItems, ...recordItems].sort((a, b) => b.date.localeCompare(a.date));
-  }, [employeeById, packages, patientAppointments, patientTransactions, records, serviceById]);
+    const registrationItem: TimelineItem = { id: `patient-${patient.id}`, date: patient.created_at, type: "cadastro", title: "Cadastro do paciente", description: `${patient.full_name} foi cadastrado na clinica.` };
+
+    return [registrationItem, ...appointmentItems, ...financialItems, ...packageItems, ...recordItems].sort((a, b) => b.date.localeCompare(a.date));
+  }, [employeeById, packages, patient.id, patient.created_at, patient.full_name, patientAppointments, patientTransactions, records, serviceById]);
 
   const visibleTimeline = timelineFilter === "todos" ? timeline : timeline.filter((item) => item.type === timelineFilter);
 
   const billingMessage = `Ola, ${patient.full_name}!\n\nIdentificamos valores pendentes no seu cadastro da ${clinic?.name ?? "clinica"}.\n\nValor em aberto: ${money(totalOpen)}\n\nCaso ja tenha realizado o pagamento, por favor envie o comprovante por este WhatsApp para que possamos identificar e dar baixa.\n\nAtenciosamente,\n${clinic?.name ?? "Equipe"}`;
   const reminderMessage = `Ola, ${patient.full_name}!\n\nLembramos do seu proximo atendimento em ${nextAppointment ? `${formatDate(nextAppointment.appointment_date)} as ${nextAppointment.start_time}` : "data a confirmar"}.\n\nAtenciosamente,\n${clinic?.name ?? "Equipe"}`;
+  const confirmationMessage = `Ola, ${patient.full_name}! Confirmamos seu atendimento na ${clinic?.name ?? "clinica"} em ${nextAppointment ? `${formatDate(nextAppointment.appointment_date)} as ${nextAppointment.start_time}, para ${serviceById.get(nextAppointment.service_id)?.name ?? "seu atendimento"}` : "data e horario a confirmar"}.`;
+  const receiptMessage = `Ola, ${patient.full_name}! Seu recibo de ${lastPayment ? money(getPaidAmount(lastPayment)) : "pagamento"} na ${clinic?.name ?? "clinica"} esta disponivel. Acesse o financeiro para gerar o documento.`;
+  const packageMessage = `Ola, ${patient.full_name}! Seu pacote de ${activePackage ? serviceById.get(activePackage.service_id)?.name ?? "servicos" : "servicos"} possui ${activePackage?.remaining_sessions ?? 0} sessoes restantes. Fale conosco para renovar.`;
+  const thanksMessage = `Ola, ${patient.full_name}! A ${clinic?.name ?? "nossa equipe"} agradece pela confianca. Conte conosco!`;
 
+  function openTimelineItem(item: TimelineItem) {
+    if (item.type === "agenda") onNavigate("/agenda?patientId=" + patient.id + "&appointmentId=" + item.id.replace("appointment-", ""));
+    if (item.type === "financeiro") onNavigate("/financeiro?patientId=" + patient.id);
+    if (item.type === "pacotes") onNavigate("/pacotes?patientId=" + patient.id);
+    if (item.type === "prontuario") setActiveTab("prontuario");
+  }
+
+  function exportTimelineCsv() {
+    const escape = (value: string) => '"' + value.replaceAll('"', '""') + '"';
+    const rows = [["Data", "Tipo", "Titulo", "Descricao"], ...visibleTimeline.map((item) => [formatDateTime(item.date), item.type, item.title, item.description])];
+    const csv = rows.map((row) => row.map(escape).join(";")).join(String.fromCharCode(10));
+    const url = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a"); link.href = url; link.download = "historico-" + patient.full_name.replaceAll(" ", "-").toLowerCase() + ".csv"; link.click(); URL.revokeObjectURL(url);
+  }
+
+  function printCurrentView() {
+    const previousTitle = document.title;
+    document.title = "Ficha - " + patient.full_name;
+    window.addEventListener("afterprint", () => { document.title = previousTitle; }, { once: true });
+    window.print();
+  }
   async function saveRecord() {
     if (!recordForm?.title?.trim()) { setRecordMessage("Título do prontuário é obrigatório."); return; }
     setRecordSaving(true); setRecordMessage(null);
@@ -397,23 +407,26 @@ export function PatientIntegratedSheet({
         </div>
       </div>
 
-      <div style={{ display: "grid", gap: "12px", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
-        {field("Nascimento", `${formatDate(patient.birth_date)}${age !== null ? ` - ${age} anos` : ""}`)}
-        {field("Telefone", compactText(patient.phone, "Nao informado"))}
-        {field("Email", compactText(patient.email, "Nao informado"))}
+      <div style={{ display: "grid", gap: "10px", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
+        {field("Telefone / WhatsApp", compactText(patient.phone, "Nao informado"))}
         {field("Clinica", compactText(clinic?.name, "Nao vinculada"))}
-        {field("Cadastro", formatDate(patient.created_at))}
-        {field("Portal", patient.portal_access ? "Liberado" : "Sem acesso")}
+        {field("Status", statusLabel(patient.status))}
+        {field("Proximo atendimento", nextAppointment ? formatDate(nextAppointment.appointment_date) + " " + nextAppointment.start_time : "-")}
+        {field("Ultimo atendimento", lastAppointment ? formatDate(lastAppointment.appointment_date) : "-")}
+        {field("Pacote ativo", activePackage ? compactText(serviceById.get(activePackage.service_id)?.name, "Pacote ativo") : "Nenhum")}
+        {field("Sessoes restantes", activePackage?.remaining_sessions ?? 0)}
+        {field("Valor em aberto", money(totalOpen))}
+        {field("Total pago", money(totalPaid))}
       </div>
-
-      <div style={{ display: "grid", gap: "12px", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))" }}>
-        {metric("Ultimo atendimento", lastAppointment ? formatDate(lastAppointment.appointment_date) : "-", "default")}
-        {metric("Proximo atendimento", nextAppointment ? `${formatDate(nextAppointment.appointment_date)} ${nextAppointment.start_time}` : "-", "success")}
-        {metric("Pacote ativo", activePackage ? `${activePackage.remaining_sessions} restantes` : "Nenhum", "default")}
-        {metric("Valor em aberto", money(totalOpen), totalOpen > 0 ? "danger" : "success")}
-        {metric("Total pago", money(totalPaid), "success")}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+        <button type="button" onClick={() => onNavigate("/agenda?patientId=" + patient.id + "&new=1")} style={primaryButtonStyle}>Agendar</button>
+        <button type="button" onClick={() => onNavigate("/financeiro/baixas?patientId=" + patient.id)} style={primaryButtonStyle}>Receber</button>
+        <button type="button" onClick={() => whatsappHref && window.open(whatsappHref + "?text=" + encodeURIComponent(billingMessage), "_blank")} disabled={!whatsappHref || totalOpen <= 0} style={buttonStyle}>Cobrar via WhatsApp</button>
+        <button type="button" onClick={() => onNavigate("/prontuarios?q=" + encodeURIComponent(patient.full_name))} style={buttonStyle}>Abrir prontuario</button>
+        <button type="button" onClick={() => onNavigate("/financeiro/baixas?patientId=" + patient.id)} style={buttonStyle}>Gerar recibo</button>
+        <button type="button" onClick={() => setActiveTab("whatsapp")} disabled={!whatsappHref} style={buttonStyle}>Enviar WhatsApp</button>
+        <button type="button" onClick={() => onNavigate("/pacotes?patientId=" + patient.id)} style={buttonStyle}>Renovar pacote</button>
       </div>
-
       <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
         {tabs.map((tab) => (
           <button
@@ -433,32 +446,17 @@ export function PatientIntegratedSheet({
       </div>
 
       {activeTab === "resumo" ? (
-        <div style={{ display: "grid", gap: "14px", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
-          <div style={mutedCardStyle}>
-            <h3 style={{ fontWeight: 800, marginTop: 0 }}>Resumo operacional</h3>
-            <p>Atendimentos registrados: {patientAppointments.length}</p>
-            <p>Prontuarios: {records.length}</p>
-            <p>Pacotes cadastrados: {packages.length}</p>
-            <button type="button" onClick={() => onNavigate(`/agenda?patientId=${patient.id}`)} style={primaryButtonStyle}>
-              Abrir Agenda
-            </button>
-          </div>
-          <div style={mutedCardStyle}>
-            <h3 style={{ fontWeight: 800, marginTop: 0 }}>Resumo financeiro</h3>
-            <p>Em aberto: {money(totalOpen)}</p>
-            <p>Pago: {money(totalPaid)}</p>
-            <p>Debitos pendentes: {openTransactions.length}</p>
-            <button type="button" onClick={() => onNavigate(`/financeiro/baixas?patientId=${patient.id}`)} style={primaryButtonStyle}>
-              Abrir baixas
-            </button>
-          </div>
-          <div style={mutedCardStyle}>
-            <h3 style={{ fontWeight: 800, marginTop: 0 }}>Observacoes</h3>
-            <p style={{ whiteSpace: "pre-wrap" }}>{compactText(patient.notes, "Nenhuma observacao cadastrada.")}</p>
-          </div>
+        <div style={{ display: "grid", gap: "10px", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
+          <button type="button" onClick={() => nextAppointment && onNavigate("/agenda?patientId=" + patient.id + "&appointmentId=" + nextAppointment.id)} disabled={!nextAppointment} style={{ ...mutedCardStyle, textAlign: "left" }}>{metric("Proximo atendimento", nextAppointment ? formatDate(nextAppointment.appointment_date) + " " + nextAppointment.start_time : "-")}</button>
+          <button type="button" onClick={() => lastAppointment && onNavigate("/agenda?patientId=" + patient.id + "&appointmentId=" + lastAppointment.id)} disabled={!lastAppointment} style={{ ...mutedCardStyle, textAlign: "left" }}>{metric("Ultimo atendimento", lastAppointment ? formatDate(lastAppointment.appointment_date) : "-")}</button>
+          <button type="button" onClick={() => activePackage && onNavigate("/pacotes?patientId=" + patient.id)} disabled={!activePackage} style={{ ...mutedCardStyle, textAlign: "left" }}>{metric("Sessoes restantes", activePackage?.remaining_sessions ?? 0)}</button>
+          <button type="button" onClick={() => activePackage && onNavigate("/pacotes?patientId=" + patient.id)} disabled={!activePackage} style={{ ...mutedCardStyle, textAlign: "left" }}>{metric("Pacote ativo", activePackage ? statusLabel(activePackage.status) : "Nenhum")}</button>
+          <button type="button" onClick={() => totalOpen > 0 && onNavigate("/financeiro/baixas?patientId=" + patient.id)} disabled={totalOpen <= 0} style={{ ...mutedCardStyle, textAlign: "left" }}>{metric("Valor em aberto", money(totalOpen), totalOpen > 0 ? "danger" : "success")}</button>
+          <button type="button" onClick={() => paidTransactions.length > 0 && onNavigate("/financeiro?patientId=" + patient.id)} disabled={paidTransactions.length === 0} style={{ ...mutedCardStyle, textAlign: "left" }}>{metric("Total pago", money(totalPaid), "success")}</button>
+          <button type="button" onClick={() => lastPayment && onNavigate("/financeiro?patientId=" + patient.id)} disabled={!lastPayment} style={{ ...mutedCardStyle, textAlign: "left" }}>{metric("Ultimo pagamento", lastPayment ? formatDate(lastPayment.updated_at ?? lastPayment.due_date) : "-")}</button>
+          <button type="button" onClick={() => lastEvolution && setActiveTab("prontuario")} disabled={!lastEvolution} style={{ ...mutedCardStyle, textAlign: "left" }}>{metric("Ultima evolucao", lastEvolution ? formatDateTime(lastEvolution.created_at) : "-")}</button>
         </div>
       ) : null}
-
       {activeTab === "agenda" ? (
         <div style={{ display: "grid", gap: "12px" }}>
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
@@ -466,7 +464,11 @@ export function PatientIntegratedSheet({
             Novo Agendamento
           </button>
         </div>
-        <DataTable
+        {nextAppointment ? <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+          {["Editar", "Reagendar", "Cancelar", "Registrar falta", "Finalizar atendimento", "Abrir atendimento"].map((label) => <button key={label} type="button" onClick={() => onNavigate("/agenda?patientId=" + patient.id + "&appointmentId=" + nextAppointment.id)} style={buttonStyle}>{label}</button>)}
+          <button type="button" disabled={!whatsappHref} onClick={() => whatsappHref && window.open(whatsappHref + "?text=" + encodeURIComponent(confirmationMessage), "_blank")} style={buttonStyle}>Enviar confirmacao</button>
+          <button type="button" disabled={!whatsappHref} onClick={() => whatsappHref && window.open(whatsappHref + "?text=" + encodeURIComponent(reminderMessage), "_blank")} style={buttonStyle}>Enviar lembrete</button>
+        </div> : null}        <DataTable
           empty="Nenhum atendimento encontrado para este paciente."
           headers={["Data", "Horario", "Servico", "Profissional", "Tipo", "Status"]}
           rows={patientAppointments.map((appointment) => [
@@ -487,7 +489,7 @@ export function PatientIntegratedSheet({
         <div style={{ display: "grid", gap: "14px" }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
             <button type="button" onClick={() => onNavigate(`/financeiro?patientId=${patient.id}`)} style={buttonStyle}>Abrir Financeiro</button>
-            <button type="button" onClick={() => onNavigate(`/financeiro/baixas?patientId=${patient.id}`)} style={primaryButtonStyle}>Dar baixa</button>
+            <button type="button" onClick={() => onNavigate(`/financeiro/baixas?patientId=${patient.id}`)} style={primaryButtonStyle}>Dar baixa</button><button type="button" onClick={() => onNavigate("/financeiro/baixas?patientId=" + patient.id)} style={buttonStyle}>Baixa parcial</button><button type="button" disabled={!whatsappHref || totalOpen <= 0} onClick={() => whatsappHref && window.open(whatsappHref + "?text=" + encodeURIComponent(billingMessage), "_blank")} style={buttonStyle}>Cobrar via WhatsApp</button><button type="button" onClick={() => onNavigate("/financeiro/baixas?patientId=" + patient.id)} style={buttonStyle}>Gerar / Enviar recibo</button>
           </div>
           <DataTable
             empty="Nenhum lancamento financeiro encontrado para este paciente."
@@ -509,7 +511,7 @@ export function PatientIntegratedSheet({
 
       {activeTab === "pacotes" ? (
         <div style={{ display: "grid", gap: "14px" }}>
-          <button type="button" onClick={() => onNavigate(`/pacotes?patientId=${patient.id}`)} style={primaryButtonStyle}>Abrir Pacotes</button>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}><button type="button" onClick={() => onNavigate(`/pacotes?patientId=${patient.id}`)} style={primaryButtonStyle}>Novo / Abrir pacote</button><button type="button" onClick={() => onNavigate("/pacotes?patientId=" + patient.id)} style={buttonStyle}>Renovar pacote</button><button type="button" onClick={() => onNavigate("/agenda?patientId=" + patient.id + "&new=1")} style={buttonStyle}>Agendar sessao</button></div>
           <DataTable
             empty="Nenhum pacote encontrado para este paciente."
             headers={["Servico", "Status", "Contratadas", "Realizadas", "Restantes", "Validade", "Valor"]}
@@ -530,7 +532,7 @@ export function PatientIntegratedSheet({
 
       {activeTab === "prontuario" ? (
         <div style={{ display: "grid", gap: "14px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "8px" }}><button type="button" onClick={() => { setSelectedRecord(null); setEditingRecord(true); setRecordForm({ patient_id: patient.id, employee_id: "", title: "", complaint: "", history: "", conduct: "", evolution: "", notes: "", status: "active" }); }} style={primaryButtonStyle}>Novo Prontuário</button><button type="button" onClick={() => onNavigate(`/prontuarios?patientId=${patient.id}`)} style={buttonStyle}>Abrir módulo</button></div>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "8px" }}><button type="button" onClick={() => { setSelectedRecord(null); setEditingRecord(true); setRecordForm({ patient_id: patient.id, employee_id: "", title: "", complaint: "", history: "", conduct: "", evolution: "", notes: "", status: "active" }); }} style={primaryButtonStyle}>Novo Prontuário</button><button type="button" onClick={() => onNavigate("/prontuarios?q=" + encodeURIComponent(patient.full_name))} style={buttonStyle}>Abrir prontuario completo</button><button type="button" onClick={printCurrentView} style={buttonStyle}>Imprimir / Gerar PDF</button></div>
           <DataTable
             empty="Nenhum registro de prontuario encontrado para este paciente."
             headers={["Data", "Titulo", "Profissional", "Evolucao", "Status", "Ações"]}
@@ -578,39 +580,19 @@ export function PatientIntegratedSheet({
       ) : null}
 
       {activeTab === "whatsapp" ? (
-        <div style={{ display: "grid", gap: "14px", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
-          <MessageCard
-            title="Cobranca manual"
-            message={billingMessage}
-            disabled={!phone}
-            onCopy={() => navigator.clipboard.writeText(billingMessage)}
-            onOpen={() => {
-              if (whatsappHref) {
-                window.open(`${whatsappHref}?text=${encodeURIComponent(billingMessage)}`, "_blank", "noopener,noreferrer");
-              }
-            }}
-            buttonStyle={buttonStyle}
-            primaryButtonStyle={primaryButtonStyle}
-          />
-          <MessageCard
-            title="Lembrete de atendimento"
-            message={reminderMessage}
-            disabled={!phone}
-            onCopy={() => navigator.clipboard.writeText(reminderMessage)}
-            onOpen={() => {
-              if (whatsappHref) {
-                window.open(`${whatsappHref}?text=${encodeURIComponent(reminderMessage)}`, "_blank", "noopener,noreferrer");
-              }
-            }}
-            buttonStyle={buttonStyle}
-            primaryButtonStyle={primaryButtonStyle}
-          />
+        <div style={{ display: "grid", gap: "14px" }}>
+          <div style={{ display: "grid", gap: "14px", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
+            {[["Confirmacao de agendamento", confirmationMessage], ["Lembrete", reminderMessage], ["Cobranca", billingMessage], ["Envio de recibo", receiptMessage], ["Pacote terminando", packageMessage], ["Agradecimento", thanksMessage]].map(([title, message]) => (
+              <MessageCard key={title} title={title} message={message} disabled={!phone} onCopy={() => navigator.clipboard.writeText(message)} onOpen={() => { if (whatsappHref) window.open(whatsappHref + "?text=" + encodeURIComponent(message), "_blank", "noopener,noreferrer"); }} buttonStyle={buttonStyle} primaryButtonStyle={primaryButtonStyle} />
+            ))}
+          </div>
+          <article style={{ ...mutedCardStyle, display: "grid", gap: "10px" }}><h3 style={{ margin: 0 }}>Mensagem livre</h3><textarea value={freeMessage} onChange={(event) => setFreeMessage(event.target.value)} placeholder={"Ola, " + patient.full_name + "..."} style={{ minHeight: "110px", width: "100%" }} /><button type="button" disabled={!phone || !freeMessage.trim()} onClick={() => { if (whatsappHref) window.open(whatsappHref + "?text=" + encodeURIComponent(freeMessage), "_blank", "noopener,noreferrer"); }} style={primaryButtonStyle}>Abrir WhatsApp</button></article>
         </div>
       ) : null}
-
       {activeTab === "timeline" ? (
         <div style={{ display: "grid", gap: "14px" }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+            <button type="button" onClick={printCurrentView} style={buttonStyle}>Imprimir / Gerar PDF</button><button type="button" onClick={exportTimelineCsv} style={buttonStyle}>Exportar CSV</button>
             {timelineFilters.map((filter) => (
               <button
                 key={filter.id}
@@ -629,7 +611,7 @@ export function PatientIntegratedSheet({
           <div style={{ display: "grid", gap: "10px" }}>
             {visibleTimeline.length > 0 ? (
               visibleTimeline.map((item) => (
-                <article key={item.id} style={mutedCardStyle}>
+                <article key={item.id} onClick={() => openTimelineItem(item)} style={{ ...mutedCardStyle, cursor: item.type === "cadastro" ? "default" : "pointer" }}>
                   <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "8px" }}>
                     <strong>{item.title}</strong>
                     <span style={{ color: "hsl(var(--muted-foreground))", fontSize: "13px" }}>{formatDateTime(item.date)}</span>
@@ -665,7 +647,7 @@ function DataTable({
   }
 
   return (
-    <div style={{ overflowX: "auto" }}>
+    <div style={{ maxWidth: "100%", overflow: "hidden" }}>
       <table style={{ borderCollapse: "collapse", width: "100%" }}>
         <thead>
           <tr>
