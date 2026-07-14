@@ -1,10 +1,10 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import { usePathname, useRouter } from "next/navigation";
-import { Activity, LogOut, Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Activity, Bell, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
 import { setActiveClinic } from "@/app/(app)/clinic-actions";
 import { signOut } from "@/app/login/actions";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -251,7 +251,30 @@ export function AppShell({
               </p>
             </div>
           </div>
-          <ThemeToggle />
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="hidden rounded-full text-muted-foreground hover:text-foreground sm:inline-flex"
+              aria-label="Buscar"
+              title="Buscar"
+            >
+              <Search className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="relative rounded-full text-muted-foreground hover:text-foreground"
+              aria-label="Notificacoes"
+              title="Notificacoes"
+            >
+              <Bell className="h-4 w-4" />
+              <span className="absolute right-2 top-2 h-2 w-2 rounded-full border-2 border-background bg-primary" />
+            </Button>
+            <ThemeToggle />
+          </div>
         </header>
 
         <main className="app-main mx-auto w-full max-w-7xl p-5 md:p-8">{children}</main>
