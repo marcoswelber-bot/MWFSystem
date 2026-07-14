@@ -38,6 +38,8 @@ type PatientsManagerProps = {
   isAdmMaster: boolean;
   currentClinicId: string | null;
   initialSearch: string;
+  initialPatientId?: string | null;
+  initialOpenNew?: boolean;
   loadError?: string;
   permissions?: PermissionSet;
 };
@@ -86,17 +88,19 @@ export function PatientsManager({
   isAdmMaster,
   currentClinicId,
   initialSearch,
+  initialPatientId = null,
+  initialOpenNew = false,
   loadError,
   permissions
 }: PatientsManagerProps) {
   const router = useRouter();
   const [isPending, startTransition] = React.useTransition();
-  const [formOpen, setFormOpen] = React.useState(false);
+  const [formOpen, setFormOpen] = React.useState(initialOpenNew);
   const [editingPatient, setEditingPatient] = React.useState<Patient | null>(null);
-  const [form, setForm] = React.useState<PatientFormInput>(emptyForm);
+  const [form, setForm] = React.useState<PatientFormInput>(() => ({ ...emptyForm, clinic_id: initialOpenNew && !isAdmMaster ? currentClinicId ?? "" : "" }));
   const [search, setSearch] = React.useState(initialSearch);
   const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("all");
-  const [selectedPatientId, setSelectedPatientId] = React.useState<string | null>(null);
+  const [selectedPatientId, setSelectedPatientId] = React.useState<string | null>(initialPatientId);
   const [message, setMessage] = React.useState<PatientActionResult | null>(
     loadError ? { ok: false, message: loadError } : null
   );

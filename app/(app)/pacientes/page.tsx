@@ -1,4 +1,4 @@
-﻿import { PageHeader } from "@/components/page-header";
+import { PageHeader } from "@/components/page-header";
 import { PatientsManager } from "@/components/patients/patients-manager";
 import { getCurrentClinicScope } from "@/lib/access-control";
 import { getCurrentPermissionMap } from "@/lib/permissions";
@@ -18,6 +18,8 @@ type Service = Database["public"]["Tables"]["services"]["Row"];
 type PacientesPageProps = {
   searchParams: Promise<{
     q?: string;
+    patientId?: string;
+    new?: string;
   }>;
 };
 
@@ -187,6 +189,8 @@ export default async function PacientesPage({
         isAdmMaster={clinicScope.isAdmMaster}
         currentClinicId={clinicScope.clinicId}
         initialSearch={search}
+        initialPatientId={params.patientId ?? null}
+        initialOpenNew={params.new === "1"}
         loadError={loadError}
         permissions={permissions.pacientes}
       />

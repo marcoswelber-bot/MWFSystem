@@ -1,321 +1,77 @@
-import {
-  AlertTriangle,
-  Building2,
-  CalendarCheck,
-  CalendarClock,
-  CalendarX,
-  CircleDollarSign,
-  Clock,
-  ShieldCheck,
-  TrendingUp,
-  UserX,
-  Users
-} from "lucide-react";
+import { AlertTriangle, CalendarDays, ClipboardList, CreditCard, MessageCircle, PackageCheck, Search, UserPlus, UsersRound, WalletCards } from "lucide-react";
 import Link from "next/link";
 import type { Route } from "next";
 import { PageHeader } from "@/components/page-header";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle
-} from "@/components/ui/card";
-import { getOperationalFinanceSnapshot } from "@/lib/financial-integration-engine";
-import { getDashboardData } from "@/app/(app)/dashboard/actions";
-import type { DashboardAlert } from "@/app/(app)/dashboard/actions";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { getDashboardData } from "./actions";
+import { getCurrentClinicScope } from "@/lib/access-control";
+import { getCurrentPermissionMap } from "@/lib/permissions";
+import { createClient } from "@/lib/supabase/server";
 
-function money(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL"
-  }).format(value);
-}
+type Props = { searchParams: Promise<{ q?: string }> };
+type Patient = { id:string; full_name:string; cpf:string|null; phone:string|null; email:string|null };
+const route = (value:string) => value as Route;
+const digits = (value:string|null) => (value || "").replace(/D/g, "");
 
-function getAlertColor(type: DashboardAlert["type"]) {
-  switch (type) {
-    case "falta":
-      return "border-orange-200 bg-orange-50 dark:border-orange-900 dark:bg-orange-950";
-    case "sem_baixa":
-      return "border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950";
-    case "vencido":
-      return "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950";
-    case "pendente":
-      return "border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950";
-    default:
-      return "";
+export default async function DashboardPage({ searchParams }: Props) {
+  const q = ((await searchParams).q || "").trim();
+  const [data, permissions, scope] = await Promise.all([getDashboardData(), getCurrentPermissionMap(), getCurrentClinicScope()]);
+  const supabase = await createClient();
+  let patients: Patient[] = [];
+  if (q.length >= 2) {
+    const term = q.replaceAll("%", "\%").replaceAll(",", " ");
+    let query = supabase.from("patients").select("id,full_name,cpf,phone,email").or("full_name.ilike.%" + term + "%,cpf.ilike.%" + term + "%,phone.ilike.%" + term + "%,email.ilike.%" + term + "%").order("full_name").limit(12);
+    if (scope.clinicId) query = query.eq("clinic_id", scope.clinicId);
+    patients = (await query).data || [];
   }
-}
+  const today = new Date().toISOString().slice(0,10);
+  const limit = new Date(Date.now() + 30 * 86400000).toISOString().slice(0,10);
+  let openQuery = supabase.from("financial_transactions").select("patient_id,due_date").eq("transaction_type","receita").in("status",["pendente","parcial"]);
+  let packageQuery = supabase.from("patient_packages").select("id").eq("status","active").gte("expiration_date",today).lte("expiration_date",limit);
+  if (scope.clinicId) { openQuery = openQuery.eq("clinic_id",scope.clinicId); packageQuery = packageQuery.eq("clinic_id",scope.clinicId); }
+  const [openResult, packageResult] = await Promise.all([openQuery,packageQuery]);
+  const openRows = openResult.data || [];
+  const pending = [
+    ["Agendamentos sem baixa", data.alerts.filter(a => a.type === "sem_baixa").length, "/agenda", CalendarDays, permissions.agenda.view],
+    ["Pacientes em aberto", new Set(openRows.map(r => r.patient_id).filter(Boolean)).size, "/financeiro/baixas", UsersRound, permissions.financeiro.view],
+    ["Pagamentos vencidos", openRows.filter(r => r.due_date < today).length, "/financeiro/baixas", AlertTriangle, permissions.financeiro.view],
+    ["Pacotes proximos do vencimento", (packageResult.data || []).length, "/pacotes", PackageCheck, permissions.pacotes.view]
+  ] as const;
+  const quick = [
+    ["Novo paciente","/pacientes?new=1",UserPlus,permissions.pacientes.create],
+    ["Novo agendamento","/agenda?new=1",CalendarDays,permissions.agenda.create],
+    ["Receber pagamento","/financeiro/baixas",CreditCard,permissions.financeiro.edit],
+    ["Abrir Agenda","/agenda",CalendarDays,permissions.agenda.view],
+    ["Pacientes em aberto","/financeiro/baixas",UsersRound,permissions.financeiro.view],
+    ["Abrir prontuario","/prontuarios",ClipboardList,permissions.prontuarios.view],
+    ["Baixas financeiras","/financeiro/baixas",WalletCards,permissions.financeiro.view]
+  ] as const;
 
-function getAlertIcon(type: DashboardAlert["type"]) {
-  switch (type) {
-    case "falta":
-      return UserX;
-    case "sem_baixa":
-      return CalendarX;
-    case "vencido":
-      return AlertTriangle;
-    case "pendente":
-      return Clock;
-    default:
-      return AlertTriangle;
-  }
-}
-
-function getStatusBadge(status: string) {
-  switch (status) {
-    case "realizado":
-      return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
-    case "confirmado":
-      return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
-    case "agendado":
-      return "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200";
-    case "faltou":
-      return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200";
-    case "cancelado":
-      return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200";
-    default:
-      return "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200";
-  }
-}
-
-export default async function DashboardPage() {
-  const [snapshot, dashboardData] = await Promise.all([
-    getOperationalFinanceSnapshot(),
-    getDashboardData()
-  ]);
-
-  const { alerts, todayAppointments, stats } = dashboardData;
-
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow="Visao geral"
-        title="Dashboard"
-        description="Acompanhe a operacao em tempo real."
-      />
-
-      {alerts.length > 0 && (
-        <section>
-          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            <AlertTriangle className="h-4 w-4 text-orange-500" />
-            Atencao ({alerts.length})
-          </h2>
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-            {alerts.slice(0, 9).map((alert) => {
-              const Icon = getAlertIcon(alert.type);
-              return (
-                <Link key={alert.id} href={alert.link as Route}>
-                  <div
-                    className={`flex items-start gap-3 rounded-lg border p-3 transition-colors hover:opacity-80 ${getAlertColor(alert.type)}`}
-                  >
-                    <Icon className="mt-0.5 h-4 w-4 shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium">{alert.title}</p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {alert.description}
-                      </p>
-                    </div>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Link href="/financeiro" className="transition-transform hover:scale-[1.02]">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Receitas do mes</CardTitle>
-              <TrendingUp className="h-4 w-4 text-green-500" />
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{money(snapshot.monthlyRevenue)}</p>
-              <p className="text-xs text-muted-foreground">Hoje: {money(snapshot.dailyRevenue)}</p>
-            </CardContent>
-          </Card>
-        </Link>
-
-        <Link href="/financeiro" className="transition-transform hover:scale-[1.02]">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Despesas</CardTitle>
-              <CircleDollarSign className="h-4 w-4 text-red-400" />
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{money(snapshot.expenseTotal)}</p>
-              <p className="text-xs text-muted-foreground">Saldo: {money(snapshot.realizedBalance)}</p>
-            </CardContent>
-          </Card>
-        </Link>
-
-        <Link href="/agenda" className="transition-transform hover:scale-[1.02]">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Agenda hoje</CardTitle>
-              <CalendarCheck className="h-4 w-4 text-primary" />
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{stats.todayTotal}</p>
-              <p className="text-xs text-muted-foreground">
-                {stats.todayRealized} realizados - {stats.todayPending} pendentes
-              </p>
-            </CardContent>
-          </Card>
-        </Link>
-
-        <Link href="/financeiro" className="transition-transform hover:scale-[1.02]">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Pagamentos vencidos</CardTitle>
-              <AlertTriangle className="h-4 w-4 text-orange-500" />
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{stats.overduePayments}</p>
-              <p className="text-xs text-muted-foreground">Contas a receber atrasadas</p>
-            </CardContent>
-          </Card>
-        </Link>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Agenda de hoje</CardTitle>
-              <CardDescription>
-                {todayAppointments.length === 0
-                  ? "Nenhum agendamento para hoje."
-                  : `${todayAppointments.length} atendimento${todayAppointments.length > 1 ? "s" : ""}`}
-              </CardDescription>
-            </div>
-            <Link
-              href="/agenda"
-              className="text-sm font-medium text-primary hover:underline"
-            >
-              Ver completa
-            </Link>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {todayAppointments.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-                <CalendarClock className="mb-2 h-8 w-8" />
-                <p className="text-sm">Agenda livre hoje</p>
-              </div>
-            ) : (
-              todayAppointments.slice(0, 8).map((appointment) => (
-                <Link
-                  key={appointment.id}
-                  href="/agenda"
-                  className="flex items-center justify-between rounded-lg border p-3 transition-colors hover:bg-secondary/50"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary">
-                      <Clock className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">
-                        {appointment.patient_name}
-                      </p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {appointment.service_name} - {appointment.employee_name}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getStatusBadge(appointment.status)}`}>
-                      {appointment.status}
-                    </span>
-                    <span className="whitespace-nowrap text-sm font-medium text-muted-foreground">
-                      {appointment.start_time.slice(0, 5)}
-                    </span>
-                  </div>
-                </Link>
-              ))
-            )}
-            {todayAppointments.length > 8 && (
-              <Link
-                href="/agenda"
-                className="block text-center text-sm font-medium text-primary hover:underline"
-              >
-                +{todayAppointments.length - 8} mais atendimentos
-              </Link>
-            )}
-          </CardContent>
-        </Card>
-
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
-          <Link href="/pacientes" className="transition-transform hover:scale-[1.02]">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                <div>
-                  <CardTitle className="text-base">Pacientes devendo</CardTitle>
-                  <CardDescription>Contas a receber pendentes</CardDescription>
-                </div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-orange-100 text-orange-600 dark:bg-orange-900 dark:text-orange-300">
-                  <Users className="h-5 w-5" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-semibold">{snapshot.receivablesCount}</p>
-              </CardContent>
-            </Card>
-          </Link>
-
-          <Link href="/agenda" className="transition-transform hover:scale-[1.02]">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                <div>
-                  <CardTitle className="text-base">Faltas recentes</CardTitle>
-                  <CardDescription>Ultimos 7 dias</CardDescription>
-                </div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-300">
-                  <UserX className="h-5 w-5" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-semibold">{stats.todayAbsent + alerts.filter((a) => a.type === "falta").length}</p>
-              </CardContent>
-            </Card>
-          </Link>
-
-          <Link href="/pacotes" className="transition-transform hover:scale-[1.02]">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                <div>
-                  <CardTitle className="text-base">Sessoes restantes</CardTitle>
-                  <CardDescription>Saldo de pacotes ativos</CardDescription>
-                </div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300">
-                  <Building2 className="h-5 w-5" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-semibold">{snapshot.remainingSessions}</p>
-              </CardContent>
-            </Card>
-          </Link>
-
-          <Link href="/funcionarios" className="transition-transform hover:scale-[1.02]">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                <div>
-                  <CardTitle className="text-base">Comissoes pendentes</CardTitle>
-                  <CardDescription>Lancamentos a pagar</CardDescription>
-                </div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-purple-100 text-purple-600 dark:bg-purple-900 dark:text-purple-300">
-                  <ShieldCheck className="h-5 w-5" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-semibold">{snapshot.pendingCommissionsCount}</p>
-              </CardContent>
-            </Card>
-          </Link>
-        </div>
-      </section>
-    </div>
-  );
+  return <div className="space-y-6">
+    <PageHeader eyebrow="Operacao de hoje" title="Dashboard operacional" description="Encontre pacientes e acesse rapidamente as tarefas mais importantes da clinica." />
+    <Card className="border-primary/20"><CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-lg"><Search className="h-5 w-5 text-primary"/>Pesquisa global de pacientes</CardTitle><CardDescription>Busque por nome, CPF, telefone ou e-mail.</CardDescription></CardHeader>
+      <CardContent className="space-y-4"><form action="/dashboard" className="flex flex-col gap-2 sm:flex-row"><input name="q" defaultValue={q} minLength={2} placeholder="Nome, CPF, telefone ou e-mail" className="h-11 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm"/><Button type="submit"><Search className="h-4 w-4"/>Pesquisar</Button></form>
+      {q.length === 1 && <p className="text-sm text-muted-foreground">Digite ao menos 2 caracteres.</p>}
+      {q.length >= 2 && patients.length === 0 && <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Nenhum paciente encontrado.</p>}
+      <div className="grid gap-3">{patients.map(patient => {
+        const phone = digits(patient.phone); const whatsapp = phone ? "https://wa.me/" + (phone.startsWith("55") ? phone : "55" + phone) : "";
+        const actions = [
+          ["Abrir ficha","/pacientes?patientId="+patient.id,permissions.pacientes.view],
+          ["Agendar","/agenda?patientId="+patient.id+"&new=1",permissions.agenda.create],
+          ["Receber","/financeiro/baixas?patientId="+patient.id,permissions.financeiro.edit],
+          ["Prontuario","/prontuarios?q="+encodeURIComponent(patient.full_name),permissions.prontuarios.view],
+          ["Pacotes","/pacotes?patientId="+patient.id,permissions.pacotes.view]
+        ] as const;
+        return <div key={patient.id} className="rounded-xl border p-4"><p className="truncate font-semibold">{patient.full_name}</p><p className="mb-3 truncate text-xs text-muted-foreground">{[patient.cpf,patient.phone,patient.email].filter(Boolean).join(" · ") || "Sem dados de contato"}</p>
+          <div className="flex flex-wrap gap-2">{actions.filter(a => a[2]).map(a => <Button key={a[0]} asChild size="sm" variant="outline"><Link href={route(a[1])}>{a[0]}</Link></Button>)}{whatsapp ? <Button asChild size="sm" variant="outline"><a href={whatsapp} target="_blank" rel="noreferrer"><MessageCircle className="h-4 w-4"/>WhatsApp</a></Button> : <Button size="sm" variant="outline" disabled>WhatsApp</Button>}</div>
+        </div>;
+      })}</div></CardContent>
+    </Card>
+    <section><h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Acoes rapidas</h2><div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">{quick.filter(a => a[3]).map(([label,href,Icon]) => <Button key={label} asChild variant="outline" className="h-20 whitespace-normal"><Link href={route(href)} className="flex-col gap-2 text-center"><Icon className="h-5 w-5 text-primary"/>{label}</Link></Button>)}</div></section>
+    <section><h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Pendencias</h2><div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{pending.filter(a => a[4]).map(([label,value,href,Icon]) => <Link key={label} href={route(href)}><Card className="h-full hover:border-primary/40"><CardContent className="flex items-center gap-3 p-4"><Icon className="h-5 w-5 shrink-0 text-primary"/><div><p className="text-2xl font-bold">{value}</p><p className="text-xs text-muted-foreground">{label}</p></div></CardContent></Card></Link>)}</div></section>
+    <Card><CardHeader className="flex flex-row items-center justify-between gap-3"><div><CardTitle>Agenda de hoje</CardTitle><CardDescription>{data.stats.todayTotal} atendimento(s)</CardDescription></div><Button asChild size="sm" variant="outline"><Link href="/agenda">Ver agenda completa</Link></Button></CardHeader><CardContent>
+      {data.todayAppointments.length === 0 ? <p className="rounded-lg border border-dashed py-8 text-center text-sm text-muted-foreground">Agenda livre hoje.</p> : <div className="grid gap-2">{data.todayAppointments.slice(0,10).map(item => <Link key={item.id} href={route("/agenda?appointmentId="+item.id)} className="grid min-w-0 grid-cols-[48px_1fr_auto] items-center gap-3 rounded-lg border p-3 hover:bg-muted/50"><strong className="text-primary">{item.start_time.slice(0,5)}</strong><div className="min-w-0"><p className="truncate text-sm font-medium">{item.patient_name}</p><p className="truncate text-xs text-muted-foreground">{item.service_name} · {item.employee_name}</p></div><span className="hidden rounded-full bg-muted px-2 py-1 text-xs sm:inline">{item.status}</span></Link>)}</div>}
+    </CardContent></Card>
+  </div>;
 }
