@@ -669,11 +669,17 @@ export function AgendaManager({
   const [viewMode, setViewMode] = React.useState<ViewMode>("day");
   const [selectedDate, setSelectedDate] = React.useState(today());
   const [employeeFilter, setEmployeeFilter] = React.useState("all");
+  const [serviceFilter, setServiceFilter] = React.useState("all");
+  const [statusFilter, setStatusFilter] = React.useState("all");
+  const [typeFilter, setTypeFilter] = React.useState("all");
+  const [groupFilter, setGroupFilter] = React.useState("all");
+  const [pendingFilter, setPendingFilter] = React.useState("all");
   const [clinicFilter, setClinicFilter] = React.useState(currentClinicId ?? "all");
   const [appointmentFormOpen, setAppointmentFormOpen] = React.useState(false);
   const [blockFormOpen, setBlockFormOpen] = React.useState(false);
   const [editingAppointment, setEditingAppointment] =
     React.useState<Appointment | null>(null);
+  const [selectedAppointment, setSelectedAppointment] = React.useState<Appointment | null>(null);
   const [appointmentForm, setAppointmentForm] =
     React.useState<AppointmentFormInput>(emptyAppointmentForm);
   const [blockForm, setBlockForm] =
@@ -683,6 +689,7 @@ export function AgendaManager({
   );
   const [appointmentFormMessage, setAppointmentFormMessage] =
     React.useState<AgendaActionResult | null>(null);
+  const [savedWhatsapp, setSavedWhatsapp] = React.useState<{ href: string; message: string } | null>(null);
   const [finalizingAppointment, setFinalizingAppointment] = React.useState<Appointment | null>(null);
   const [finalizeForm, setFinalizeForm] = React.useState<FinalizeBillingForm>({
     financial_status: "em_aberto",
@@ -730,9 +737,14 @@ export function AgendaManager({
         return false;
       }
 
-      if (employeeFilter !== "all" && appointment.employee_id !== employeeFilter) {
-        return false;
-      }
+      if (employeeFilter !== "all" && appointment.employee_id !== employeeFilter) return false;
+      if (serviceFilter !== "all" && appointment.service_id !== serviceFilter) return false;
+      if (statusFilter !== "all" && normalizeStatus(appointment.status) !== statusFilter) return false;
+      if (typeFilter !== "all" && getAppointmentType(appointment) !== typeFilter) return false;
+      if (groupFilter === "group" && !appointment.service_is_group && getAppointmentType(appointment) !== "grupo") return false;
+      if (groupFilter === "individual" && (appointment.service_is_group || getAppointmentType(appointment) === "grupo")) return false;
+      if (pendingFilter === "pending" && appointment.finance_integration_status === "completed") return false;
+      if (pendingFilter === "unsettled" && !(normalizeStatus(appointment.status) === "realizado" && appointment.finance_integration_status !== "completed")) return false;
 
       return visibleDaySet.has(appointment.appointment_date);
     })
@@ -791,7 +803,7 @@ export function AgendaManager({
     router.refresh();
   }
 
-  function openCreateAppointment(date = selectedDate, employeeId = "") {
+  function openCreateAppointment(date = selectedDate, employeeId = "", startTime = "") {
     if (isPastDate(date) || isFullDayBlocked(date, scopedBlocks, employeeId)) {
       setMessage({ ok: false, message: "Data bloqueada para agendamento" });
       return;
@@ -802,7 +814,8 @@ export function AgendaManager({
       ...emptyAppointmentForm,
       clinic_id: clinicFilter !== "all" ? clinicFilter : currentClinicId ?? "",
       employee_id: employeeId,
-      appointment_date: date
+      appointment_date: date,
+      start_time: startTime
     });
     setMessage(null);
     setAppointmentFormMessage(null);
@@ -820,7 +833,7 @@ export function AgendaManager({
   React.useEffect(() => {
     const selected = initialAppointmentId ? appointments.find((item) => item.id === initialAppointmentId) : null;
     if (selected) {
-      openEditAppointment(selected);
+      setSelectedAppointment(selected);
     } else if (initialOpenNew && initialPatientId) {
       setEditingAppointment(null);
       setAppointmentForm((current) => ({ ...current, patient_id: initialPatientId, patient_ids: [initialPatientId], clinic_id: currentClinicId ?? "" }));
@@ -936,6 +949,13 @@ export function AgendaManager({
         setMessage(
           getAppointmentMessage(result, editingAppointment ? "update" : "create")
         );
+        const savedPatient = patients.find((item) => item.id === patientIds[0]);
+        const savedEmployee = employees.find((item) => item.id === appointmentPayload.employee_id);
+        const savedService = services.find((item) => item.id === appointmentPayload.service_id);
+        const savedClinic = clinics.find((item) => item.id === appointmentPayload.clinic_id);
+        const savedPhone = (savedPatient?.phone ?? "").replace(/\D/g, "");
+        const savedLines = [editingAppointment ? "Seu atendimento foi reagendado." : "Seu atendimento foi agendado com sucesso.", "", "Data: " + appointmentPayload.appointment_date, "Horario: " + appointmentPayload.start_time, "Profissional: " + (savedEmployee?.name ?? "Profissional"), "Servico: " + (savedService?.name ?? "Servico"), "Clinica: " + (savedClinic?.name ?? "Clinica")];
+        setSavedWhatsapp(savedPhone ? { href: "https://wa.me/" + (savedPhone.startsWith("55") ? savedPhone : "55" + savedPhone), message: "Ola, " + (savedPatient?.full_name ?? "paciente") + "." + String.fromCharCode(10) + String.fromCharCode(10) + savedLines.join(String.fromCharCode(10)) } : null);
         closeAppointmentForm();
         refresh();
       } else {
@@ -1005,8 +1025,10 @@ export function AgendaManager({
   }
 
   function changeStatus(appointment: Appointment, status: AppointmentStatus) {
+    const observation = status === "cancelado" || status === "faltou" ? window.prompt(status === "cancelado" ? "Informe o motivo do cancelamento:" : "Observacao da falta:") : undefined;
+    if ((status === "cancelado" || status === "faltou") && observation === null) return;
     startTransition(async () => {
-      const result = await setAppointmentStatus(appointment.id, status);
+      const result = await setAppointmentStatus(appointment.id, status, observation ?? undefined);
       setMessage(getAppointmentMessage(result, "status"));
       if (result.ok) {
         refresh();
@@ -1047,6 +1069,7 @@ export function AgendaManager({
       {message ? (
         <SystemMessage message={message} onClose={() => setMessage(null)} />
       ) : null}
+      {savedWhatsapp ? <Card className="flex flex-wrap items-center justify-between gap-3 border-emerald-200 bg-emerald-50 p-3 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-100"><span className="text-sm font-medium">Agendamento salvo. Deseja enviar a confirmacao?</span><div className="flex gap-2"><Button type="button" size="sm" onClick={() => window.open(savedWhatsapp.href + "?text=" + encodeURIComponent(savedWhatsapp.message), "_blank", "noopener,noreferrer")}>Enviar confirmacao por WhatsApp</Button><Button type="button" size="sm" variant="ghost" onClick={() => setSavedWhatsapp(null)}>Fechar</Button></div></Card> : null}
 
       <Card className="overflow-hidden border-none bg-card shadow-[0_18px_55px_rgba(15,23,42,0.08)] dark:shadow-none">
         <div className="grid gap-4 border-b bg-gradient-to-r from-card via-card to-secondary/40 p-4 lg:grid-cols-[1fr_auto] lg:items-center">
@@ -1163,6 +1186,13 @@ export function AgendaManager({
             ))}
           </div>
         </div>
+        <div className="grid gap-3 border-t p-4 sm:grid-cols-2 lg:grid-cols-5">
+          <FieldShell label="Servico"><select value={serviceFilter} onChange={(event) => setServiceFilter(event.target.value)} className="agenda-input"><option value="all">Todos</option>{visibleServices.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}</select></FieldShell>
+          <FieldShell label="Status"><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="agenda-input"><option value="all">Todos</option>{statusOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></FieldShell>
+          <FieldShell label="Tipo"><select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} className="agenda-input"><option value="all">Todos</option>{appointmentTypeOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></FieldShell>
+          <FieldShell label="Formato"><select value={groupFilter} onChange={(event) => setGroupFilter(event.target.value)} className="agenda-input"><option value="all">Todos</option><option value="individual">Individual</option><option value="group">Coletivo</option></select></FieldShell>
+          <FieldShell label="Pendencia"><select value={pendingFilter} onChange={(event) => setPendingFilter(event.target.value)} className="agenda-input"><option value="all">Todas</option><option value="pending">Com pendencia</option><option value="unsettled">Sem baixa</option></select></FieldShell>
+        </div>
       </Card>
 
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -1240,7 +1270,7 @@ export function AgendaManager({
                     onCreateBlock={openBlockForm}
                     onStatus={changeStatus}
                     onFinalize={openFinalizeAppointment}
-                    onEdit={openEditAppointment}
+                    onEdit={setSelectedAppointment}
                     onReschedule={openRescheduleAppointment}
                     onReplacement={openReplacementAppointment}
                     onDelete={removeAppointment}
@@ -1285,6 +1315,23 @@ export function AgendaManager({
           isPending={isPending}
           onSubmit={submitAppointment}
           onClose={closeAppointmentForm}
+        />
+      ) : null}
+
+      {selectedAppointment ? (
+        <AppointmentDetailModal
+          appointment={selectedAppointment}
+          patients={patients}
+          clinics={clinics}
+          patientPackages={patientPackages}
+          canEdit={canEdit}
+          isPending={isPending}
+          onClose={() => setSelectedAppointment(null)}
+          onEdit={() => { setSelectedAppointment(null); openEditAppointment(selectedAppointment); }}
+          onReschedule={() => { setSelectedAppointment(null); openRescheduleAppointment(selectedAppointment); }}
+          onStatus={(status) => changeStatus(selectedAppointment, status)}
+          onFinalize={() => { setSelectedAppointment(null); openFinalizeAppointment(selectedAppointment); }}
+          onNavigate={(href) => router.push(href as never)}
         />
       ) : null}
 
@@ -1394,7 +1441,7 @@ function DayTimeline({
   canEdit: boolean;
   canDelete: boolean;
   isPending: boolean;
-  onCreateAppointment: (date?: string, employeeId?: string) => void;
+  onCreateAppointment: (date?: string, employeeId?: string, startTime?: string) => void;
   onCreateBlock: (date?: string, employeeId?: string) => void;
   onStatus: (appointment: Appointment, status: AppointmentStatus) => void;
   onFinalize: (appointment: Appointment) => void;
@@ -1495,11 +1542,16 @@ function DayTimeline({
                 style={{ minHeight: gridHeight }}
               >
                 {hours.slice(0, -1).map((hour) => (
-                  <div
+                  <button
                     key={hour}
-                    className="border-b border-dashed border-border/80"
+                    type="button"
+                    title="Agendar neste horario"
+                    onClick={() => onCreateAppointment(day, employee.id, String(hour).padStart(2, "0") + ":00")}
+                    className="block w-full border-b border-dashed border-border/80 text-left transition-colors hover:bg-primary/5"
                     style={{ height: hourHeight }}
-                  />
+                  >
+                    <span className="sr-only">Novo agendamento as {String(hour).padStart(2, "0")}:00</span>
+                  </button>
                 ))}
 
                 {blocks
@@ -1596,6 +1648,10 @@ function TimelineAppointment({
   return (
     <article
       draggable={false}
+      role="button"
+      tabIndex={0}
+      onClick={onEdit}
+      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onEdit(); }}
       data-dnd-ready="appointment"
       className={cn(
         "absolute left-2 right-2 z-10 grid gap-2 overflow-hidden rounded-md border-l-4 p-3 shadow-sm transition-transform hover:z-20 hover:-translate-y-0.5 hover:shadow-lg",
@@ -2061,7 +2117,7 @@ function IconAction({
       type="button"
       title={label}
       disabled={disabled}
-      onClick={onClick}
+      onClick={(event) => { event.stopPropagation(); onClick(); }}
       className={cn(
         "inline-flex h-8 items-center gap-1 rounded-md border bg-background/80 px-2 text-[11px] font-semibold shadow-sm transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50",
         danger && "text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950"
@@ -2073,6 +2129,66 @@ function IconAction({
   );
 }
 
+function AppointmentDetailModal({
+  appointment, patients, clinics, patientPackages, canEdit, isPending,
+  onClose, onEdit, onReschedule, onStatus, onFinalize, onNavigate
+}: {
+  appointment: Appointment; patients: Patient[]; clinics: Clinic[]; patientPackages: PatientPackage[];
+  canEdit: boolean; isPending: boolean; onClose: () => void; onEdit: () => void; onReschedule: () => void;
+  onStatus: (status: AppointmentStatus) => void; onFinalize: () => void; onNavigate: (href: string) => void;
+}) {
+  const patient = patients.find((item) => item.id === appointment.patient_id);
+  const clinic = clinics.find((item) => item.id === appointment.clinic_id);
+  const patientPackage = appointment.patient_package_id ? patientPackages.find((item) => item.id === appointment.patient_package_id) : null;
+  const phone = (patient?.phone ?? "").replace(/\D/g, "");
+  const whatsapp = phone ? "https://wa.me/" + (phone.startsWith("55") ? phone : "55" + phone) : "";
+  const isGroup = appointment.service_is_group || getAppointmentType(appointment) === "grupo";
+  const occupancy = Math.max(appointment.patient_ids.length, 1);
+  const financialLabel = appointment.is_billable ? appointment.finance_integration_status : "Cortesia / nao faturavel";
+  const packageLabel = patientPackage ? patientPackage.remaining_sessions + " sessoes restantes" : "Sem pacote vinculado";
+  const nl = String.fromCharCode(10);
+  const messageBase = "Ola, " + appointment.patient_name + "." + nl + nl;
+  const detailLines = ["Data: " + formatShortDate(appointment.appointment_date), "Horario: " + formatTime(appointment.start_time), "Profissional: " + appointment.employee_name, "Servico: " + appointment.service_name, "Clinica: " + (clinic?.name ?? "Clinica")].join(nl);
+  const messages = {
+    confirmacao: messageBase + "Seu atendimento foi agendado com sucesso." + nl + nl + detailLines + nl + nl + "Caso precise remarcar, entre em contato conosco.",
+    lembrete: messageBase + "Lembramos que seu atendimento esta agendado para:" + nl + nl + detailLines + nl + nl + "Esperamos voce.",
+    reagendamento: messageBase + ["Seu atendimento foi reagendado.", "", "Nova data: " + formatShortDate(appointment.appointment_date), "Novo horario: " + formatTime(appointment.start_time), "Profissional: " + appointment.employee_name].join(nl)
+  };  const openWhatsapp = (message: string) => { if (whatsapp) window.open(whatsapp + "?text=" + encodeURIComponent(message), "_blank", "noopener,noreferrer"); };
+
+  return (
+    <ModalShell title="Detalhe rapido do agendamento" icon={CalendarClock} onClose={onClose}>
+      <div className="grid gap-4">
+        <div className="grid gap-3 rounded-lg border bg-muted/20 p-4 sm:grid-cols-2">
+          <PackageDetail label="Paciente" value={appointment.patient_names.join(", ")} />
+          <PackageDetail label="Telefone" value={patient?.phone ?? "Nao informado"} />
+          <PackageDetail label="Servico" value={appointment.service_name} />
+          <PackageDetail label="Profissional" value={appointment.employee_name} />
+          <PackageDetail label="Clinica" value={clinic?.name ?? "Nao encontrada"} />
+          <PackageDetail label="Data" value={formatShortDate(appointment.appointment_date)} />
+          <PackageDetail label="Horario" value={formatTime(appointment.start_time) + (appointment.end_time ? " - " + formatTime(appointment.end_time) : "")} />
+          <PackageDetail label="Status" value={getStatusLabel(appointment)} />
+          <PackageDetail label="Tipo" value={appointmentTypeLabels[getAppointmentType(appointment)]} />
+          <PackageDetail label="Pacote" value={packageLabel} />
+          <PackageDetail label="Situacao financeira" value={financialLabel} />
+          <PackageDetail label="Observacoes" value={appointment.notes ?? "Sem observacoes"} />
+          {isGroup ? <PackageDetail label="Ocupacao coletiva" value={occupancy + "/" + (appointment.participant_limit ?? "sem limite")} /> : null}
+        </div>
+        {isGroup ? <div className="rounded-lg border p-3"><strong>Participantes</strong><p className="mt-1 text-sm text-muted-foreground">{appointment.patient_names.join(", ")}</p></div> : null}
+        <div className="flex flex-wrap gap-2">
+          {canEdit ? <><Button type="button" onClick={onEdit}>Editar</Button><Button type="button" variant="outline" onClick={onReschedule}>Reagendar</Button><Button type="button" variant="outline" disabled={isPending} onClick={() => onStatus("cancelado")}>Cancelar</Button><Button type="button" variant="outline" disabled={isPending} onClick={() => onStatus("faltou")}>Registrar falta</Button><Button type="button" disabled={isPending || normalizeStatus(appointment.status) === "realizado"} onClick={onFinalize}>Finalizar / Dar baixa da sessao</Button></> : null}
+          <Button type="button" variant="outline" onClick={() => onNavigate("/prontuarios?q=" + encodeURIComponent(appointment.patient_name))}>Abrir prontuario</Button>
+          <Button type="button" variant="outline" onClick={() => onNavigate("/pacientes?patientId=" + appointment.patient_id)}>Abrir ficha</Button>
+          <Button type="button" variant="outline" onClick={() => onNavigate("/financeiro/baixas?patientId=" + appointment.patient_id)}>Receber pagamento</Button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" disabled={!whatsapp} onClick={() => openWhatsapp(messages.confirmacao)}>WhatsApp: confirmacao</Button>
+          <Button type="button" variant="outline" disabled={!whatsapp} onClick={() => openWhatsapp(messages.lembrete)}>WhatsApp: lembrete</Button>
+          <Button type="button" variant="outline" disabled={!whatsapp} onClick={() => openWhatsapp(messages.reagendamento)}>WhatsApp: reagendamento</Button>
+        </div>
+      </div>
+    </ModalShell>
+  );
+}
 function FinalizeAppointmentModal({
   appointment,
   serviceValue,

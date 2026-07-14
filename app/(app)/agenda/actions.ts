@@ -835,7 +835,8 @@ export async function finalizeAppointmentBilling(
 
 export async function setAppointmentStatus(
   id: string,
-  status: AppointmentStatus
+  status: AppointmentStatus,
+  observation?: string
 ): Promise<AgendaActionResult> {
   try {
     await assertCan("agenda", "edit");
@@ -859,7 +860,7 @@ export async function setAppointmentStatus(
 
     const { data, error } = await supabase
       .from("appointments")
-      .update({ status })
+      .update({ status, ...(observation?.trim() ? { notes: observation.trim() } : {}) })
       .eq("id", id)
       .select("*")
       .single();
