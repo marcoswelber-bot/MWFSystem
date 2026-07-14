@@ -67,12 +67,12 @@ export function AppShell({
     <aside
       className={cn(
         "app-sidebar flex h-full flex-col bg-[hsl(var(--sidebar-bg))] text-[hsl(var(--sidebar-fg))] transition-[width] duration-200",
-        collapsed ? "w-[76px]" : "w-72"
+        collapsed ? "w-[68px]" : "w-64"
       )}
     >
-      <div className="flex h-16 items-center justify-between border-b border-white/10 px-4">
+      <div className="flex h-14 items-center justify-between border-b border-white/10 px-4">
         <Link href="/dashboard" className="flex min-w-0 items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400 via-blue-500 to-violet-500 text-white shadow-lg shadow-blue-500/30">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400 via-blue-500 to-violet-500 text-white shadow-lg shadow-blue-500/30">
             <Activity className="h-5 w-5" />
           </div>
           {!collapsed ? (
@@ -101,10 +101,10 @@ export function AppShell({
         </Button>
       </div>
 
-      <div className="border-b border-white/10 p-4">
+      <div className="border-b border-white/10 p-3">
         <div
           className={cn(
-            "rounded-lg bg-white/5 p-3",
+            "rounded-lg bg-white/5 p-2.5",
             collapsed && "px-2 text-center"
           )}
         >
@@ -160,7 +160,7 @@ export function AppShell({
                 href={item.href as Route}
                 title={item.title}
                 className={cn(
-                  "flex h-11 items-center gap-3 rounded-md px-3 text-sm font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white",
+                  "flex h-9 items-center gap-3 rounded-md px-3 text-sm font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white",
                   active && "bg-[hsl(var(--sidebar-accent))]/15 text-[hsl(var(--sidebar-accent))] hover:bg-[hsl(var(--sidebar-accent))]/15 hover:text-[hsl(var(--sidebar-accent))]",
                   collapsed && "justify-center px-0"
                 )}
@@ -229,10 +229,10 @@ export function AppShell({
       <div
         className={cn(
           "min-h-screen transition-[padding] duration-200 lg:pl-72",
-          collapsed && "lg:pl-[76px]"
+          collapsed && "lg:pl-[68px]"
         )}
       >
-        <header className="app-topbar sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-slate-200/70 bg-background/80 px-4 backdrop-blur-xl dark:border-white/10 md:px-8">
+        <header className="app-topbar sticky top-0 z-30 flex h-14 items-center justify-between border-b border-slate-200/70 bg-background/80 px-4 backdrop-blur-xl dark:border-white/10 md:px-6">
           <div className="flex items-center gap-3">
             <Button
               type="button"
@@ -277,7 +277,7 @@ export function AppShell({
           </div>
         </header>
 
-        <main className="app-main mx-auto w-full max-w-7xl p-5 md:p-8">{children}</main>
+        <main className="app-main mx-auto w-full max-w-7xl p-4 md:p-6">{children}</main>
       </div>
     </div>
   );
