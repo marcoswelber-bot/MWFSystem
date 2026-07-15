@@ -115,10 +115,10 @@ const currencyFormatter = new Intl.NumberFormat("pt-BR", {
 const paymentMethodOptions: Array<[PaymentMethod, string]> = [
   ["pix", "Pix"],
   ["dinheiro", "Dinheiro"],
-  ["cartao", "Cart�o"],
+  ["cartao", "Cart?o"],
   ["boleto", "Boleto"],
   ["parcelado", "Parcelado"],
-  ["transferencia", "Transfer�ncia"],
+  ["transferencia", "Transfer?ncia"],
   ["outro", "Outro"]
 ];
 
@@ -141,30 +141,30 @@ const appointmentTypeOptions: Array<[AppointmentType, string]> = [
   ["avulso", "Avulso"],
   ["pacote", "Pacote"],
   ["grupo", "Grupo"],
-  ["avaliacao", "Avalia��o"],
+  ["avaliacao", "Avalia??o"],
   ["retorno", "Retorno"],
   ["encaixe", "Encaixe"],
   ["cortesia", "Cortesia"],
-  ["convenio", "Conv�nio"],
+  ["convenio", "Conv?nio"],
   ["particular", "Particular"],
-  ["reposicao", "Reposi��o"],
+  ["reposicao", "Reposi??o"],
   ["experimental", "Experimental"],
-  ["reposicao_extra", "Reposi��o extra"]
+  ["reposicao_extra", "Reposi??o extra"]
 ];
 
 const appointmentOriginOptions: Array<[AppointmentOrigin, string]> = [
   ["pacote", "Pacote"],
   ["avulso", "Avulso"],
   ["grupo", "Grupo"],
-  ["convenio", "Conv�nio"],
+  ["convenio", "Conv?nio"],
   ["cortesia", "Cortesia"],
-  ["reposicao", "Reposi��o"],
-  ["avaliacao", "Avalia��o"],
+  ["reposicao", "Reposi??o"],
+  ["avaliacao", "Avalia??o"],
   ["retorno", "Retorno"],
   ["encaixe", "Encaixe"],
   ["particular", "Particular"],
   ["experimental", "Experimental"],
-  ["reposicao_extra", "Reposi��o extra"]
+  ["reposicao_extra", "Reposi??o extra"]
 ];
 
 const appointmentTypeLabels = Object.fromEntries(appointmentTypeOptions) as Record<
@@ -641,8 +641,8 @@ function getAppointmentMessage(
     create: "Agendamento salvo com sucesso.",
     update: "Registro atualizado com sucesso.",
     status: "Registro atualizado com sucesso.",
-    delete: "Registro exclu�do com sucesso.",
-    block: "Hor�rio bloqueado com sucesso."
+    delete: "Registro exclu?do com sucesso.",
+    block: "Hor?rio bloqueado com sucesso."
   };
 
   return { ok: true, message: messages[mode] };
@@ -866,7 +866,7 @@ export function AgendaManager({
 
   function openRescheduleAppointment(appointment: Appointment) {
     openEditAppointment(appointment);
-    setMessage({ ok: true, message: "Ajuste data e hor�rio para reagendar." });
+    setMessage({ ok: true, message: "Ajuste data e hor?rio para reagendar." });
   }
 
   function openReplacementAppointment(appointment: Appointment) {
@@ -883,8 +883,8 @@ export function AgendaManager({
       start_time: "",
       end_time: "",
       notes: appointment.notes
-        ? `Reposi��o do atendimento ${appointment.appointment_date} ${formatTime(appointment.start_time)}. ${appointment.notes}`
-        : `Reposi��o do atendimento ${appointment.appointment_date} ${formatTime(appointment.start_time)}.`,
+        ? `Reposi??o do atendimento ${appointment.appointment_date} ${formatTime(appointment.start_time)}. ${appointment.notes}`
+        : `Reposi??o do atendimento ${appointment.appointment_date} ${formatTime(appointment.start_time)}.`,
       status: "agendado",
       sessions_contracted: String(appointment.sessions_contracted ?? 1),
       sessions_completed: String(appointment.sessions_completed ?? 0),
@@ -950,7 +950,7 @@ export function AgendaManager({
     ) {
       setAppointmentFormMessage({
         ok: false,
-        message: "N�o foi poss�vel salvar: data ou hor�rio bloqueado."
+        message: "N?o foi poss?vel salvar: data ou hor?rio bloqueado."
       });
       return;
     }
@@ -994,7 +994,7 @@ export function AgendaManager({
       } else {
         setAppointmentFormMessage({
           ok: false,
-          message: `N�o foi poss�vel salvar: ${result.message}`
+          message: `N?o foi poss?vel salvar: ${result.message}`
         });
       }
     });
@@ -1202,14 +1202,14 @@ export function AgendaManager({
               ))}
             </select>
           </FieldShell>
-          <FieldShell label="Cl�nica">
+          <FieldShell label="Cl?nica">
             <select
               value={clinicFilter}
               onChange={(event) => setClinicFilter(event.target.value)}
               disabled={!isAdmMaster}
               className="agenda-input disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {isAdmMaster ? <option value="all">Todas as cl�nicas</option> : null}
+              {isAdmMaster ? <option value="all">Todas as cl?nicas</option> : null}
               {clinics.map((clinic) => (
                 <option key={clinic.id} value={clinic.id}>
                   {clinic.name}
@@ -1226,7 +1226,7 @@ export function AgendaManager({
             {[
               ["day", "Dia"],
               ["week", "Semana"],
-              ["month", "M�s"]
+              ["month", "M?s"]
             ].map(([value, label]) => (
               <button
                 key={value}
@@ -1291,7 +1291,7 @@ export function AgendaManager({
                 {getPeriodLabel(viewMode, selectedDate)}
               </h2>
               <p className="text-sm text-muted-foreground">
-                Grade operacional por hor�rios e profissionais
+                Grade operacional por hor?rios e profissionais
               </p>
             </div>
             <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
@@ -1343,7 +1343,7 @@ export function AgendaManager({
           )}
         </Card>
 
-        <aside className="hidden grid-cols-2 gap-4 self-start xl:grid">
+        <aside className="hidden gap-3 self-start xl:col-start-2 xl:grid">
           <MiniMonthCalendar
             selectedDate={selectedDate}
             blocks={scopedBlocks}
@@ -1832,7 +1832,7 @@ function TimelineAppointment({
             <IconAction label="Reagendar" onClick={onReschedule} icon={RotateCw} />
             {normalizeStatus(appointment.status) === "faltou" ? (
               <IconAction
-                label="Reposi��o"
+                label="Reposi??o"
                 disabled={isPending}
                 onClick={onReplacement}
                 icon={CalendarPlus}
@@ -1973,7 +1973,7 @@ function MonthGrid({
                       )}
                     >
                       {formatTime(appointment.start_time)}{" "}
-                      {isReplacementAppointment(appointment) ? "Reposi��o � " : ""}
+                      {isReplacementAppointment(appointment) ? "Reposi??o ? " : ""}
                       {appointment.patient_name}
                     </span>
                   );
@@ -2008,7 +2008,7 @@ function MiniMonthCalendar({
     <Card className="border-none p-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
       <div className="mb-3 flex items-center justify-between">
         <div>
-          <p className="text-sm font-semibold">Mini calend�rio</p>
+          <p className="text-sm font-semibold">Mini calend?rio</p>
           <p className="text-xs capitalize text-muted-foreground">
             {monthTitle(selectedDate)}
           </p>
@@ -2068,12 +2068,12 @@ function SidePanel({
       <Card className="border-none p-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
         <div className="mb-3 flex items-center gap-2">
           <Stethoscope className="h-5 w-5 text-primary" />
-          <h3 className="font-semibold">Pr�ximo atendimento</h3>
+          <h3 className="font-semibold">Pr?ximo atendimento</h3>
         </div>
         {nextAppointment ? (
           <AppointmentSummary appointment={nextAppointment} />
         ) : (
-          <p className="text-sm text-muted-foreground">Nenhum pr�ximo atendimento.</p>
+          <p className="text-sm text-muted-foreground">Nenhum pr?ximo atendimento.</p>
         )}
       </Card>
 
@@ -2316,7 +2316,7 @@ function FinalizeAppointmentModal({
         <div className="grid gap-3 rounded-md border bg-muted/30 p-3 text-sm md:grid-cols-2">
           <PackageDetail label="Paciente" value={appointment.patient_names.join(", ") || appointment.patient_name || "-"} />
           <PackageDetail label="Profissional" value={appointment.employee_name ?? "-"} />
-          <PackageDetail label="Servi�o" value={appointment.service_name ?? "-"} />
+          <PackageDetail label="Servi?o" value={appointment.service_name ?? "-"} />
           <PackageDetail label="Valor" value={currencyFormatter.format(serviceValue)} />
         </div>
 
@@ -2351,7 +2351,7 @@ function FinalizeAppointmentModal({
           ) : null}
           <div className="md:col-span-2">
             <TextAreaField
-              label="Observa��o"
+              label="Observa??o"
               value={form.notes}
               onChange={(value) => setForm((current) => ({ ...current, notes: value }))}
             />
@@ -2359,7 +2359,7 @@ function FinalizeAppointmentModal({
         </div>
 
         <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
-          Ao confirmar, o atendimento ser� marcado como realizado e o financeiro ser� atualizado conforme o status escolhido.
+          Ao confirmar, o atendimento ser? marcado como realizado e o financeiro ser? atualizado conforme o status escolhido.
         </div>
 
         <div className="flex justify-end gap-2 border-t pt-3">
@@ -2528,14 +2528,14 @@ function AppointmentFormModal({
       <form onSubmit={onSubmit} className="grid gap-4">
         <div className="grid gap-3 md:grid-cols-2">
           <SelectField
-            label="Cl�nica"
+            label="Cl?nica"
             value={form.clinic_id ?? ""}
             onChange={(value) => setForm((current) => ({ ...current, clinic_id: value }))}
             options={clinics.map((clinic) => [clinic.id, clinic.name])}
             disabled={!isAdmMaster}
           />
           <SelectField
-            label="Servi�o"
+            label="Servi?o"
             value={form.service_id}
             onChange={(value) => {
               const service = services.find((item) => item.id === value);
@@ -2618,7 +2618,7 @@ function AppointmentFormModal({
               />
               <div className="grid gap-2 rounded-md border bg-muted/30 p-3 text-sm md:grid-cols-3">
                 <PackageDetail
-                  label="Capacidade máxima"
+                  label="Capacidade m?xima"
                   value={participantLimit ?? "Sem limite"}
                 />
                 <PackageDetail label="Vagas ocupadas" value={occupiedGroupSeats} />
@@ -2708,7 +2708,7 @@ function AppointmentFormModal({
             required
           />
           <SelectField
-            label="Hor�rio inicial"
+            label="Hor?rio inicial"
             value={form.start_time}
             onChange={(value) =>
               setForm((current) => ({ ...current, start_time: value, end_time: "" }))
@@ -2723,7 +2723,7 @@ function AppointmentFormModal({
             required
           />
           <SelectField
-            label="Hor�rio final"
+            label="Hor?rio final"
             value={form.end_time ?? ""}
             onChange={(value) => setForm((current) => ({ ...current, end_time: value }))}
             options={endTimeOptions}
@@ -2744,7 +2744,7 @@ function AppointmentFormModal({
             disabled={isReplacement}
             helper={
               isReplacement
-                ? "Reposi��o n�o aumenta a quantidade contratada."
+                ? "Reposi??o n?o aumenta a quantidade contratada."
                 : undefined
             }
           />
@@ -2775,12 +2775,12 @@ function AppointmentFormModal({
         {schedulingBlocked ? (
           <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-100">
             {groupCapacityExceeded
-              ? "Capacidade máxima do grupo atingida."
+              ? "Capacidade m?xima do grupo atingida."
               : "Data bloqueada para agendamento"}
           </p>
         ) : null}
         <TextAreaField
-          label="Observa��es"
+          label="Observa??es"
           value={form.notes ?? ""}
           onChange={(value) => setForm((current) => ({ ...current, notes: value }))}
         />
@@ -2838,7 +2838,7 @@ function BlockFormModal({
       <form onSubmit={onSubmit} className="grid gap-4">
         <div className="grid gap-3 md:grid-cols-2">
           <SelectField
-            label="Cl�nica"
+            label="Cl?nica"
             value={form.clinic_id ?? ""}
             onChange={(value) => setForm((current) => ({ ...current, clinic_id: value }))}
             options={clinics.map((clinic) => [clinic.id, clinic.name])}
@@ -2851,7 +2851,7 @@ function BlockFormModal({
               setForm((current) => ({ ...current, employee_id: value }))
             }
             options={employees.map((employee) => [employee.id, employee.name])}
-            placeholder="Toda a cl�nica"
+            placeholder="Toda a cl?nica"
           />
           <TextField
             label="Data"
@@ -2871,18 +2871,18 @@ function BlockFormModal({
             }
             options={[
               ["dia_inteiro", "Dia inteiro"],
-              ["periodo", "Per�odo"],
-              ["horario", "Hor�rio espec�fico"]
+              ["periodo", "Per?odo"],
+              ["horario", "Hor?rio espec?fico"]
             ]}
           />
           <TextField
-            label="Hor�rio inicial"
+            label="Hor?rio inicial"
             type="time"
             value={form.start_time ?? ""}
             onChange={(value) => setForm((current) => ({ ...current, start_time: value }))}
           />
           <TextField
-            label="Hor�rio final"
+            label="Hor?rio final"
             type="time"
             value={form.end_time ?? ""}
             onChange={(value) => setForm((current) => ({ ...current, end_time: value }))}
