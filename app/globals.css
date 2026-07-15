@@ -392,3 +392,32 @@ main.min-h-screen [class*="max-w-md"] { max-width: min(28rem, 100%); }
 .app-sidebar a.bg-\[hsl\(var\(--sidebar-accent\)\)\]\/15 { background: hsl(221 83% 53% / .14); color: hsl(221 83% 35%); box-shadow: none; }
 .dark .app-sidebar { background: linear-gradient(180deg, hsl(222 47% 7%), hsl(230 45% 8%)); border-right-color: hsl(215 25% 20% / .7); color: hsl(var(--sidebar-fg)); }
 .dark .app-sidebar a { color: hsl(var(--sidebar-fg)); }
+
+/* Dark sidebar contrast correction. */
+.dark .app-sidebar {
+  background: linear-gradient(180deg, hsl(222 47% 8%), hsl(224 50% 5%));
+  border-right: 1px solid hsl(215 25% 24% / .9);
+  color: hsl(220 20% 95%);
+}
+.dark .app-sidebar a.text-white\/70,
+.dark .app-sidebar a.text-white\/60,
+.dark .app-sidebar button.text-white\/70 {
+  color: hsl(220 20% 86%) !important;
+}
+.dark .app-sidebar a.text-white\/70:hover,
+.dark .app-sidebar a.text-white\/60:hover,
+.dark .app-sidebar button.text-white\/70:hover {
+  background: hsl(199 89% 58% / .16) !important;
+  color: hsl(0 0% 100%) !important;
+}
+.dark .app-sidebar a.bg-\[hsl\(var\(--sidebar-accent\)\)\]\/15 {
+  background: linear-gradient(100deg, hsl(199 89% 58% / .28), hsl(252 83% 65% / .28)) !important;
+  color: hsl(199 89% 78%) !important;
+  box-shadow: 0 0 20px hsl(199 89% 58% / .12);
+}
+.dark .app-sidebar a.bg-white\/10 { background: hsl(199 89% 58% / .18) !important; color: hsl(0 0% 100%) !important; }
+.dark .app-sidebar .border-white\/10 { border-color: hsl(215 25% 24% / .9); }
+.dark .app-sidebar select { color: hsl(0 0% 100%); background: hsl(0 0% 100% / .08); border-color: hsl(215 25% 30%); }
+.dark .app-sidebar select:focus-visible,
+.dark .app-sidebar a:focus-visible,
+.dark .app-sidebar button:focus-visible { outline: 2px solid hsl(199 89% 65%); outline-offset: 2px; }
