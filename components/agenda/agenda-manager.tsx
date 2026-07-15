@@ -14,9 +14,11 @@ import {
   ListChecks,
   LockKeyhole,
   MoreHorizontal,
+  MessageCircle,
   Plus,
   RotateCw,
   Search,
+  SlidersHorizontal,
   Stethoscope,
   Trash2,
   UserCheck,
@@ -675,6 +677,8 @@ export function AgendaManager({
   const [groupFilter, setGroupFilter] = React.useState("all");
   const [pendingFilter, setPendingFilter] = React.useState("all");
   const [clinicFilter, setClinicFilter] = React.useState(currentClinicId ?? "all");
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [moreFiltersOpen, setMoreFiltersOpen] = React.useState(false);
   const [appointmentFormOpen, setAppointmentFormOpen] = React.useState(false);
   const [blockFormOpen, setBlockFormOpen] = React.useState(false);
   const [editingAppointment, setEditingAppointment] =
@@ -730,6 +734,7 @@ export function AgendaManager({
   }, [clinicFilter, employeeFilter, employees]);
 
   const calendarEmployees = filteredEmployees.length > 0 ? filteredEmployees : employees;
+  const normalizedSearch = searchQuery.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
   const visibleAppointments = appointments
     .filter((appointment) => {
@@ -745,6 +750,11 @@ export function AgendaManager({
       if (groupFilter === "individual" && (appointment.service_is_group || getAppointmentType(appointment) === "grupo")) return false;
       if (pendingFilter === "pending" && appointment.finance_integration_status === "completed") return false;
       if (pendingFilter === "unsettled" && !(normalizeStatus(appointment.status) === "realizado" && appointment.finance_integration_status !== "completed")) return false;
+      if (normalizedSearch) {
+        const searchablePatients = appointment.patient_ids.map((patientId) => patients.find((patient) => patient.id === patientId)).filter(Boolean);
+        const searchableText = [appointment.patient_names.join(" "), appointment.service_name, appointment.employee_name, ...searchablePatients.flatMap((patient) => [patient?.phone, patient?.cpf])].filter(Boolean).join(" ").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        if (!searchableText.includes(normalizedSearch)) return false;
+      }
 
       return visibleDaySet.has(appointment.appointment_date);
     })
@@ -1065,20 +1075,20 @@ export function AgendaManager({
   }
 
   return (
-    <div className="grid gap-5">
+    <div className="grid gap-4">
       {message ? (
         <SystemMessage message={message} onClose={() => setMessage(null)} />
       ) : null}
       {savedWhatsapp ? <Card className="flex flex-wrap items-center justify-between gap-3 border-emerald-200 bg-emerald-50 p-3 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-100"><span className="text-sm font-medium">Agendamento salvo. Deseja enviar a confirmacao?</span><div className="flex gap-2"><Button type="button" size="sm" onClick={() => window.open(savedWhatsapp.href + "?text=" + encodeURIComponent(savedWhatsapp.message), "_blank", "noopener,noreferrer")}>Enviar confirmacao por WhatsApp</Button><Button type="button" size="sm" variant="ghost" onClick={() => setSavedWhatsapp(null)}>Fechar</Button></div></Card> : null}
 
-      <Card className="overflow-hidden border-none bg-card shadow-[0_18px_55px_rgba(15,23,42,0.08)] dark:shadow-none">
-        <div className="grid gap-4 border-b bg-gradient-to-r from-card via-card to-secondary/40 p-4 lg:grid-cols-[1fr_auto] lg:items-center">
+      <Card className="overflow-hidden border-none bg-card shadow-[0_14px_40px_rgba(15,23,42,0.07)] dark:shadow-none">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-gradient-to-r from-card via-card to-secondary/30 p-3">
           <div className="flex flex-wrap items-center gap-2">
             {canCreate ? (
               <>
                 <Button type="button" onClick={() => openCreateAppointment()}>
                   <CalendarPlus className="h-4 w-4" />
-                  Novo Agendamento
+                  Novo
                 </Button>
                 <Button
                   type="button"
@@ -1086,7 +1096,7 @@ export function AgendaManager({
                   onClick={() => openBlockForm()}
                 >
                   <LockKeyhole className="h-4 w-4" />
-                  Novo Bloqueio
+                  Bloquear
                 </Button>
               </>
             ) : null}
@@ -1125,7 +1135,7 @@ export function AgendaManager({
           </div>
         </div>
 
-        <div className="grid gap-3 p-4 xl:grid-cols-[minmax(170px,0.8fr)_minmax(220px,1fr)_minmax(220px,1fr)_auto]">
+        <div className="grid gap-2 p-3 sm:grid-cols-2 xl:grid-cols-[minmax(150px,.7fr)_minmax(180px,1fr)_minmax(180px,1fr)_minmax(230px,1.3fr)_auto] xl:items-end">
           <FieldShell label="Data">
             <input
               type="date"
@@ -1164,6 +1174,11 @@ export function AgendaManager({
               ))}
             </select>
           </FieldShell>
+          <FieldShell label="Pesquisa">
+            <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className="agenda-input pl-9" placeholder="Paciente, telefone, CPF ou servico" />
+            </div>
+          </FieldShell>
           <div className="grid grid-cols-3 gap-1 rounded-md border bg-muted/40 p-1">
             {[
               ["day", "Dia"],
@@ -1186,16 +1201,19 @@ export function AgendaManager({
             ))}
           </div>
         </div>
-        <div className="grid gap-3 border-t p-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-3 border-t p-3 sm:grid-cols-[minmax(180px,280px)_auto] sm:items-end">
+          <FieldShell label="Status"><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="agenda-input"><option value="all">Todos os status</option>{statusOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></FieldShell>
+          <Button type="button" variant="ghost" size="sm" onClick={() => setMoreFiltersOpen((open) => !open)} aria-expanded={moreFiltersOpen}><SlidersHorizontal className="h-4 w-4" />Mais filtros</Button>
+        </div>
+        {moreFiltersOpen ? <div className="grid gap-3 border-t bg-muted/20 p-3 sm:grid-cols-2 lg:grid-cols-4">
           <FieldShell label="Servico"><select value={serviceFilter} onChange={(event) => setServiceFilter(event.target.value)} className="agenda-input"><option value="all">Todos</option>{visibleServices.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}</select></FieldShell>
-          <FieldShell label="Status"><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="agenda-input"><option value="all">Todos</option>{statusOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></FieldShell>
           <FieldShell label="Tipo"><select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} className="agenda-input"><option value="all">Todos</option>{appointmentTypeOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></FieldShell>
           <FieldShell label="Formato"><select value={groupFilter} onChange={(event) => setGroupFilter(event.target.value)} className="agenda-input"><option value="all">Todos</option><option value="individual">Individual</option><option value="group">Coletivo</option></select></FieldShell>
           <FieldShell label="Pendencia"><select value={pendingFilter} onChange={(event) => setPendingFilter(event.target.value)} className="agenda-input"><option value="all">Todas</option><option value="pending">Com pendencia</option><option value="unsettled">Sem baixa</option></select></FieldShell>
-        </div>
+        </div> : null}
       </Card>
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <section className="hidden gap-3 lg:grid lg:grid-cols-4">
         <MetricCard
           icon={CalendarDays}
           label="Atendimentos do dia"
@@ -1222,7 +1240,7 @@ export function AgendaManager({
         />
       </section>
 
-      <div className="grid gap-5 2xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid gap-4">
         <Card className="min-w-0 overflow-hidden border-none shadow-[0_18px_55px_rgba(15,23,42,0.08)] dark:shadow-none">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
             <div>
@@ -1282,7 +1300,7 @@ export function AgendaManager({
           )}
         </Card>
 
-        <aside className="grid gap-4 self-start">
+        <aside className="hidden grid-cols-2 gap-4 self-start xl:grid">
           <MiniMonthCalendar
             selectedDate={selectedDate}
             blocks={scopedBlocks}
@@ -1461,7 +1479,44 @@ function DayTimeline({
 
   return (
     <section className="overflow-hidden rounded-md border bg-card">
-      <div className="sticky top-0 z-20 grid border-b bg-card/95 backdrop-blur">
+      <div className="grid gap-2 p-3 md:hidden">
+        <div className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2">
+          <div>
+            <p className="text-[11px] font-semibold uppercase text-muted-foreground">{formatWeekday(day)}</p>
+            <strong className="text-sm">{formatShortDate(day)}</strong>
+          </div>
+          <Button type="button" size="sm" onClick={() => onCreateAppointment(day)}>
+            <Plus className="h-4 w-4" /><span>Novo horario</span>
+          </Button>
+        </div>
+        {appointments.length ? (
+          <div className="grid gap-2">
+            {appointments.map((appointment) => {
+              const appointmentStyle = statusStyles[getVisualStatus(appointment)];
+              return (
+                <article key={appointment.id} role="button" tabIndex={0} onClick={() => onEdit(appointment)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onEdit(appointment); }} className={cn("rounded-lg border-l-4 p-3 shadow-sm", appointmentStyle.border, appointmentStyle.surface)}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold">{formatTime(appointment.start_time)}{appointment.end_time ? ` - ${formatTime(appointment.end_time)}` : ""}</p>
+                      <h3 className="truncate text-sm font-semibold">{appointment.patient_names.join(", ")}</h3>
+                      <p className="truncate text-xs text-muted-foreground">{appointment.service_name}</p>
+                    </div>
+                    <span className={cn("rounded-full px-2 py-1 text-[10px] font-semibold", appointmentStyle.chip)}>{getStatusLabel(appointment)}</span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1 text-[10px] text-muted-foreground">
+                    <span className="rounded bg-background/80 px-2 py-1">{appointment.employee_name}</span>
+                    <span className="rounded bg-background/80 px-2 py-1">{appointment.is_billable ? (appointment.finance_integration_status === "completed" ? "Pagamento recebido" : "Pagamento pendente") : "Cortesia"}</span>
+                    {appointment.patient_package_id ? <span className="rounded bg-violet-100 px-2 py-1 text-violet-700 dark:bg-violet-950 dark:text-violet-200">Pacote</span> : null}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">Horario livre ? toque em Novo horario para agendar.</p>
+        )}
+      </div>
+      <div className="sticky top-0 z-20 hidden border-b bg-card/95 backdrop-blur md:grid">
         <div
           className="grid min-w-[860px]"
           style={{
@@ -1514,7 +1569,7 @@ function DayTimeline({
         </div>
       </div>
 
-      <div className="relative overflow-x-auto">
+      <div className="relative hidden overflow-x-auto md:block">
         <div
           className="grid min-w-[860px]"
           style={{
@@ -1654,7 +1709,7 @@ function TimelineAppointment({
       onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onEdit(); }}
       data-dnd-ready="appointment"
       className={cn(
-        "absolute left-2 right-2 z-10 grid gap-2 overflow-hidden rounded-md border-l-4 p-3 shadow-sm transition-transform hover:z-20 hover:-translate-y-0.5 hover:shadow-lg",
+        "absolute left-1 right-1 z-10 grid gap-1 overflow-hidden rounded-md border-l-[3px] p-2 shadow-sm transition-transform hover:z-20 hover:-translate-y-0.5 hover:shadow-md",
         style.border,
         style.surface,
         style.text
@@ -1679,6 +1734,7 @@ function TimelineAppointment({
       <div className="grid gap-1 text-xs">
         <p className="truncate">{appointment.service_name}</p>
         <p className="truncate text-muted-foreground">{appointment.employee_name}</p>
+        <p className="truncate text-muted-foreground">{appointment.is_billable ? (appointment.finance_integration_status === "completed" ? "Pagamento recebido" : "Pagamento pendente") : "Cortesia"}</p>
         <div className="flex flex-wrap gap-1">
           <span
             className={cn(
@@ -1701,7 +1757,7 @@ function TimelineAppointment({
         ) : null}
       </div>
 
-      <div className="grid grid-cols-3 gap-1 text-center text-[11px]">
+      <div className="hidden grid-cols-3 gap-1 text-center text-[11px] 2xl:grid">
         <MiniStat label="Contr." value={sessionsContracted} />
         <MiniStat label="Real." value={sessionsCompleted} />
         <MiniStat label="Rest." value={sessionsRemaining} />
@@ -2181,7 +2237,7 @@ function AppointmentDetailModal({
           <Button type="button" variant="outline" onClick={() => onNavigate("/financeiro/baixas?patientId=" + appointment.patient_id)}>Receber pagamento</Button>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" disabled={!whatsapp} onClick={() => openWhatsapp(messages.confirmacao)}>WhatsApp: confirmacao</Button>
+          <Button type="button" variant="outline" disabled={!whatsapp} onClick={() => openWhatsapp(messages.confirmacao)}><MessageCircle className="h-4 w-4" />WhatsApp: confirmacao</Button>
           <Button type="button" variant="outline" disabled={!whatsapp} onClick={() => openWhatsapp(messages.lembrete)}>WhatsApp: lembrete</Button>
           <Button type="button" variant="outline" disabled={!whatsapp} onClick={() => openWhatsapp(messages.reagendamento)}>WhatsApp: reagendamento</Button>
         </div>

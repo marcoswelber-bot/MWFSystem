@@ -1,6 +1,5 @@
 import { AgendaManager } from "@/components/agenda/agenda-manager";
 import { ActionableAlertsWrapper } from "@/components/actionable-alerts-wrapper";
-import { PageHeader } from "@/components/page-header";
 import { getCurrentClinicScope } from "@/lib/access-control";
 import { getAgendaActionableAlerts } from "@/lib/module-alerts";
 import { getCurrentPermissionMap } from "@/lib/permissions";
@@ -256,11 +255,6 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
 
   return (
     <div>
-      <PageHeader
-        eyebrow="Atendimentos"
-        title="Agenda"
-        description="Crie agendamentos, visualize por dia, semana ou mes e bloqueie horarios por profissional ou clinica."
-      />
 
       <ActionableAlertsWrapper alerts={agendaAlerts} />
 
