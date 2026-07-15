@@ -977,7 +977,7 @@ export function AgendaManager({
         const savedService = services.find((item) => item.id === appointmentPayload.service_id);
         const savedClinic = clinics.find((item) => item.id === appointmentPayload.clinic_id);
         const savedPhone = (savedPatient?.phone ?? "").replace(/\D/g, "");
-        const savedLines = [editingAppointment ? "Seu atendimento foi reagendado." : "Seu atendimento foi agendado com sucesso.", "", "Data: " + appointmentPayload.appointment_date, "Horario: " + appointmentPayload.start_time, "Profissional: " + (savedEmployee?.name ?? "Profissional"), "Servico: " + (savedService?.name ?? "Servi?o"), "Clinica: " + (savedClinic?.name ?? "Clinica")];
+        const savedLines = [editingAppointment ? "Seu atendimento foi reagendado." : "Seu atendimento foi agendado com sucesso.", "", "Data: " + appointmentPayload.appointment_date, "Horário: " + appointmentPayload.start_time, "Profissional: " + (savedEmployee?.name ?? "Profissional"), "Serviço: " + (savedService?.name ?? "Serviço"), "Clínica: " + (savedClinic?.name ?? "Clínica")];
         const confirmation: SavedWhatsappConfirmation = {
           id: `${Date.now()}-${patientIds[0]}`,
           href: savedPhone ? "https://wa.me/" + (savedPhone.startsWith("55") ? savedPhone : "55" + savedPhone) : "",
@@ -1061,7 +1061,7 @@ export function AgendaManager({
     if (status === "cancelado" && !window.confirm(`Cancelar o atendimento de ${appointment.patient_name}?`)) {
       return;
     }
-    const observation = status === "cancelado" || status === "faltou" ? window.prompt(status === "cancelado" ? "Informe o motivo do cancelamento:" : "ObservaÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o da falta:") : undefined;
+    const observation = status === "cancelado" || status === "faltou" ? window.prompt(status === "cancelado" ? "Informe o motivo do cancelamento:" : "Observaço da falta:") : undefined;
     if ((status === "cancelado" || status === "faltou") && observation === null) return;
     startTransition(async () => {
       const result = await setAppointmentStatus(appointment.id, status, observation ?? undefined);
