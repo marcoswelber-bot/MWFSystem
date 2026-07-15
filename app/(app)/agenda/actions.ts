@@ -459,7 +459,7 @@ async function assertNoAppointmentConflict(
   });
 
   if (conflictingBlock) {
-    throw new Error("Não é possível agendar: horário bloqueado.");
+    throw new Error("Nï¿½o ï¿½ possï¿½vel agendar: horï¿½rio bloqueado.");
   }
 }
 
@@ -765,7 +765,7 @@ export async function finalizeAppointmentBilling(
 ): Promise<AgendaActionResult> {
   try {
     await assertCan("agenda", "edit");
-    assertRequired(input.appointment_id, "Atendimento obrigatório.");
+    assertRequired(input.appointment_id, "Atendimento obrigatï¿½rio.");
     const supabase = await createClient();
     const { data: appointment, error: appointmentError } = await supabase
       .from("appointments")
