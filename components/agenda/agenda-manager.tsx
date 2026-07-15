@@ -115,10 +115,10 @@ const currencyFormatter = new Intl.NumberFormat("pt-BR", {
 const paymentMethodOptions: Array<[PaymentMethod, string]> = [
   ["pix", "Pix"],
   ["dinheiro", "Dinheiro"],
-  ["cartao", "Cart?o"],
+  ["cartao", "CartÃƒÂ£o"],
   ["boleto", "Boleto"],
   ["parcelado", "Parcelado"],
-  ["transferencia", "Transfer?ncia"],
+  ["transferencia", "TransferÃƒÂªncia"],
   ["outro", "Outro"]
 ];
 
@@ -141,30 +141,30 @@ const appointmentTypeOptions: Array<[AppointmentType, string]> = [
   ["avulso", "Avulso"],
   ["pacote", "Pacote"],
   ["grupo", "Grupo"],
-  ["avaliacao", "Avalia??o"],
+  ["avaliacao", "AvaliaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o"],
   ["retorno", "Retorno"],
   ["encaixe", "Encaixe"],
   ["cortesia", "Cortesia"],
-  ["convenio", "Conv?nio"],
+  ["convenio", "ConvÃƒÂªnio"],
   ["particular", "Particular"],
-  ["reposicao", "Reposi??o"],
+  ["reposicao", "ReposiÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o"],
   ["experimental", "Experimental"],
-  ["reposicao_extra", "Reposi??o extra"]
+  ["reposicao_extra", "ReposiÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o extra"]
 ];
 
 const appointmentOriginOptions: Array<[AppointmentOrigin, string]> = [
   ["pacote", "Pacote"],
   ["avulso", "Avulso"],
   ["grupo", "Grupo"],
-  ["convenio", "Conv?nio"],
+  ["convenio", "ConvÃƒÂªnio"],
   ["cortesia", "Cortesia"],
-  ["reposicao", "Reposi??o"],
-  ["avaliacao", "Avalia??o"],
+  ["reposicao", "ReposiÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o"],
+  ["avaliacao", "AvaliaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o"],
   ["retorno", "Retorno"],
   ["encaixe", "Encaixe"],
   ["particular", "Particular"],
   ["experimental", "Experimental"],
-  ["reposicao_extra", "Reposi??o extra"]
+  ["reposicao_extra", "ReposiÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o extra"]
 ];
 
 const appointmentTypeLabels = Object.fromEntries(appointmentTypeOptions) as Record<
@@ -641,8 +641,8 @@ function getAppointmentMessage(
     create: "Agendamento salvo com sucesso.",
     update: "Registro atualizado com sucesso.",
     status: "Registro atualizado com sucesso.",
-    delete: "Registro exclu?do com sucesso.",
-    block: "Hor?rio bloqueado com sucesso."
+    delete: "Registro excluÃƒÆ’Ã‚Â­do com sucesso.",
+    block: "HorÃƒÆ’Ã‚Â¡rio bloqueado com sucesso."
   };
 
   return { ok: true, message: messages[mode] };
@@ -866,7 +866,7 @@ export function AgendaManager({
 
   function openRescheduleAppointment(appointment: Appointment) {
     openEditAppointment(appointment);
-    setMessage({ ok: true, message: "Ajuste data e hor?rio para reagendar." });
+    setMessage({ ok: true, message: "Ajuste data e horÃƒÂ¡rio para reagendar." });
   }
 
   function openReplacementAppointment(appointment: Appointment) {
@@ -883,8 +883,8 @@ export function AgendaManager({
       start_time: "",
       end_time: "",
       notes: appointment.notes
-        ? `Reposi??o do atendimento ${appointment.appointment_date} ${formatTime(appointment.start_time)}. ${appointment.notes}`
-        : `Reposi??o do atendimento ${appointment.appointment_date} ${formatTime(appointment.start_time)}.`,
+        ? `ReposiÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o do atendimento ${appointment.appointment_date} ${formatTime(appointment.start_time)}. ${appointment.notes}`
+        : `ReposiÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o do atendimento ${appointment.appointment_date} ${formatTime(appointment.start_time)}.`,
       status: "agendado",
       sessions_contracted: String(appointment.sessions_contracted ?? 1),
       sessions_completed: String(appointment.sessions_completed ?? 0),
@@ -950,7 +950,7 @@ export function AgendaManager({
     ) {
       setAppointmentFormMessage({
         ok: false,
-        message: "N?o foi poss?vel salvar: data ou hor?rio bloqueado."
+        message: "NÃƒÆ’Ã‚Â£o foi possÃƒÆ’Ã‚Â­vel salvar: data ou horÃƒÂ¡rio bloqueado."
       });
       return;
     }
@@ -977,7 +977,7 @@ export function AgendaManager({
         const savedService = services.find((item) => item.id === appointmentPayload.service_id);
         const savedClinic = clinics.find((item) => item.id === appointmentPayload.clinic_id);
         const savedPhone = (savedPatient?.phone ?? "").replace(/\D/g, "");
-        const savedLines = [editingAppointment ? "Seu atendimento foi reagendado." : "Seu atendimento foi agendado com sucesso.", "", "Data: " + appointmentPayload.appointment_date, "Horario: " + appointmentPayload.start_time, "Profissional: " + (savedEmployee?.name ?? "Profissional"), "Servico: " + (savedService?.name ?? "Servico"), "Clinica: " + (savedClinic?.name ?? "Clinica")];
+        const savedLines = [editingAppointment ? "Seu atendimento foi reagendado." : "Seu atendimento foi agendado com sucesso.", "", "Data: " + appointmentPayload.appointment_date, "Horario: " + appointmentPayload.start_time, "Profissional: " + (savedEmployee?.name ?? "Profissional"), "Servico: " + (savedService?.name ?? "ServiÃƒÂ§o"), "Clinica: " + (savedClinic?.name ?? "Clinica")];
         const confirmation: SavedWhatsappConfirmation = {
           id: `${Date.now()}-${patientIds[0]}`,
           href: savedPhone ? "https://wa.me/" + (savedPhone.startsWith("55") ? savedPhone : "55" + savedPhone) : "",
@@ -986,7 +986,7 @@ export function AgendaManager({
           date: formatShortDate(appointmentPayload.appointment_date),
           time: formatTime(appointmentPayload.start_time),
           employeeName: savedEmployee?.name ?? "Profissional",
-          serviceName: savedService?.name ?? "Servico"
+          serviceName: savedService?.name ?? "ServiÃƒÂ§o"
         };
         setSavedWhatsappConfirmations((current) => [...current, confirmation]);
         closeAppointmentForm();
@@ -994,7 +994,7 @@ export function AgendaManager({
       } else {
         setAppointmentFormMessage({
           ok: false,
-          message: `N?o foi poss?vel salvar: ${result.message}`
+          message: `NÃƒÆ’Ã‚Â£o foi possÃƒÆ’Ã‚Â­vel salvar: ${result.message}`
         });
       }
     });
@@ -1219,7 +1219,7 @@ export function AgendaManager({
           </FieldShell>
           <FieldShell label="Pesquisa">
             <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className="agenda-input pl-9" placeholder="Paciente, telefone, CPF ou servico" />
+              <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className="agenda-input pl-9" placeholder="Paciente, telefone, CPF ou ServiÃƒÂ§o" />
             </div>
           </FieldShell>
           <div className="grid grid-cols-3 gap-1 rounded-md border bg-muted/40 p-1">
@@ -1249,7 +1249,7 @@ export function AgendaManager({
           <Button type="button" variant="ghost" size="sm" onClick={() => setMoreFiltersOpen((open) => !open)} aria-expanded={moreFiltersOpen}><SlidersHorizontal className="h-4 w-4" />Mais filtros</Button>
         </div>
         {moreFiltersOpen ? <div className="grid gap-3 border-t bg-muted/20 p-3 sm:grid-cols-2 lg:grid-cols-4">
-          <FieldShell label="Servico"><select value={serviceFilter} onChange={(event) => setServiceFilter(event.target.value)} className="agenda-input"><option value="all">Todos</option>{visibleServices.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}</select></FieldShell>
+          <FieldShell label="ServiÃƒÂ§o"><select value={serviceFilter} onChange={(event) => setServiceFilter(event.target.value)} className="agenda-input"><option value="all">Todos</option>{visibleServices.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}</select></FieldShell>
           <FieldShell label="Tipo"><select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} className="agenda-input"><option value="all">Todos</option>{appointmentTypeOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></FieldShell>
           <FieldShell label="Formato"><select value={groupFilter} onChange={(event) => setGroupFilter(event.target.value)} className="agenda-input"><option value="all">Todos</option><option value="individual">Individual</option><option value="group">Coletivo</option></select></FieldShell>
           <FieldShell label="Pendencia"><select value={pendingFilter} onChange={(event) => setPendingFilter(event.target.value)} className="agenda-input"><option value="all">Todas</option><option value="pending">Com pendencia</option><option value="unsettled">Sem baixa</option></select></FieldShell>
@@ -1668,14 +1668,11 @@ function DayTimeline({
 
                 {appointments
                   .filter((appointment) => appointment.employee_id === employee.id)
-                  .map((appointment) => (
+                  .map((appointment, appointmentIndex, employeeAppointments) => (
                     <TimelineAppointment
                       key={appointment.id}
                       appointment={appointment}
-                      position={getCalendarPosition(
-                        appointment.start_time,
-                        appointment.end_time
-                      )}
+                      position={(() => { const base = getCalendarPosition(appointment.start_time, appointment.end_time); const sameSlot = employeeAppointments.slice(0, appointmentIndex).filter((item) => item.start_time === appointment.start_time).length; return { ...base, top: base.top + sameSlot * (Math.min(base.height, 92) + 6), height: Math.min(base.height, 92) }; })()}
                       canEdit={canEdit}
                       canDelete={canDelete}
                       isPending={isPending}
@@ -1832,7 +1829,7 @@ function TimelineAppointment({
             <IconAction label="Reagendar" onClick={onReschedule} icon={RotateCw} />
             {normalizeStatus(appointment.status) === "faltou" ? (
               <IconAction
-                label="Reposi??o"
+                label="ReposiÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o"
                 disabled={isPending}
                 onClick={onReplacement}
                 icon={CalendarPlus}
@@ -1973,7 +1970,7 @@ function MonthGrid({
                       )}
                     >
                       {formatTime(appointment.start_time)}{" "}
-                      {isReplacementAppointment(appointment) ? "Reposi??o ? " : ""}
+                      {isReplacementAppointment(appointment) ? "ReposiÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o ? " : ""}
                       {appointment.patient_name}
                     </span>
                   );
@@ -2073,7 +2070,7 @@ function SidePanel({
         {nextAppointment ? (
           <AppointmentSummary appointment={nextAppointment} />
         ) : (
-          <p className="text-sm text-muted-foreground">Nenhum pr?ximo atendimento.</p>
+          <p className="text-sm text-muted-foreground">Nenhum Pr?ximo atendimento.</p>
         )}
       </Card>
 
@@ -2244,9 +2241,11 @@ function AppointmentDetailModal({
   const phone = (patient?.phone ?? "").replace(/\D/g, "");
   const whatsapp = phone ? "https://wa.me/" + (phone.startsWith("55") ? phone : "55" + phone) : "";
   const isGroup = appointment.service_is_group || getAppointmentType(appointment) === "grupo";
+  const normalizedStatus = normalizeStatus(appointment.status);
+  const canUseOperationalActions = normalizedStatus === "agendado" || normalizedStatus === "confirmado";
   const occupancy = Math.max(appointment.patient_ids.length, 1);
   const financialLabel = appointment.is_billable ? appointment.finance_integration_status : "Cortesia / nao faturavel";
-  const packageLabel = patientPackage ? patientPackage.remaining_sessions + " sessoes restantes" : "Sem pacote vinculado";
+  const packageLabel = patientPackage ? patientPackage.remaining_sessions + " Sess?es restantes" : "Sem pacote vinculado";
   const nl = String.fromCharCode(10);
   const messageBase = "Ola, " + appointment.patient_name + "." + nl + nl;
   const detailLines = ["Data: " + formatShortDate(appointment.appointment_date), "Horario: " + formatTime(appointment.start_time), "Profissional: " + appointment.employee_name, "Servico: " + appointment.service_name, "Clinica: " + (clinic?.name ?? "Clinica")].join(nl);
@@ -2262,7 +2261,7 @@ function AppointmentDetailModal({
         <div className="grid gap-3 rounded-lg border bg-muted/20 p-4 sm:grid-cols-2">
           <PackageDetail label="Paciente" value={appointment.patient_names.join(", ")} />
           <PackageDetail label="Telefone" value={patient?.phone ?? "Nao informado"} />
-          <PackageDetail label="Servico" value={appointment.service_name} />
+          <PackageDetail label="ServiÃƒÂ§o" value={appointment.service_name} />
           <PackageDetail label="Profissional" value={appointment.employee_name} />
           <PackageDetail label="Clinica" value={clinic?.name ?? "Nao encontrada"} />
           <PackageDetail label="Data" value={formatShortDate(appointment.appointment_date)} />
@@ -2277,7 +2276,7 @@ function AppointmentDetailModal({
         {isGroup ? <div className="rounded-lg border p-3"><strong>Participantes</strong><p className="mt-1 text-sm text-muted-foreground">{appointment.patient_names.join(", ")}</p></div> : null}
         <div className="flex flex-wrap gap-2">
           {canReopen && normalizeStatus(appointment.status) === "realizado" ? <Button type="button" variant="outline" disabled={isPending} onClick={onReopen}><RotateCw className="h-4 w-4" />Reabrir atendimento</Button> : null}
-          {canEdit ? <><Button type="button" variant="outline" disabled={isPending || normalizeStatus(appointment.status) === "confirmado"} onClick={() => onStatus("confirmado")}><Check className="h-4 w-4" />Confirmar presenca</Button><Button type="button" disabled={isPending || normalizeStatus(appointment.status) === "realizado"} onClick={onFinalize}><UserCheck className="h-4 w-4" />Dar baixa</Button><Button type="button" variant="outline" disabled={isPending} onClick={() => onStatus("faltou")}><Ban className="h-4 w-4" />Marcar falta</Button><Button type="button" variant="outline" onClick={onReschedule}><RotateCw className="h-4 w-4" />Reagendar</Button><Button type="button" variant="outline" disabled={isPending} onClick={() => onStatus("cancelado")}><X className="h-4 w-4" />Cancelar</Button><Button type="button" onClick={onEdit}>Editar</Button></> : null}
+          {canEdit && canUseOperationalActions ? <><Button type="button" variant="outline" disabled={isPending || normalizedStatus === "confirmado"} onClick={() => onStatus("confirmado")}><Check className="h-4 w-4" />Confirmar presenca</Button><Button type="button" disabled={isPending || normalizeStatus(appointment.status) === "realizado"} onClick={onFinalize}><UserCheck className="h-4 w-4" />Dar baixa</Button><Button type="button" variant="outline" disabled={isPending} onClick={() => onStatus("faltou")}><Ban className="h-4 w-4" />Marcar falta</Button><Button type="button" variant="outline" onClick={onReschedule}><RotateCw className="h-4 w-4" />Reagendar</Button><Button type="button" variant="outline" disabled={isPending} onClick={() => onStatus("cancelado")}><X className="h-4 w-4" />Cancelar</Button><Button type="button" onClick={onEdit}>Editar</Button></> : null}
           <Button type="button" variant="outline" onClick={() => onNavigate("/prontuarios?q=" + encodeURIComponent(appointment.patient_name))}>Abrir prontuario</Button>
           <Button type="button" variant="outline" onClick={() => onNavigate("/pacientes?patientId=" + appointment.patient_id)}>Abrir ficha</Button>
           <Button type="button" variant="outline" onClick={() => onNavigate("/financeiro/baixas?patientId=" + appointment.patient_id)}>Receber pagamento</Button>
@@ -2316,8 +2315,10 @@ function FinalizeAppointmentModal({
         <div className="grid gap-3 rounded-md border bg-muted/30 p-3 text-sm md:grid-cols-2">
           <PackageDetail label="Paciente" value={appointment.patient_names.join(", ") || appointment.patient_name || "-"} />
           <PackageDetail label="Profissional" value={appointment.employee_name ?? "-"} />
-          <PackageDetail label="Servi?o" value={appointment.service_name ?? "-"} />
+          <PackageDetail label="ServiÃƒÂ§o" value={appointment.service_name ?? "-"} />
           <PackageDetail label="Valor" value={currencyFormatter.format(serviceValue)} />
+          <PackageDetail label="Pacote" value={appointment.patient_package_id ? "Vinculado" : "Sem pacote"} />
+          {appointment.patient_package_id ? <PackageDetail label="Sess?es restantes" value={String(Math.max((appointment.sessions_contracted ?? 1) - (appointment.sessions_completed ?? 0), 0))} /> : null}
         </div>
 
         <div className="grid gap-3 md:grid-cols-2">
@@ -2535,7 +2536,7 @@ function AppointmentFormModal({
             disabled={!isAdmMaster}
           />
           <SelectField
-            label="Servi?o"
+            label="ServiÃƒÂ§o"
             value={form.service_id}
             onChange={(value) => {
               const service = services.find((item) => item.id === value);
@@ -2667,7 +2668,7 @@ function AppointmentFormModal({
                 placeholder={
                   form.patient_id && form.service_id
                     ? "Selecione um pacote ativo"
-                    : "Selecione paciente e servico"
+                    : "Selecione paciente e ServiÃƒÂ§o"
                 }
               />
               {selectedPatientPackage ? (
@@ -2708,7 +2709,7 @@ function AppointmentFormModal({
             required
           />
           <SelectField
-            label="Hor?rio inicial"
+            label="HorÃƒÆ’Ã‚Â¡rio inicial"
             value={form.start_time}
             onChange={(value) =>
               setForm((current) => ({ ...current, start_time: value, end_time: "" }))
@@ -2723,7 +2724,7 @@ function AppointmentFormModal({
             required
           />
           <SelectField
-            label="Hor?rio final"
+            label="HorÃƒÆ’Ã‚Â¡rio final"
             value={form.end_time ?? ""}
             onChange={(value) => setForm((current) => ({ ...current, end_time: value }))}
             options={endTimeOptions}
@@ -2744,7 +2745,7 @@ function AppointmentFormModal({
             disabled={isReplacement}
             helper={
               isReplacement
-                ? "Reposi??o n?o aumenta a quantidade contratada."
+                ? "ReposiÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o n?o aumenta a quantidade contratada."
                 : undefined
             }
           />
@@ -2872,17 +2873,17 @@ function BlockFormModal({
             options={[
               ["dia_inteiro", "Dia inteiro"],
               ["periodo", "Per?odo"],
-              ["horario", "Hor?rio espec?fico"]
+              ["horario", "HorÃƒÆ’Ã‚Â¡rio espec?fico"]
             ]}
           />
           <TextField
-            label="Hor?rio inicial"
+            label="HorÃƒÆ’Ã‚Â¡rio inicial"
             type="time"
             value={form.start_time ?? ""}
             onChange={(value) => setForm((current) => ({ ...current, start_time: value }))}
           />
           <TextField
-            label="Hor?rio final"
+            label="HorÃƒÆ’Ã‚Â¡rio final"
             type="time"
             value={form.end_time ?? ""}
             onChange={(value) => setForm((current) => ({ ...current, end_time: value }))}

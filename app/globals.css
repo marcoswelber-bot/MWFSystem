@@ -383,3 +383,12 @@ main.min-h-screen [class*="max-w-md"] { max-width: min(28rem, 100%); }
   main.min-h-screen [class*="max-w-md"] { width: 100%; }
 }
 @media (max-width: 767px) { main.min-h-screen > .grid { grid-template-columns: minmax(0, 1fr) !important; width: 100% !important; } main.min-h-screen section { width: 100% !important; } main.min-h-screen [class*='max-w-md'] { max-width: calc(100vw - 2rem) !important; } }
+
+/* Theme stabilization: cohesive light shell with accessible surfaces. */
+:root { --sidebar-bg: 220 26% 94%; --sidebar-fg: 222 47% 15%; --sidebar-muted: 220 18% 88%; --sidebar-accent: 221 83% 53%; }
+.app-sidebar { background: linear-gradient(180deg, hsl(220 26% 96%), hsl(220 24% 91%)); border-right-color: hsl(214 32% 84%); color: hsl(var(--sidebar-fg)); }
+.app-sidebar a { color: hsl(var(--sidebar-fg)); }
+.app-sidebar a:hover { background: hsl(221 83% 53% / .10); }
+.app-sidebar a.bg-\[hsl\(var\(--sidebar-accent\)\)\]\/15 { background: hsl(221 83% 53% / .14); color: hsl(221 83% 35%); box-shadow: none; }
+.dark .app-sidebar { background: linear-gradient(180deg, hsl(222 47% 7%), hsl(230 45% 8%)); border-right-color: hsl(215 25% 20% / .7); color: hsl(var(--sidebar-fg)); }
+.dark .app-sidebar a { color: hsl(var(--sidebar-fg)); }
