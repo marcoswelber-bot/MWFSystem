@@ -109,3 +109,22 @@ export async function assertAdmMaster() {
     throw new Error("Apenas o ADM Master pode executar esta acao.");
   }
 }
+export async function canReopenAppointments() {
+  if (await isCurrentUserAdmMaster()) {
+    return true;
+  }
+
+  const { employee } = await getCurrentEmployee();
+  const role = employee?.role
+    ?.normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+
+  if (!employee || !["clinic_admin", "admin", "administrador"].includes(role ?? "")) {
+    return false;
+  }
+
+  return (await getPermissionMapForEmployee(employee.id)).agenda.edit;
+}

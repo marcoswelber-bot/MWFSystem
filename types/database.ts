@@ -1033,6 +1033,63 @@ export type Database = {
         };
         Relationships: [];
       };
+      appointment_reopen_audits: {
+        Row: {
+          id: string;
+          appointment_id: string;
+          clinic_id: string;
+          patient_id: string;
+          employee_id: string;
+          reopened_by: string | null;
+          reopened_by_user_id: string | null;
+          reopened_at: string;
+          reason: string;
+          previous_status: string;
+          new_status: string;
+          financial_reverted: boolean;
+          commissions_reverted: boolean;
+          package_restored: boolean;
+          session_history_restored: boolean;
+          details: Json;
+        };
+        Insert: {
+          id?: string;
+          appointment_id: string;
+          clinic_id: string;
+          patient_id: string;
+          employee_id: string;
+          reopened_by?: string | null;
+          reopened_by_user_id?: string | null;
+          reopened_at?: string;
+          reason: string;
+          previous_status: string;
+          new_status: string;
+          financial_reverted?: boolean;
+          commissions_reverted?: boolean;
+          package_restored?: boolean;
+          session_history_restored?: boolean;
+          details?: Json;
+        };
+        Update: {
+          id?: string;
+          appointment_id?: string;
+          clinic_id?: string;
+          patient_id?: string;
+          employee_id?: string | null;
+          reopened_by?: string | null;
+          reopened_by_user_id?: string | null;
+          reopened_at?: string;
+          reason?: string;
+          previous_status?: string;
+          new_status?: string;
+          financial_reverted?: boolean;
+          commissions_reverted?: boolean;
+          package_restored?: boolean;
+          session_history_restored?: boolean;
+          details?: Json;
+        };
+        Relationships: [];
+      };
       service_audit_logs: {
         Row: {
           id: string;
@@ -1530,7 +1587,12 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      reopen_appointment: {
+        Args: { p_appointment_id: string; p_reason: string };
+        Returns: Json;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };

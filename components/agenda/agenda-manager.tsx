@@ -99,6 +99,7 @@ type AgendaManagerProps = {
   initialPatientId?: string | null;
   initialAppointmentId?: string | null;
   initialOpenNew?: boolean;
+  canReopen?: boolean;
 };
 
 const calendarStartHour = 7;
@@ -3086,5 +3087,7 @@ function MultiSelectField({
     </FieldShell>
   );
 }
+
+
 
 

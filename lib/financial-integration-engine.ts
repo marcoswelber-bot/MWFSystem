@@ -378,8 +378,8 @@ async function createCommissionPayable(appointment: Appointment, state: Rollback
     employee_id: appointment.employee_id,
     service_id: appointment.service_id,
     origin: null,
-    category: "Comissões",
-    description: `Comissão do atendimento - Profissional: ${employee?.name ?? "Profissional"} - Paciente: ${patient?.full_name ?? "Paciente"} - Serviço: ${service?.name ?? "Servico"}`,
+    category: "ComissÃµes",
+    description: `ComissÃ£o do atendimento - Profissional: ${employee?.name ?? "Profissional"} - Paciente: ${patient?.full_name ?? "Paciente"} - ServiÃ§o: ${service?.name ?? "Servico"}`,
     amount: commissionAmount,
     payment_method: null,
     due_date: appointment.appointment_date,
@@ -583,3 +583,4 @@ export async function getOperationalFinanceSnapshot() {
     )
   };
 }
+

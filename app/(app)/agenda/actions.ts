@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getCurrentClinicScope } from "@/lib/access-control";
 import { completeAppointmentAsRealized } from "@/lib/financial-integration-engine";
-import { assertCan } from "@/lib/permissions";
+import { assertCan, canReopenAppointments } from "@/lib/permissions";
 import { getErrorMessage } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -648,6 +648,20 @@ async function completeAppointmentSideEffects(
       if (historyError) {
         throw historyError;
       }
+    } else {
+      const { error: historyUpdateError } = await supabase
+        .from("patient_session_history")
+        .update({
+          status: "realizado",
+          finance_integration_status: financeIntegrationStatus,
+          commission_integration_status: "pending",
+          package_session_status: packageSessionStatus
+        })
+        .eq("id", existingHistory.id);
+
+      if (historyUpdateError) {
+        throw historyUpdateError;
+      }
     }
   }
 
@@ -828,6 +842,39 @@ export async function finalizeAppointmentBilling(
     revalidatePath("/dashboard");
     revalidatePath("/relatorios");
     return { ok: true, message: "Atendimento finalizado com sucesso." };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
+}
+
+export async function reopenAppointment(
+  appointmentId: string,
+  reason: string
+): Promise<AgendaActionResult> {
+  try {
+    if (!(await canReopenAppointments())) {
+      throw new Error("Apenas administradores autorizados podem reabrir atendimentos.");
+    }
+
+    assertRequired(appointmentId, "Atendimento obrigatorio.");
+    assertRequired(reason, "Informe o motivo da reabertura.");
+    const supabase = await createClient();
+    const { error } = await supabase.rpc("reopen_appointment", {
+      p_appointment_id: appointmentId,
+      p_reason: reason.trim()
+    });
+
+    if (error) {
+      return { ok: false, message: getErrorMessage(error) };
+    }
+
+    revalidatePath("/agenda");
+    revalidatePath("/financeiro");
+    revalidatePath("/dashboard");
+    revalidatePath("/pacotes");
+    revalidatePath("/prontuarios");
+    revalidatePath("/relatorios");
+    return { ok: true, message: "Atendimento reaberto com sucesso." };
   } catch (error) {
     return { ok: false, message: getErrorMessage(error) };
   }

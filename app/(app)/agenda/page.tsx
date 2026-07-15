@@ -2,7 +2,7 @@ import { AgendaManager } from "@/components/agenda/agenda-manager";
 import { ActionableAlertsWrapper } from "@/components/actionable-alerts-wrapper";
 import { getCurrentClinicScope } from "@/lib/access-control";
 import { getAgendaActionableAlerts } from "@/lib/module-alerts";
-import { getCurrentPermissionMap } from "@/lib/permissions";
+import { canReopenAppointments, getCurrentPermissionMap } from "@/lib/permissions";
 import { getErrorMessage } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database";
@@ -67,6 +67,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   let services: Service[] = [];
   let patientPackages: PatientPackage[] = [];
   let rawAppointments: Database["public"]["Tables"]["appointments"]["Row"][] = [];
+  const canReopen = await canReopenAppointments();
   let rawParticipants: Database["public"]["Tables"]["appointment_participants"]["Row"][] =
     [];
   let rawBlocks: Database["public"]["Tables"]["schedule_blocks"]["Row"][] = [];
@@ -274,7 +275,9 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
         initialAppointmentId={params.appointmentId ?? null}
         initialOpenNew={params.new === "1"}
       />
+        canReopen={canReopen}
     </div>
   );
 }
+
 
