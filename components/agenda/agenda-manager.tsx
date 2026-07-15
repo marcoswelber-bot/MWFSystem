@@ -73,6 +73,16 @@ type VisualStatus =
   | AppointmentStatus
   | "em_andamento"
   | "reagendado";
+type SavedWhatsappConfirmation = {
+  id: string;
+  href: string;
+  message: string;
+  patientName: string;
+  date: string;
+  time: string;
+  employeeName: string;
+  serviceName: string;
+};
 
 type AgendaManagerProps = {
   appointments: Appointment[];
@@ -693,7 +703,7 @@ export function AgendaManager({
   );
   const [appointmentFormMessage, setAppointmentFormMessage] =
     React.useState<AgendaActionResult | null>(null);
-  const [savedWhatsapp, setSavedWhatsapp] = React.useState<{ href: string; message: string } | null>(null);
+  const [savedWhatsappConfirmations, setSavedWhatsappConfirmations] = React.useState<SavedWhatsappConfirmation[]>([]);
   const [finalizingAppointment, setFinalizingAppointment] = React.useState<Appointment | null>(null);
   const [finalizeForm, setFinalizeForm] = React.useState<FinalizeBillingForm>({
     financial_status: "em_aberto",
@@ -965,7 +975,17 @@ export function AgendaManager({
         const savedClinic = clinics.find((item) => item.id === appointmentPayload.clinic_id);
         const savedPhone = (savedPatient?.phone ?? "").replace(/\D/g, "");
         const savedLines = [editingAppointment ? "Seu atendimento foi reagendado." : "Seu atendimento foi agendado com sucesso.", "", "Data: " + appointmentPayload.appointment_date, "Horario: " + appointmentPayload.start_time, "Profissional: " + (savedEmployee?.name ?? "Profissional"), "Servico: " + (savedService?.name ?? "Servico"), "Clinica: " + (savedClinic?.name ?? "Clinica")];
-        setSavedWhatsapp(savedPhone ? { href: "https://wa.me/" + (savedPhone.startsWith("55") ? savedPhone : "55" + savedPhone), message: "Ola, " + (savedPatient?.full_name ?? "paciente") + "." + String.fromCharCode(10) + String.fromCharCode(10) + savedLines.join(String.fromCharCode(10)) } : null);
+        const confirmation: SavedWhatsappConfirmation = {
+          id: `${Date.now()}-${patientIds[0]}`,
+          href: savedPhone ? "https://wa.me/" + (savedPhone.startsWith("55") ? savedPhone : "55" + savedPhone) : "",
+          message: "Ola, " + (savedPatient?.full_name ?? "paciente") + "." + String.fromCharCode(10) + String.fromCharCode(10) + savedLines.join(String.fromCharCode(10)),
+          patientName: savedPatient?.full_name ?? "Paciente",
+          date: formatShortDate(appointmentPayload.appointment_date),
+          time: formatTime(appointmentPayload.start_time),
+          employeeName: savedEmployee?.name ?? "Profissional",
+          serviceName: savedService?.name ?? "Servico"
+        };
+        setSavedWhatsappConfirmations((current) => [...current, confirmation]);
         closeAppointmentForm();
         refresh();
       } else {
@@ -1035,6 +1055,9 @@ export function AgendaManager({
   }
 
   function changeStatus(appointment: Appointment, status: AppointmentStatus) {
+    if (status === "cancelado" && !window.confirm(`Cancelar o atendimento de ${appointment.patient_name}?`)) {
+      return;
+    }
     const observation = status === "cancelado" || status === "faltou" ? window.prompt(status === "cancelado" ? "Informe o motivo do cancelamento:" : "Observacao da falta:") : undefined;
     if ((status === "cancelado" || status === "faltou") && observation === null) return;
     startTransition(async () => {
@@ -1079,7 +1102,24 @@ export function AgendaManager({
       {message ? (
         <SystemMessage message={message} onClose={() => setMessage(null)} />
       ) : null}
-      {savedWhatsapp ? <Card className="flex flex-wrap items-center justify-between gap-3 border-emerald-200 bg-emerald-50 p-3 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-100"><span className="text-sm font-medium">Agendamento salvo. Deseja enviar a confirmacao?</span><div className="flex gap-2"><Button type="button" size="sm" onClick={() => window.open(savedWhatsapp.href + "?text=" + encodeURIComponent(savedWhatsapp.message), "_blank", "noopener,noreferrer")}>Enviar confirmacao por WhatsApp</Button><Button type="button" size="sm" variant="ghost" onClick={() => setSavedWhatsapp(null)}>Fechar</Button></div></Card> : null}
+      {savedWhatsappConfirmations.length > 0 ? (
+        <div className="grid gap-2">
+          {savedWhatsappConfirmations.map((confirmation) => (
+            <Card key={confirmation.id} className="flex flex-col gap-3 border-emerald-200 bg-emerald-50 p-3 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-100 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0 text-sm">
+                <p className="font-semibold">Agendamento salvo. Deseja enviar a confirmacao?</p>
+                <p className="mt-1"><strong>Paciente:</strong> {confirmation.patientName}</p>
+                <p>{confirmation.date} as {confirmation.time}</p>
+                <p className="truncate"><strong>Profissional:</strong> {confirmation.employeeName} <span className="mx-1 text-emerald-600/60">|</span> <strong>Servico:</strong> {confirmation.serviceName}</p>
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <Button type="button" size="sm" disabled={!confirmation.href} onClick={() => window.open(confirmation.href + "?text=" + encodeURIComponent(confirmation.message), "_blank", "noopener,noreferrer")}><MessageCircle className="h-4 w-4" />Enviar WhatsApp</Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setSavedWhatsappConfirmations((current) => current.filter((item) => item.id !== confirmation.id))}>Fechar</Button>
+              </div>
+            </Card>
+          ))}
+        </div>
+      ) : null}
 
       <Card className="overflow-hidden border-none bg-card shadow-[0_14px_40px_rgba(15,23,42,0.07)] dark:shadow-none">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-gradient-to-r from-card via-card to-secondary/30 p-3">
@@ -2231,7 +2271,7 @@ function AppointmentDetailModal({
         </div>
         {isGroup ? <div className="rounded-lg border p-3"><strong>Participantes</strong><p className="mt-1 text-sm text-muted-foreground">{appointment.patient_names.join(", ")}</p></div> : null}
         <div className="flex flex-wrap gap-2">
-          {canEdit ? <><Button type="button" onClick={onEdit}>Editar</Button><Button type="button" variant="outline" onClick={onReschedule}>Reagendar</Button><Button type="button" variant="outline" disabled={isPending} onClick={() => onStatus("cancelado")}>Cancelar</Button><Button type="button" variant="outline" disabled={isPending} onClick={() => onStatus("faltou")}>Registrar falta</Button><Button type="button" disabled={isPending || normalizeStatus(appointment.status) === "realizado"} onClick={onFinalize}>Finalizar / Dar baixa da sessao</Button></> : null}
+          {canEdit ? <><Button type="button" variant="outline" disabled={isPending || normalizeStatus(appointment.status) === "confirmado"} onClick={() => onStatus("confirmado")}><Check className="h-4 w-4" />Confirmar presenca</Button><Button type="button" disabled={isPending || normalizeStatus(appointment.status) === "realizado"} onClick={onFinalize}><UserCheck className="h-4 w-4" />Dar baixa</Button><Button type="button" variant="outline" disabled={isPending} onClick={() => onStatus("faltou")}><Ban className="h-4 w-4" />Marcar falta</Button><Button type="button" variant="outline" onClick={onReschedule}><RotateCw className="h-4 w-4" />Reagendar</Button><Button type="button" variant="outline" disabled={isPending} onClick={() => onStatus("cancelado")}><X className="h-4 w-4" />Cancelar</Button><Button type="button" onClick={onEdit}>Editar</Button></> : null}
           <Button type="button" variant="outline" onClick={() => onNavigate("/prontuarios?q=" + encodeURIComponent(appointment.patient_name))}>Abrir prontuario</Button>
           <Button type="button" variant="outline" onClick={() => onNavigate("/pacientes?patientId=" + appointment.patient_id)}>Abrir ficha</Button>
           <Button type="button" variant="outline" onClick={() => onNavigate("/financeiro/baixas?patientId=" + appointment.patient_id)}>Receber pagamento</Button>
@@ -2871,9 +2911,17 @@ function ModalShell({
   children: React.ReactNode;
   onClose: () => void;
 }) {
+  const modalRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      modalRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      modalRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm">
-      <Card className="max-h-[92vh] w-full max-w-5xl overflow-auto border-none shadow-2xl">
+    <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/55 p-3 backdrop-blur-sm sm:p-4">
+      <Card ref={modalRef} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} className="max-h-[calc(100dvh-1.5rem)] w-full max-w-5xl scroll-m-4 overflow-auto border-none shadow-2xl outline-none sm:max-h-[92vh]">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-card p-5">
           <div className="flex items-center gap-3">
             <span className="rounded-md bg-primary/10 p-2 text-primary">
