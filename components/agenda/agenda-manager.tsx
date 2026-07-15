@@ -1396,7 +1396,7 @@ export function AgendaManager({
           onReschedule={() => { setSelectedAppointment(null); openRescheduleAppointment(selectedAppointment); }}
           onStatus={(status) => changeStatus(selectedAppointment, status)}
           onFinalize={() => { setSelectedAppointment(null); openFinalizeAppointment(selectedAppointment); }}
-          canReopen={Boolean(canReopen)}
+          canReopen={Boolean(canReopen || isAdmMaster)}
           onReopen={() => { const reason = window.prompt("Motivo da reabertura (obrigatorio):"); if (reason?.trim()) { startTransition(async () => { const result = await reopenAppointment(selectedAppointment.id, reason.trim()); if (!result.ok) window.alert(result.message); else { setSelectedAppointment(null); router.refresh(); } }); } }}
           onNavigate={(href) => router.push(href as never)}
         />
@@ -2301,7 +2301,7 @@ function AppointmentDetailModal({
         </div>
         {isGroup ? <div className="rounded-lg border p-3"><strong>Participantes</strong><p className="mt-1 text-sm text-muted-foreground">{appointment.patient_names.join(", ")}</p></div> : null}
         <div className="flex flex-wrap gap-2">
-          {canReopen && normalizeStatus(appointment.status) === "realizado" ? <Button type="button" variant="outline" disabled={isPending} onClick={onReopen}><RotateCw className="h-4 w-4" />Reabrir atendimento</Button> : null}
+          {canReopen && ["realizado", "finalizado", "finalizada"].includes(String(appointment.status ?? "").toLowerCase()) ? <Button type="button" variant="outline" disabled={isPending} onClick={onReopen}><RotateCw className="h-4 w-4" />Reabrir atendimento</Button> : null}
           {canEdit && canUseOperationalActions ? <><Button type="button" variant="outline" disabled={isPending || normalizedStatus === "confirmado"} onClick={() => onStatus("confirmado")}><Check className="h-4 w-4" />Confirmar presenca</Button><Button type="button" disabled={isPending || normalizeStatus(appointment.status) === "realizado"} onClick={onFinalize}><UserCheck className="h-4 w-4" />Dar baixa</Button><Button type="button" variant="outline" disabled={isPending} onClick={() => onStatus("faltou")}><Ban className="h-4 w-4" />Marcar falta</Button><Button type="button" variant="outline" onClick={onReschedule}><RotateCw className="h-4 w-4" />Reagendar</Button><Button type="button" variant="outline" disabled={isPending} onClick={() => onStatus("cancelado")}><X className="h-4 w-4" />Cancelar</Button><Button type="button" onClick={onEdit}>Editar</Button></> : null}
           <Button type="button" variant="outline" onClick={() => onNavigate("/prontuarios?q=" + encodeURIComponent(appointment.patient_name))}>Abrir prontuario</Button>
           <Button type="button" variant="outline" onClick={() => onNavigate("/pacientes?patientId=" + appointment.patient_id)}>Abrir ficha</Button>
