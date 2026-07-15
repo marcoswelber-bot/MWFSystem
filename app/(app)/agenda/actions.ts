@@ -404,7 +404,6 @@ async function assertNoAppointmentConflict(
 
       if (participantsError) {
         throw participantsError;
-      }
 
       const participantCountByAppointment = (participants ?? []).reduce(
         (accumulator, participant) => {
@@ -777,6 +776,13 @@ export async function finalizeAppointmentBilling(
       return { ok: false, message: getErrorMessage(appointmentError) };
     }
 
+    if (appointment.status === "realizado") {
+      return { ok: false, message: "Este atendimento já foi finalizado." };
+    }
+
+    if (input.financial_status === "parcial" && cleanMoney(input.paid_amount) <= 0) {
+      return { ok: false, message: "Informe o valor pago para atendimento parcial." };
+    }
     await completeAppointmentSideEffects(appointment.id, appointment);
 
     const { data: revenue, error: revenueError } = await supabase
@@ -807,8 +813,6 @@ export async function finalizeAppointmentBilling(
             ? Math.min(cleanMoney(input.paid_amount), amount)
             : 0;
 
-      if (input.financial_status === "parcial" && paidAmount <= 0) {
-        return { ok: false, message: "Informe o valor pago para atendimento parcial." };
       }
 
       const { error } = await supabase
