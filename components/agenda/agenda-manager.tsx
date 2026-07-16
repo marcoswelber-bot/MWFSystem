@@ -737,6 +737,7 @@ export function AgendaManager({
     React.useState<AgendaActionResult | null>(null);
   const [savedWhatsappConfirmations, setSavedWhatsappConfirmations] = React.useState<SavedWhatsappConfirmation[]>([]);
   const [finalizingAppointment, setFinalizingAppointment] = React.useState<Appointment | null>(null);
+  const [finalizeMessage, setFinalizeMessage] = React.useState<AgendaActionResult | null>(null);
   const [reopeningAppointment, setReopeningAppointment] = React.useState<Appointment | null>(null);
   const [reopenReason, setReopenReason] = React.useState("");
   const [reopenMessage, setReopenMessage] = React.useState<AgendaActionResult | null>(null);
@@ -1042,6 +1043,7 @@ export function AgendaManager({
   function openFinalizeAppointment(appointment: Appointment) {
     const value = getServiceValue(appointment.service_id);
     setFinalizingAppointment(appointment);
+    setFinalizeMessage(null);
     setFinalizeForm({
       financial_status: "em_aberto",
       payment_method: "pix",
@@ -1053,6 +1055,7 @@ export function AgendaManager({
 
   function closeFinalizeAppointment() {
     setFinalizingAppointment(null);
+    setFinalizeMessage(null);
     setFinalizeForm({ financial_status: "em_aberto", payment_method: "pix", paid_amount: "0", notes: "" });
   }
 
@@ -1068,10 +1071,12 @@ export function AgendaManager({
         paid_amount: finalizeForm.paid_amount,
         notes: finalizeForm.notes
       });
-      setMessage(getAppointmentMessage(result, "status"));
       if (result.ok) {
+        setMessage(getAppointmentMessage(result, "status"));
         closeFinalizeAppointment();
         refresh();
+      } else {
+        setFinalizeMessage(result);
       }
     });
   }
@@ -1494,6 +1499,7 @@ export function AgendaManager({
           serviceValue={getServiceValue(finalizingAppointment.service_id)}
           form={finalizeForm}
           setForm={setFinalizeForm}
+          message={finalizeMessage}
           isPending={isPending}
           onSubmit={submitFinalizeAppointment}
           onClose={closeFinalizeAppointment}
@@ -2476,6 +2482,7 @@ function FinalizeAppointmentModal({
   serviceValue,
   form,
   setForm,
+  message,
   isPending,
   onSubmit,
   onClose
@@ -2484,6 +2491,7 @@ function FinalizeAppointmentModal({
   serviceValue: number;
   form: FinalizeBillingForm;
   setForm: React.Dispatch<React.SetStateAction<FinalizeBillingForm>>;
+  message: AgendaActionResult | null;
   isPending: boolean;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
   onClose: () => void;
@@ -2544,6 +2552,12 @@ function FinalizeAppointmentModal({
           Ao confirmar, o atendimento será marcado como realizado e o financeiro será atualizado conforme o status escolhido.
         </div>
 
+        {serviceValue <= 0 && form.financial_status !== "cortesia" ? (
+          <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+            Este serviço está sem valor configurado. Configure o valor do serviço ou selecione Cortesia para concluir sem gerar receita.
+          </p>
+        ) : null}
+        {message ? <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-100">{message.message}</p> : null}
         <div className="flex justify-end gap-2 border-t pt-3">
           <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
