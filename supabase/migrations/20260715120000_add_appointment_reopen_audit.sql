@@ -1,3 +1,5 @@
+begin;
+
 create extension if not exists "pgcrypto";
 
 create table if not exists public.appointment_reopen_audits (
@@ -22,7 +24,26 @@ create table if not exists public.appointment_reopen_audits (
 create index if not exists appointment_reopen_audits_appointment_idx on public.appointment_reopen_audits(appointment_id, reopened_at desc);
 alter table public.appointment_reopen_audits enable row level security;
 drop policy if exists appointment_reopen_audits_select on public.appointment_reopen_audits;
-create policy appointment_reopen_audits_select on public.appointment_reopen_audits for select to authenticated using (public.is_adm_master() or public.has_permission('agenda', 'edit'));
+create policy appointment_reopen_audits_select
+on public.appointment_reopen_audits
+for select
+to authenticated
+using (
+  public.is_adm_master()
+  or exists (
+    select 1
+    from public.employees e
+    join public.user_permissions up on up.employee_id = e.id
+    where lower(trim(coalesce(nullif(e.login_email, ''), nullif(e.email, ''))))
+          = lower(trim(coalesce(auth.jwt() ->> 'email', '')))
+      and e.status = 'active'
+      and e.system_access
+      and lower(regexp_replace(coalesce(e.role, ''), '[^a-zA-Z0-9]+', '_', 'g'))
+          in ('clinic_admin', 'admin', 'administrador')
+      and up.module_key = 'agenda'
+      and up.can_edit
+  )
+);
 drop policy if exists appointment_reopen_audits_insert on public.appointment_reopen_audits;
 create policy appointment_reopen_audits_insert on public.appointment_reopen_audits for insert to authenticated with check (public.is_adm_master());
 
@@ -35,14 +56,17 @@ declare
   a public.appointments%rowtype;
   p public.patient_packages%rowtype;
   e public.employees%rowtype;
-  uid uuid := auth.uid(); eid uuid;
+  uid uuid := auth.uid();
+  jwt_email text := lower(trim(coalesce(auth.jwt() ->> 'email', '')));
+  eid uuid;
   fr boolean := false; cr boolean := false; pr boolean := false; hr boolean := false;
   tc integer := 0; hc integer := 0;
 begin
   if nullif(trim(coalesce(p_reason,'')),'') is null then raise exception 'Informe o motivo da reabertura.' using errcode='22023'; end if;
-  select emp.* into e from public.employees emp where emp.auth_user_id=uid and emp.status='active' and emp.system_access limit 1;
+  if uid is null or jwt_email = '' then raise exception 'Usuario nao autenticado.' using errcode='42501'; end if;
+  select emp.* into e from public.employees emp where lower(trim(coalesce(nullif(emp.login_email,''),nullif(emp.email,''))))=jwt_email and emp.status='active' and emp.system_access limit 1;
   eid:=e.id;
-  if not public.is_adm_master() and not exists (select 1 from public.employees x join public.user_permissions up on up.employee_id=x.id where x.auth_user_id=uid and x.status='active' and x.system_access and lower(regexp_replace(coalesce(x.role,''),'[^a-zA-Z0-9]+','_','g')) in ('clinic_admin','admin','administrador') and up.module_key='agenda' and up.can_edit) then raise exception 'Apenas administradores autorizados podem reabrir atendimentos.' using errcode='42501'; end if;
+  if not public.is_adm_master() and not exists (select 1 from public.employees x join public.user_permissions up on up.employee_id=x.id where lower(trim(coalesce(nullif(x.login_email,''),nullif(x.email,''))))=jwt_email and x.status='active' and x.system_access and lower(regexp_replace(coalesce(x.role,''),'[^a-zA-Z0-9]+','_','g')) in ('clinic_admin','admin','administrador') and up.module_key='agenda' and up.can_edit) then raise exception 'Apenas administradores autorizados podem reabrir atendimentos.' using errcode='42501'; end if;
   select * into a from public.appointments where id=p_appointment_id for update;
   if not found then raise exception 'Atendimento nao encontrado.' using errcode='P0002'; end if;
   if a.status<>'realizado' then raise exception 'Este atendimento nao esta finalizado ou ja foi reaberto.' using errcode='55000'; end if;
@@ -67,3 +91,7 @@ $$;
 
 revoke all on function public.reopen_appointment(uuid,text) from public;
 grant execute on function public.reopen_appointment(uuid,text) to authenticated;
+
+notify pgrst, 'reload schema';
+
+commit;
