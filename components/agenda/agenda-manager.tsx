@@ -1965,10 +1965,12 @@ function MonthGrid({
           const blockedDay = isPastDate(day) || isFullDayBlocked(day, blocks);
 
           return (
-            <button
+            <div
               key={day}
-              type="button"
+              role="button"
+              tabIndex={0}
               onClick={() => onSelectDate(day)}
+              onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectDate(day); } }}
               aria-disabled={blockedDay}
               className={cn(
                 "min-h-[138px] bg-card p-3 text-left transition-colors hover:bg-secondary/50",
@@ -2022,7 +2024,7 @@ function MonthGrid({
                   </span>
                 ) : null}
               </div>
-            </button>
+            </div>
           );
         })}
       </div>
