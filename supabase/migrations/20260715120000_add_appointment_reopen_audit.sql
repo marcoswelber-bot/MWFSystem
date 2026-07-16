@@ -40,8 +40,8 @@ declare
   tc integer := 0; hc integer := 0;
 begin
   if nullif(trim(coalesce(p_reason,'')),'') is null then raise exception 'Informe o motivo da reabertura.' using errcode='22023'; end if;
-  select emp.* into employee_row from public.employees emp where emp.auth_user_id=uid and emp.status='active' and emp.system_access limit 1;
-  eid:=employee_row.id;
+  select emp.* into e from public.employees emp where emp.auth_user_id=uid and emp.status='active' and emp.system_access limit 1;
+  eid:=e.id;
   if not public.is_adm_master() and not exists (select 1 from public.employees x join public.user_permissions up on up.employee_id=x.id where x.auth_user_id=uid and x.status='active' and x.system_access and lower(regexp_replace(coalesce(x.role,''),'[^a-zA-Z0-9]+','_','g')) in ('clinic_admin','admin','administrador') and up.module_key='agenda' and up.can_edit) then raise exception 'Apenas administradores autorizados podem reabrir atendimentos.' using errcode='42501'; end if;
   select * into a from public.appointments where id=p_appointment_id for update;
   if not found then raise exception 'Atendimento nao encontrado.' using errcode='P0002'; end if;
