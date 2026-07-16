@@ -1971,7 +1971,6 @@ function MonthGrid({
               tabIndex={0}
               onClick={() => onSelectDate(day)}
               onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectDate(day); } }}
-              aria-disabled={blockedDay}
               className={cn(
                 "min-h-[138px] bg-card p-3 text-left transition-colors hover:bg-secondary/50",
                 muted && "bg-muted/30 text-muted-foreground",
@@ -2071,7 +2070,6 @@ function MiniMonthCalendar({
               key={day}
               type="button"
               onClick={() => onSelectDate(day)}
-              aria-disabled={blockedDay}
               title={hasBlock ? "Data com bloqueio" : undefined}
               className={cn(
                 "h-9 rounded-md text-sm font-medium transition-colors hover:bg-secondary",
