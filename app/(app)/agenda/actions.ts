@@ -886,6 +886,87 @@ export async function reopenAppointment(
   }
 }
 
+export async function restoreAppointmentOperationalStatus(
+  appointmentId: string,
+  expectedStatus: "faltou" | "cancelado",
+  reason: string
+): Promise<AgendaActionResult> {
+  try {
+    if (!(await canReopenAppointments())) {
+      throw new Error("Apenas administradores autorizados podem corrigir este status.");
+    }
+
+    assertRequired(appointmentId, "Atendimento obrigatorio.");
+    assertRequired(reason, "Informe o motivo da correcao.");
+
+    const supabase = await createClient();
+    const { data: appointment, error: appointmentError } = await supabase
+      .from("appointments")
+      .select("*")
+      .eq("id", appointmentId)
+      .single();
+
+    if (appointmentError) {
+      return { ok: false, message: getErrorMessage(appointmentError) };
+    }
+
+    if (appointment.status !== expectedStatus) {
+      return {
+        ok: false,
+        message:
+          expectedStatus === "faltou"
+            ? "Este atendimento nao esta marcado como falta."
+            : "Este atendimento nao esta cancelado."
+      };
+    }
+
+    if (expectedStatus === "cancelado") {
+      const { data: participants, error: participantsError } = await supabase
+        .from("appointment_participants")
+        .select("patient_id")
+        .eq("appointment_id", appointment.id);
+
+      if (participantsError) {
+        return { ok: false, message: getErrorMessage(participantsError) };
+      }
+
+      const patientIds = Array.from(
+        new Set([appointment.patient_id, ...(participants ?? []).map((item) => item.patient_id)])
+      );
+      await assertNoAppointmentConflict(appointment, patientIds, appointment.id);
+    }
+
+    const nextStatus: AppointmentStatus = expectedStatus === "faltou" ? "confirmado" : "agendado";
+    const correctionNote = `${expectedStatus === "faltou" ? "Falta desfeita" : "Cancelamento restaurado"}: ${reason.trim()}`;
+    const { data: updatedAppointment, error } = await supabase
+      .from("appointments")
+      .update({
+        status: nextStatus,
+        notes: [appointment.notes, correctionNote].filter(Boolean).join(" "),
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", appointment.id)
+      .eq("status", expectedStatus)
+      .select("id")
+      .maybeSingle();
+
+    if (error) {
+      return { ok: false, message: getErrorMessage(error) };
+    }
+    if (!updatedAppointment) {
+      return { ok: false, message: "O status deste atendimento ja foi alterado por outro usuario." };
+    }
+
+    revalidatePath("/agenda");
+    revalidatePath("/dashboard");
+    return {
+      ok: true,
+      message: expectedStatus === "faltou" ? "Falta desfeita com sucesso." : "Agendamento restaurado com sucesso."
+    };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
+}
 export async function setAppointmentStatus(
   id: string,
   status: AppointmentStatus,

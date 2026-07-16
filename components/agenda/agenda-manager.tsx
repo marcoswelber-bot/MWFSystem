@@ -32,10 +32,10 @@ import type { Database } from "@/types/database";
 import {
   createAppointment,
   createScheduleBlock,
-  deleteAppointment,
   deleteScheduleBlock,
   finalizeAppointmentBilling,
   reopenAppointment,
+  restoreAppointmentOperationalStatus,
   setAppointmentStatus,
   updateAppointment,
   type AgendaActionResult,
@@ -74,6 +74,8 @@ type VisualStatus =
   | AppointmentStatus
   | "em_andamento"
   | "reagendado";
+type AppointmentActionKey = "details" | "confirm" | "finalize" | "absence" | "undo_absence" | "reschedule" | "cancel" | "restore_cancelled" | "edit" | "new_appointment" | "reopen" | "receive" | "receipt" | "record" | "patient" | "whatsapp";
+type AppointmentActionContext = { canEdit: boolean; canAdminCorrect: boolean };
 type SavedWhatsappConfirmation = {
   id: string;
   href: string;
@@ -345,8 +347,10 @@ function getPeriodLabel(mode: ViewMode, selectedDate: string) {
 }
 
 function normalizeStatus(status: string): AppointmentStatus {
-  return statusOptions.some(([value]) => value === status)
-    ? (status as AppointmentStatus)
+  const normalized = String(status ?? "").toLowerCase();
+  if (normalized === "finalizado" || normalized === "finalizada") return "realizado";
+  return statusOptions.some(([value]) => value === normalized)
+    ? (normalized as AppointmentStatus)
     : "agendado";
 }
 
@@ -505,6 +509,31 @@ function getVisualStatus(appointment: Appointment): VisualStatus {
   return normalizeStatus(appointment.status);
 }
 
+function getAppointmentAvailableActions(appointment: Appointment, context: AppointmentActionContext) {
+  const actions = new Set<AppointmentActionKey>(["details", "patient", "whatsapp"]);
+  const status = normalizeStatus(appointment.status);
+  const inAttendance = getVisualStatus(appointment) === "em_andamento";
+  if (status !== "cancelado") actions.add("record");
+  if (context.canEdit && inAttendance) { actions.add("finalize"); return actions; }
+  if (context.canEdit && status === "agendado") ["confirm", "finalize", "absence", "reschedule", "cancel", "edit"].forEach((a) => actions.add(a as AppointmentActionKey));
+  else if (context.canEdit && status === "confirmado") ["finalize", "absence", "reschedule", "cancel", "edit"].forEach((a) => actions.add(a as AppointmentActionKey));
+  else if (status === "realizado") {
+    if (appointment.is_billable && appointment.finance_integration_status !== "completed") actions.add("receive");
+    if (appointment.is_billable && appointment.finance_integration_status === "completed") actions.add("receipt");
+    if (context.canAdminCorrect) actions.add("reopen");
+  } else if (status === "faltou") {
+    if (context.canAdminCorrect) actions.add("undo_absence");
+    if (context.canEdit) actions.add("reschedule");
+  } else if (status === "cancelado") {
+    if (context.canAdminCorrect) actions.add("restore_cancelled");
+    if (context.canEdit) actions.add("new_appointment");
+  }
+  return actions;
+}
+
+function getPrimaryAppointmentAction(actions: Set<AppointmentActionKey>) {
+  return (["confirm", "finalize", "receive", "undo_absence", "restore_cancelled"] as AppointmentActionKey[]).find((action) => actions.has(action)) ?? null;
+}
 function getAppointmentType(appointment: Appointment): AppointmentType {
   return appointmentTypeOptions.some(([value]) => value === appointment.appointment_type)
     ? (appointment.appointment_type as AppointmentType)
@@ -711,6 +740,9 @@ export function AgendaManager({
   const [reopeningAppointment, setReopeningAppointment] = React.useState<Appointment | null>(null);
   const [reopenReason, setReopenReason] = React.useState("");
   const [reopenMessage, setReopenMessage] = React.useState<AgendaActionResult | null>(null);
+  const [statusCorrection, setStatusCorrection] = React.useState<{ appointment: Appointment; kind: "faltou" | "cancelado" } | null>(null);
+  const [statusCorrectionReason, setStatusCorrectionReason] = React.useState("");
+  const [statusCorrectionMessage, setStatusCorrectionMessage] = React.useState<AgendaActionResult | null>(null);
   const [finalizeForm, setFinalizeForm] = React.useState<FinalizeBillingForm>({
     financial_status: "em_aberto",
     payment_method: "pix",
@@ -721,6 +753,7 @@ export function AgendaManager({
   const canCreate = isAdmMaster || (permissions?.create ?? true);
   const canEdit = isAdmMaster || (permissions?.edit ?? true);
   const canDelete = isAdmMaster || (permissions?.delete ?? true);
+  const canAdminCorrect = Boolean(canReopen || isAdmMaster);
   const visibleServices = services.filter((service) => service.status === "active");
   const selectedService = services.find(
     (service) => service.id === appointmentForm.service_id
@@ -808,12 +841,17 @@ export function AgendaManager({
   const inProgressToday = dayAppointments.filter((appointment) =>
     isInProgress(appointment)
   ).length;
-  const nextAppointment = visibleAppointments.find((appointment) => {
-    const appointmentDateTime = new Date(
-      `${appointment.appointment_date}T${formatTime(appointment.start_time)}:00`
-    );
-    return appointmentDateTime >= new Date();
-  });
+  const nextAppointment = appointments
+    .filter((appointment) => {
+      const status = normalizeStatus(appointment.status);
+      const appointmentDateTime = new Date(`${appointment.appointment_date}T${formatTime(appointment.start_time)}:00`);
+      return (status === "agendado" || status === "confirmado")
+        && appointmentDateTime >= new Date()
+        && (clinicFilter === "all" || appointment.clinic_id === clinicFilter)
+        && (employeeFilter === "all" || appointment.employee_id === employeeFilter)
+        && (serviceFilter === "all" || appointment.service_id === serviceFilter);
+    })
+    .sort((a, b) => `${a.appointment_date} ${a.start_time}`.localeCompare(`${b.appointment_date} ${b.start_time}`))[0];
 
   function selectAgendaDate(date: string) {
     if (isPastDate(date) || isFullDayBlocked(date, scopedBlocks)) {
@@ -876,34 +914,6 @@ export function AgendaManager({
   function openRescheduleAppointment(appointment: Appointment) {
     openEditAppointment(appointment);
     setMessage({ ok: true, message: "Ajuste data e horário para reagendar." });
-  }
-
-  function openReplacementAppointment(appointment: Appointment) {
-    setEditingAppointment(null);
-    setAppointmentForm({
-      ...emptyAppointmentForm,
-      clinic_id: appointment.clinic_id,
-      patient_id: appointment.patient_id,
-      patient_ids: appointment.patient_ids,
-      employee_id: appointment.employee_id,
-      service_id: appointment.service_id,
-      patient_package_id: appointment.patient_package_id ?? "",
-      appointment_date: appointment.appointment_date,
-      start_time: "",
-      end_time: "",
-      notes: appointment.notes
-        ? `Reposição`
-        : `Reposição`,
-      status: "agendado",
-      sessions_contracted: String(appointment.sessions_contracted ?? 1),
-      sessions_completed: String(appointment.sessions_completed ?? 0),
-      appointment_type: "reposicao",
-      appointment_origin: "reposicao",
-      original_appointment_id: appointment.id
-    });
-    setMessage(null);
-    setAppointmentFormMessage(null);
-    setAppointmentFormOpen(true);
   }
 
   function closeAppointmentForm() {
@@ -1098,6 +1108,33 @@ export function AgendaManager({
       refresh();
     });
   }
+  function openStatusCorrection(appointment: Appointment, kind: "faltou" | "cancelado") {
+    setSelectedAppointment(null);
+    setStatusCorrection({ appointment, kind });
+    setStatusCorrectionReason("");
+    setStatusCorrectionMessage(null);
+  }
+
+  function closeStatusCorrection() {
+    if (isPending) return;
+    setStatusCorrection(null);
+    setStatusCorrectionReason("");
+    setStatusCorrectionMessage(null);
+  }
+
+  function submitStatusCorrection(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!statusCorrection || !statusCorrectionReason.trim() || isPending) return;
+    startTransition(async () => {
+      const result = await restoreAppointmentOperationalStatus(statusCorrection.appointment.id, statusCorrection.kind, statusCorrectionReason.trim());
+      if (!result.ok) { setStatusCorrectionMessage(result); return; }
+      setMessage(result);
+      setStatusCorrection(null);
+      setStatusCorrectionReason("");
+      setStatusCorrectionMessage(null);
+      refresh();
+    });
+  }
   function changeStatus(appointment: Appointment, status: AppointmentStatus) {
     if (status === "cancelado" && !window.confirm(`Cancelar o atendimento de ${appointment.patient_name}?`)) {
       return;
@@ -1107,20 +1144,6 @@ export function AgendaManager({
     startTransition(async () => {
       const result = await setAppointmentStatus(appointment.id, status, observation ?? undefined);
       setMessage(getAppointmentMessage(result, "status"));
-      if (result.ok) {
-        refresh();
-      }
-    });
-  }
-
-  function removeAppointment(appointment: Appointment) {
-    if (!window.confirm("Excluir este agendamento?")) {
-      return;
-    }
-
-    startTransition(async () => {
-      const result = await deleteAppointment(appointment.id);
-      setMessage(getAppointmentMessage(result, "delete"));
       if (result.ok) {
         refresh();
       }
@@ -1368,16 +1391,16 @@ export function AgendaManager({
                     blocks={visibleBlocks.filter((block) => block.block_date === day)}
                     canEdit={canEdit}
                     canDelete={canDelete}
+                    canAdminCorrect={canAdminCorrect}
                     isPending={isPending}
                     onCreateAppointment={openCreateAppointment}
                     onCreateBlock={openBlockForm}
                     onStatus={changeStatus}
                     onFinalize={openFinalizeAppointment}
                     onEdit={setSelectedAppointment}
-                    onReschedule={openRescheduleAppointment}
-                    onReplacement={openReplacementAppointment}
-                    onDelete={removeAppointment}
                     onDeleteBlock={removeBlock}
+                    onUndoAbsence={(appointment) => openStatusCorrection(appointment, "faltou")}
+                    onRestoreCancelled={(appointment) => openStatusCorrection(appointment, "cancelado")}
                   />
                 ))}
               </div>
@@ -1396,10 +1419,14 @@ export function AgendaManager({
             nextAppointment={nextAppointment}
             dayAppointments={dayAppointments}
             dayBlocks={dayBlocks}
+            canEdit={canEdit}
+            canAdminCorrect={canAdminCorrect}
+            isPending={isPending}
             onOpen={setSelectedAppointment}
             onFinalize={openFinalizeAppointment}
             onStatus={changeStatus}
-            onReschedule={openRescheduleAppointment}
+            onUndoAbsence={(appointment) => openStatusCorrection(appointment, "faltou")}
+            onRestoreCancelled={(appointment) => openStatusCorrection(appointment, "cancelado")}
           />
         </aside>
       </div>
@@ -1440,6 +1467,8 @@ export function AgendaManager({
           onFinalize={() => { setSelectedAppointment(null); openFinalizeAppointment(selectedAppointment); }}
           canReopen={Boolean(canReopen || isAdmMaster)}
           onReopen={() => openReopenAppointment(selectedAppointment)}
+          onUndoAbsence={() => openStatusCorrection(selectedAppointment, "faltou")}
+          onRestoreCancelled={() => openStatusCorrection(selectedAppointment, "cancelado")}
           onCreateNew={() => { const appointment = selectedAppointment; setSelectedAppointment(null); openCreateAppointment(appointment.appointment_date); setAppointmentForm((current) => ({ ...current, patient_id: appointment.patient_id, patient_ids: appointment.patient_ids })); }}
           onNavigate={(href) => router.push(href as never)}
         />
@@ -1455,6 +1484,9 @@ export function AgendaManager({
           onSubmit={submitReopenAppointment}
           onClose={closeReopenAppointment}
         />
+      ) : null}
+      {statusCorrection ? (
+        <StatusCorrectionModal appointment={statusCorrection.appointment} kind={statusCorrection.kind} reason={statusCorrectionReason} setReason={setStatusCorrectionReason} message={statusCorrectionMessage} isPending={isPending} onSubmit={submitStatusCorrection} onClose={closeStatusCorrection} />
       ) : null}
       {finalizingAppointment ? (
         <FinalizeAppointmentModal
@@ -1544,16 +1576,16 @@ function DayTimeline({
   blocks,
   canEdit,
   canDelete,
+  canAdminCorrect,
   isPending,
   onCreateAppointment,
   onCreateBlock,
   onStatus,
   onFinalize,
   onEdit,
-  onReschedule,
-  onReplacement,
-  onDelete,
-  onDeleteBlock
+  onDeleteBlock,
+  onUndoAbsence,
+  onRestoreCancelled
 }: {
   day: string;
   employees: Employee[];
@@ -1561,16 +1593,16 @@ function DayTimeline({
   blocks: ScheduleBlock[];
   canEdit: boolean;
   canDelete: boolean;
+  canAdminCorrect: boolean;
   isPending: boolean;
   onCreateAppointment: (date?: string, employeeId?: string, startTime?: string) => void;
   onCreateBlock: (date?: string, employeeId?: string) => void;
   onStatus: (appointment: Appointment, status: AppointmentStatus) => void;
   onFinalize: (appointment: Appointment) => void;
   onEdit: (appointment: Appointment) => void;
-  onReschedule: (appointment: Appointment) => void;
-  onReplacement: (appointment: Appointment) => void;
-  onDelete: (appointment: Appointment) => void;
   onDeleteBlock: (block: ScheduleBlock) => void;
+  onUndoAbsence: (appointment: Appointment) => void;
+  onRestoreCancelled: (appointment: Appointment) => void;
 }) {
   const hours = Array.from(
     { length: calendarEndHour - calendarStartHour + 1 },
@@ -1732,14 +1764,13 @@ function DayTimeline({
                       appointment={appointment}
                       position={(() => { const base = getCalendarPosition(appointment.start_time, appointment.end_time); const sameSlot = employeeAppointments.slice(0, appointmentIndex).filter((item) => item.start_time === appointment.start_time).length; return { ...base, top: base.top + sameSlot * (Math.min(base.height, 92) + 6), height: Math.min(base.height, 92) }; })()}
                       canEdit={canEdit}
-                      canDelete={canDelete}
+                      canAdminCorrect={canAdminCorrect}
                       isPending={isPending}
                       onStatus={(status) => onStatus(appointment, status)}
                       onFinalize={() => onFinalize(appointment)}
                       onEdit={() => onEdit(appointment)}
-                      onReschedule={() => onReschedule(appointment)}
-                      onReplacement={() => onReplacement(appointment)}
-                      onDelete={() => onDelete(appointment)}
+                      onUndoAbsence={() => onUndoAbsence(appointment)}
+                      onRestoreCancelled={() => onRestoreCancelled(appointment)}
                     />
                   ))}
               </div>
@@ -1770,30 +1801,28 @@ function TimelineAppointment({
   appointment,
   position,
   canEdit,
-  canDelete,
+  canAdminCorrect,
   isPending,
   onStatus,
   onFinalize,
   onEdit,
-  onReschedule,
-  onReplacement,
-  onDelete
+  onUndoAbsence,
+  onRestoreCancelled
 }: {
   appointment: Appointment;
   position: { top: number; height: number };
   canEdit: boolean;
-  canDelete: boolean;
+  canAdminCorrect: boolean;
   isPending: boolean;
   onStatus: (status: AppointmentStatus) => void;
   onFinalize: () => void;
   onEdit: () => void;
-  onReschedule: () => void;
-  onReplacement: () => void;
-  onDelete: () => void;
+  onUndoAbsence: () => void;
+  onRestoreCancelled: () => void;
 }) {
   const visualStatus = getVisualStatus(appointment);
-  const normalizedStatus = normalizeStatus(appointment.status);
-  const isScheduled = visualStatus !== "em_andamento" && (normalizedStatus === "agendado" || normalizedStatus === "confirmado");
+  const availableActions = getAppointmentAvailableActions(appointment, { canEdit, canAdminCorrect });
+  const primaryAction = getPrimaryAppointmentAction(availableActions);
   const style = statusStyles[visualStatus];
   const sessionsContracted = appointment.sessions_contracted ?? 1;
   const sessionsCompleted = appointment.sessions_completed ?? 0;
@@ -1866,22 +1895,8 @@ function TimelineAppointment({
       </div>
 
       <div className="flex flex-wrap gap-1 pt-1">
-        {canEdit && isScheduled ? <>
-          <IconAction label="Confirmar" disabled={isPending || normalizedStatus === "confirmado"} onClick={() => onStatus("confirmado")} icon={Check} />
-          <IconAction label="Finalizar atendimento" disabled={isPending} onClick={onFinalize} icon={UserCheck} />
-          <IconAction label="Registrar falta" disabled={isPending} onClick={() => onStatus("faltou")} icon={Ban} />
-          <IconAction label="Reagendar" disabled={isPending} onClick={onReschedule} icon={RotateCw} />
-          <IconAction label="Cancelar" disabled={isPending} onClick={() => onStatus("cancelado")} icon={X} />
-        </> : null}
-        {canEdit && visualStatus === "em_andamento" ? <IconAction label="Finalizar atendimento" disabled={isPending} onClick={onFinalize} icon={UserCheck} /> : null}
-        {canEdit && normalizedStatus === "faltou" ? <>
-          <IconAction label="Reagendar" disabled={isPending} onClick={onReschedule} icon={RotateCw} />
-          <IconAction label="Reposição" disabled={isPending} onClick={onReplacement} icon={CalendarPlus} />
-        </> : null}
+        <AppointmentPrimaryAction action={primaryAction} isPending={isPending} onConfirm={() => onStatus("confirmado")} onFinalize={onFinalize} onUndoAbsence={onUndoAbsence} onRestoreCancelled={onRestoreCancelled} onOpen={onEdit} />
         <IconAction label="Ver detalhes" onClick={onEdit} icon={MoreHorizontal} />
-        {canDelete ? (
-          <IconAction label="Excluir" onClick={onDelete} icon={Trash2} danger />
-        ) : null}
       </div>
     </article>
   );
@@ -2095,19 +2110,27 @@ function SidePanel({
   nextAppointment,
   dayAppointments,
   dayBlocks,
+  canEdit,
+  canAdminCorrect,
+  isPending,
   onOpen,
   onFinalize,
   onStatus,
-  onReschedule
+  onUndoAbsence,
+  onRestoreCancelled
 }: {
   selectedDate: string;
   nextAppointment?: Appointment;
   dayAppointments: Appointment[];
   dayBlocks: ScheduleBlock[];
+  canEdit: boolean;
+  canAdminCorrect: boolean;
+  isPending: boolean;
   onOpen: (appointment: Appointment) => void;
   onFinalize: (appointment: Appointment) => void;
   onStatus: (appointment: Appointment, status: AppointmentStatus) => void;
-  onReschedule: (appointment: Appointment) => void;
+  onUndoAbsence: (appointment: Appointment) => void;
+  onRestoreCancelled: (appointment: Appointment) => void;
 }) {
   return (
     <div className="grid gap-4">
@@ -2117,7 +2140,7 @@ function SidePanel({
           <h3 className="font-semibold">Próximo atendimento</h3>
         </div>
         {nextAppointment ? (
-          <AppointmentSummary appointment={nextAppointment} onOpen={() => onOpen(nextAppointment)} />
+          <AppointmentSummary appointment={nextAppointment} canEdit={canEdit} canAdminCorrect={canAdminCorrect} isPending={isPending} onOpen={() => onOpen(nextAppointment)} onFinalize={() => onFinalize(nextAppointment)} onStatus={(status) => onStatus(nextAppointment, status)} onUndoAbsence={() => onUndoAbsence(nextAppointment)} onRestoreCancelled={() => onRestoreCancelled(nextAppointment)} />
         ) : (
           <p className="text-sm text-muted-foreground">Nenhum próximo atendimento.</p>
         )}
@@ -2134,7 +2157,7 @@ function SidePanel({
         <div className="grid max-h-[300px] gap-2 overflow-auto pr-1">
           {dayAppointments.length > 0 ? (
             dayAppointments.map((appointment) => (
-              <AppointmentSummary key={appointment.id} appointment={appointment} compact onOpen={() => onOpen(appointment)} onFinalize={() => onFinalize(appointment)} onStatus={(status) => onStatus(appointment, status)} onReschedule={() => onReschedule(appointment)} />
+              <AppointmentSummary key={appointment.id} appointment={appointment} compact canEdit={canEdit} canAdminCorrect={canAdminCorrect} isPending={isPending} onOpen={() => onOpen(appointment)} onFinalize={() => onFinalize(appointment)} onStatus={(status) => onStatus(appointment, status)} onUndoAbsence={() => onUndoAbsence(appointment)} onRestoreCancelled={() => onRestoreCancelled(appointment)} />
             ))
           ) : (
             <p className="text-sm text-muted-foreground">Sem atendimentos no dia.</p>
@@ -2175,19 +2198,29 @@ function SidePanel({
 function AppointmentSummary({
   appointment,
   compact = false,
+  canEdit = false,
+  canAdminCorrect = false,
+  isPending = false,
   onOpen,
   onFinalize,
   onStatus,
-  onReschedule
+  onUndoAbsence,
+  onRestoreCancelled
 }: {
   appointment: Appointment;
   compact?: boolean;
+  canEdit?: boolean;
+  canAdminCorrect?: boolean;
+  isPending?: boolean;
   onOpen?: () => void;
   onFinalize?: () => void;
   onStatus?: (status: AppointmentStatus) => void;
-  onReschedule?: () => void;
+  onUndoAbsence?: () => void;
+  onRestoreCancelled?: () => void;
 }) {
   const style = statusStyles[getVisualStatus(appointment)];
+  const availableActions = getAppointmentAvailableActions(appointment, { canEdit, canAdminCorrect });
+  const primaryAction = getPrimaryAppointmentAction(availableActions);
   const appointmentType = getAppointmentType(appointment);
   const appointmentOrigin = getAppointmentOrigin(appointment);
   const isReplacement = isReplacementAppointment(appointment);
@@ -2224,12 +2257,9 @@ function AppointmentSummary({
         </span>
       </div>
       {compact ? <div className="mt-2 flex flex-wrap gap-1">
+        <AppointmentPrimaryAction action={primaryAction} isPending={isPending} onConfirm={() => onStatus?.("confirmado")} onFinalize={() => onFinalize?.()} onUndoAbsence={() => onUndoAbsence?.()} onRestoreCancelled={() => onRestoreCancelled?.()} onOpen={() => onOpen?.()} />
         {onOpen ? <IconAction label="Ver detalhes" icon={MoreHorizontal} onClick={onOpen} /> : null}
-        {onFinalize && (normalizeStatus(appointment.status) === "agendado" || normalizeStatus(appointment.status) === "confirmado") ? <IconAction label="Dar baixa" icon={UserCheck} onClick={onFinalize} /> : null}
-        {onStatus && (normalizeStatus(appointment.status) === "agendado" || normalizeStatus(appointment.status) === "confirmado") ? <IconAction label="Marcar falta" icon={Ban} onClick={() => onStatus("faltou")} /> : null}
-        {onReschedule && normalizeStatus(appointment.status) !== "realizado" && normalizeStatus(appointment.status) !== "cancelado" ? <IconAction label="Reagendar" icon={RotateCw} onClick={onReschedule} /> : null}
-      </div> : null}
-      {!compact ? (
+      </div> : null}      {!compact ? (
         <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
           <p>{appointment.service_name}</p>
           <p>{appointment.employee_name}</p>
@@ -2290,13 +2320,29 @@ function IconAction({
   );
 }
 
+function AppointmentPrimaryAction({ action, isPending, onConfirm, onFinalize, onUndoAbsence, onRestoreCancelled, onOpen }: {
+  action: AppointmentActionKey | null;
+  isPending: boolean;
+  onConfirm: () => void;
+  onFinalize: () => void;
+  onUndoAbsence: () => void;
+  onRestoreCancelled: () => void;
+  onOpen: () => void;
+}) {
+  if (action === "confirm") return <IconAction label="Confirmar" disabled={isPending} onClick={onConfirm} icon={Check} />;
+  if (action === "finalize") return <IconAction label="Finalizar" disabled={isPending} onClick={onFinalize} icon={UserCheck} />;
+  if (action === "undo_absence") return <IconAction label="Desfazer falta" disabled={isPending} onClick={onUndoAbsence} icon={RotateCw} />;
+  if (action === "restore_cancelled") return <IconAction label="Restaurar" disabled={isPending} onClick={onRestoreCancelled} icon={RotateCw} />;
+  if (action === "receive") return <IconAction label="Receber" disabled={isPending} onClick={onOpen} icon={UserCheck} />;
+  return null;
+}
 function AppointmentDetailModal({
   appointment, patients, clinics, patientPackages, canEdit, isPending,
-  onClose, onEdit, onReschedule, onStatus, onFinalize, canReopen, onReopen, onCreateNew, onNavigate
+  onClose, onEdit, onReschedule, onStatus, onFinalize, canReopen, onReopen, onUndoAbsence, onRestoreCancelled, onCreateNew, onNavigate
 }: {
   appointment: Appointment; patients: Patient[]; clinics: Clinic[]; patientPackages: PatientPackage[];
   canEdit: boolean; isPending: boolean; onClose: () => void; onEdit: () => void; onReschedule: () => void;
-  onStatus: (status: AppointmentStatus) => void; onFinalize: () => void; canReopen: boolean; onReopen: () => void; onCreateNew: () => void; onNavigate: (href: string) => void;
+  onStatus: (status: AppointmentStatus) => void; onFinalize: () => void; canReopen: boolean; onReopen: () => void; onUndoAbsence: () => void; onRestoreCancelled: () => void; onCreateNew: () => void; onNavigate: (href: string) => void;
 }) {
   const patient = patients.find((item) => item.id === appointment.patient_id);
   const clinic = clinics.find((item) => item.id === appointment.clinic_id);
@@ -2304,11 +2350,7 @@ function AppointmentDetailModal({
   const phone = (patient?.phone ?? "").replace(/\D/g, "");
   const whatsapp = phone ? "https://wa.me/" + (phone.startsWith("55") ? phone : "55" + phone) : "";
   const isGroup = appointment.service_is_group || getAppointmentType(appointment) === "grupo";
-  const normalizedStatus = normalizeStatus(appointment.status);
-  const visualStatus = getVisualStatus(appointment);
-  const isScheduled = visualStatus !== "em_andamento" && (normalizedStatus === "agendado" || normalizedStatus === "confirmado");
-  const isInAttendance = visualStatus === "em_andamento";
-  const hasFinancialPending = appointment.is_billable && appointment.finance_integration_status !== "completed";
+  const availableActions = getAppointmentAvailableActions(appointment, { canEdit, canAdminCorrect: canReopen });
   const occupancy = Math.max(appointment.patient_ids.length, 1);
   const financialLabel = appointment.is_billable ? appointment.finance_integration_status : "Cortesia / nao faturavel";
   const packageLabel = patientPackage ? patientPackage.remaining_sessions + " sessões restantes" : "Sem pacote vinculado";
@@ -2341,21 +2383,20 @@ function AppointmentDetailModal({
         </div>
         {isGroup ? <div className="rounded-lg border p-3"><strong>Participantes</strong><p className="mt-1 text-sm text-muted-foreground">{appointment.patient_names.join(", ")}</p></div> : null}
         <div className="flex flex-wrap gap-2">
-          {canReopen && normalizedStatus === "realizado" ? <Button type="button" variant="outline" disabled={isPending} onClick={onReopen}><RotateCw className="h-4 w-4" />Reabrir atendimento</Button> : null}
-          {canEdit && isScheduled ? <>
-            <Button type="button" variant="outline" disabled={isPending || normalizedStatus === "confirmado"} onClick={() => onStatus("confirmado")}><Check className="h-4 w-4" />Confirmar presença</Button>
-            <Button type="button" disabled={isPending} onClick={onFinalize}><UserCheck className="h-4 w-4" />Finalizar atendimento</Button>
-            <Button type="button" variant="outline" disabled={isPending} onClick={() => onStatus("faltou")}><Ban className="h-4 w-4" />Registrar falta</Button>
-            <Button type="button" variant="outline" disabled={isPending} onClick={onReschedule}><RotateCw className="h-4 w-4" />Reagendar</Button>
-            <Button type="button" variant="outline" disabled={isPending} onClick={() => onStatus("cancelado")}><X className="h-4 w-4" />Cancelar</Button>
-            <Button type="button" onClick={onEdit}>Editar</Button>
-          </> : null}
-          {canEdit && isInAttendance ? <Button type="button" disabled={isPending} onClick={onFinalize}><UserCheck className="h-4 w-4" />Finalizar atendimento</Button> : null}
-          {canEdit && normalizedStatus === "faltou" ? <Button type="button" variant="outline" disabled={isPending} onClick={onReschedule}><RotateCw className="h-4 w-4" />Reagendar</Button> : null}
-          {canEdit && normalizedStatus === "cancelado" ? <Button type="button" variant="outline" disabled={isPending} onClick={onCreateNew}><CalendarPlus className="h-4 w-4" />Criar novo agendamento</Button> : null}
-          <Button type="button" variant="outline" onClick={() => onNavigate("/prontuarios?q=" + encodeURIComponent(appointment.patient_name))}>Abrir prontuário</Button>
+          {availableActions.has("reopen") ? <Button type="button" variant="outline" disabled={isPending} onClick={onReopen}><RotateCw className="h-4 w-4" />Reabrir atendimento</Button> : null}
+          {availableActions.has("undo_absence") ? <Button type="button" variant="outline" disabled={isPending} onClick={onUndoAbsence}><RotateCw className="h-4 w-4" />Desfazer falta</Button> : null}
+          {availableActions.has("restore_cancelled") ? <Button type="button" variant="outline" disabled={isPending} onClick={onRestoreCancelled}><RotateCw className="h-4 w-4" />Restaurar agendamento</Button> : null}
+          {availableActions.has("confirm") ? <Button type="button" variant="outline" disabled={isPending} onClick={() => onStatus("confirmado")}><Check className="h-4 w-4" />Confirmar presença</Button> : null}
+          {availableActions.has("finalize") ? <Button type="button" disabled={isPending} onClick={onFinalize}><UserCheck className="h-4 w-4" />Finalizar atendimento</Button> : null}
+          {availableActions.has("absence") ? <Button type="button" variant="outline" disabled={isPending} onClick={() => onStatus("faltou")}><Ban className="h-4 w-4" />Registrar falta</Button> : null}
+          {availableActions.has("reschedule") ? <Button type="button" variant="outline" disabled={isPending} onClick={onReschedule}><RotateCw className="h-4 w-4" />Reagendar</Button> : null}
+          {availableActions.has("cancel") ? <Button type="button" variant="outline" disabled={isPending} onClick={() => onStatus("cancelado")}><X className="h-4 w-4" />Cancelar</Button> : null}
+          {availableActions.has("edit") ? <Button type="button" onClick={onEdit}>Editar</Button> : null}
+          {availableActions.has("new_appointment") ? <Button type="button" variant="outline" disabled={isPending} onClick={onCreateNew}><CalendarPlus className="h-4 w-4" />Criar novo agendamento</Button> : null}
+          {availableActions.has("record") ? <Button type="button" variant="outline" onClick={() => onNavigate("/prontuarios?q=" + encodeURIComponent(appointment.patient_name))}>Abrir prontuário</Button> : null}
           <Button type="button" variant="outline" onClick={() => onNavigate("/pacientes?patientId=" + appointment.patient_id)}>Abrir ficha</Button>
-          {normalizedStatus === "realizado" && hasFinancialPending ? <Button type="button" variant="outline" onClick={() => onNavigate("/financeiro/baixas?patientId=" + appointment.patient_id)}>Receber pagamento</Button> : null}
+          {availableActions.has("receive") ? <Button type="button" variant="outline" onClick={() => onNavigate("/financeiro/baixas?patientId=" + appointment.patient_id)}>Receber pagamento</Button> : null}
+          {availableActions.has("receipt") ? <Button type="button" variant="outline" onClick={() => onNavigate("/financeiro?patientId=" + appointment.patient_id)}>Emitir recibo</Button> : null}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" disabled={!whatsapp} onClick={() => openWhatsapp(messages.confirmacao)}><MessageCircle className="h-4 w-4" />WhatsApp: confirmacao</Button>
@@ -2365,6 +2406,26 @@ function AppointmentDetailModal({
       </div>
     </ModalShell>
   );
+}
+function StatusCorrectionModal({ appointment, kind, reason, setReason, message, isPending, onSubmit, onClose }: {
+  appointment: Appointment; kind: "faltou" | "cancelado"; reason: string; setReason: (value: string) => void;
+  message: AgendaActionResult | null; isPending: boolean; onSubmit: (event: React.FormEvent<HTMLFormElement>) => void; onClose: () => void;
+}) {
+  const undoAbsence = kind === "faltou";
+  return <ModalShell title={undoAbsence ? "Desfazer falta" : "Restaurar agendamento"} icon={RotateCw} onClose={onClose}>
+    <form onSubmit={onSubmit} className="grid gap-4">
+      <div className="grid gap-3 rounded-md border bg-muted/30 p-3 text-sm sm:grid-cols-2">
+        <PackageDetail label="Paciente" value={appointment.patient_names.join(", ") || appointment.patient_name} />
+        <PackageDetail label="Atendimento" value={`${formatShortDate(appointment.appointment_date)} às ${formatTime(appointment.start_time)}`} />
+        <PackageDetail label="Profissional" value={appointment.employee_name} />
+        <PackageDetail label="Status atual" value={getStatusLabel(appointment)} />
+      </div>
+      <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">{undoAbsence ? "A falta será desfeita e o atendimento voltará para Confirmado, sem gerar efeitos financeiros." : "O agendamento será restaurado na data e horário originais após a verificação de conflitos."}</p>
+      <TextAreaField label="Motivo da correção" value={reason} onChange={setReason} required />
+      {message ? <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">{message.message}</p> : null}
+      <div className="flex justify-end gap-2 border-t pt-3"><Button type="button" variant="outline" disabled={isPending} onClick={onClose}>Cancelar</Button><Button type="submit" disabled={isPending || !reason.trim()}>{isPending ? "Processando..." : undoAbsence ? "Confirmar correção" : "Restaurar agendamento"}</Button></div>
+    </form>
+  </ModalShell>;
 }
 function ReopenAppointmentModal({
   appointment,
