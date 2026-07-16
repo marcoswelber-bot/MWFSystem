@@ -708,6 +708,9 @@ export function AgendaManager({
     React.useState<AgendaActionResult | null>(null);
   const [savedWhatsappConfirmations, setSavedWhatsappConfirmations] = React.useState<SavedWhatsappConfirmation[]>([]);
   const [finalizingAppointment, setFinalizingAppointment] = React.useState<Appointment | null>(null);
+  const [reopeningAppointment, setReopeningAppointment] = React.useState<Appointment | null>(null);
+  const [reopenReason, setReopenReason] = React.useState("");
+  const [reopenMessage, setReopenMessage] = React.useState<AgendaActionResult | null>(null);
   const [finalizeForm, setFinalizeForm] = React.useState<FinalizeBillingForm>({
     financial_status: "em_aberto",
     payment_method: "pix",
@@ -715,9 +718,9 @@ export function AgendaManager({
     notes: ""
   });
 
-  const canCreate = permissions?.create ?? true;
-  const canEdit = permissions?.edit ?? true;
-  const canDelete = permissions?.delete ?? true;
+  const canCreate = isAdmMaster || (permissions?.create ?? true);
+  const canEdit = isAdmMaster || (permissions?.edit ?? true);
+  const canDelete = isAdmMaster || (permissions?.delete ?? true);
   const visibleServices = services.filter((service) => service.status === "active");
   const selectedService = services.find(
     (service) => service.id === appointmentForm.service_id
@@ -864,6 +867,12 @@ export function AgendaManager({
     }
   }, [initialAppointmentId, initialOpenNew, initialPatientId, appointments, currentClinicId]);
 
+  React.useEffect(() => {
+    setSelectedAppointment((current) => {
+      if (!current) return current;
+      return appointments.find((appointment) => appointment.id === current.id) ?? null;
+    });
+  }, [appointments]);
   function openRescheduleAppointment(appointment: Appointment) {
     openEditAppointment(appointment);
     setMessage({ ok: true, message: "Ajuste data e horário para reagendar." });
@@ -1057,6 +1066,38 @@ export function AgendaManager({
     });
   }
 
+  function openReopenAppointment(appointment: Appointment) {
+    setSelectedAppointment(null);
+    setReopeningAppointment(appointment);
+    setReopenReason("");
+    setReopenMessage(null);
+  }
+
+  function closeReopenAppointment() {
+    if (isPending) return;
+    setReopeningAppointment(null);
+    setReopenReason("");
+    setReopenMessage(null);
+  }
+
+  function submitReopenAppointment(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!reopeningAppointment || !reopenReason.trim() || isPending) return;
+
+    startTransition(async () => {
+      const result = await reopenAppointment(reopeningAppointment.id, reopenReason.trim());
+      if (!result.ok) {
+        setReopenMessage(result);
+        return;
+      }
+
+      setMessage(result);
+      setReopeningAppointment(null);
+      setReopenReason("");
+      setReopenMessage(null);
+      refresh();
+    });
+  }
   function changeStatus(appointment: Appointment, status: AppointmentStatus) {
     if (status === "cancelado" && !window.confirm(`Cancelar o atendimento de ${appointment.patient_name}?`)) {
       return;
@@ -1306,6 +1347,7 @@ export function AgendaManager({
               days={visibleDays}
               appointments={visibleAppointments}
               blocks={visibleBlocks}
+              onOpenAppointment={setSelectedAppointment}
               onSelectDate={(date) => {
                 if (selectAgendaDate(date)) {
                   setViewMode("day");
@@ -1397,11 +1439,23 @@ export function AgendaManager({
           onStatus={(status) => changeStatus(selectedAppointment, status)}
           onFinalize={() => { setSelectedAppointment(null); openFinalizeAppointment(selectedAppointment); }}
           canReopen={Boolean(canReopen || isAdmMaster)}
-          onReopen={() => { const reason = window.prompt("Motivo da reabertura (obrigatorio):"); if (reason?.trim()) { startTransition(async () => { const result = await reopenAppointment(selectedAppointment.id, reason.trim()); if (!result.ok) window.alert(result.message); else { setSelectedAppointment(null); router.refresh(); } }); } }}
+          onReopen={() => openReopenAppointment(selectedAppointment)}
+          onCreateNew={() => { const appointment = selectedAppointment; setSelectedAppointment(null); openCreateAppointment(appointment.appointment_date); setAppointmentForm((current) => ({ ...current, patient_id: appointment.patient_id, patient_ids: appointment.patient_ids })); }}
           onNavigate={(href) => router.push(href as never)}
         />
       ) : null}
 
+      {reopeningAppointment ? (
+        <ReopenAppointmentModal
+          appointment={reopeningAppointment}
+          reason={reopenReason}
+          setReason={setReopenReason}
+          message={reopenMessage}
+          isPending={isPending}
+          onSubmit={submitReopenAppointment}
+          onClose={closeReopenAppointment}
+        />
+      ) : null}
       {finalizingAppointment ? (
         <FinalizeAppointmentModal
           appointment={finalizingAppointment}
@@ -1738,6 +1792,8 @@ function TimelineAppointment({
   onDelete: () => void;
 }) {
   const visualStatus = getVisualStatus(appointment);
+  const normalizedStatus = normalizeStatus(appointment.status);
+  const isScheduled = visualStatus !== "em_andamento" && (normalizedStatus === "agendado" || normalizedStatus === "confirmado");
   const style = statusStyles[visualStatus];
   const sessionsContracted = appointment.sessions_contracted ?? 1;
   const sessionsCompleted = appointment.sessions_completed ?? 0;
@@ -1810,44 +1866,19 @@ function TimelineAppointment({
       </div>
 
       <div className="flex flex-wrap gap-1 pt-1">
-        {canEdit ? (
-          <>
-            <IconAction
-              label="Confirmar"
-              disabled={isPending}
-              onClick={() => onStatus("confirmado")}
-              icon={Check}
-            />
-            <IconAction
-              label="Finalizar atendimento"
-              disabled={isPending}
-              onClick={onFinalize}
-              icon={UserCheck}
-            />
-            <IconAction
-              label="Registrar falta"
-              disabled={isPending}
-              onClick={() => onStatus("faltou")}
-              icon={Ban}
-            />
-            <IconAction label="Reagendar" onClick={onReschedule} icon={RotateCw} />
-            {normalizeStatus(appointment.status) === "faltou" ? (
-              <IconAction
-                label="Reposiço"
-                disabled={isPending}
-                onClick={onReplacement}
-                icon={CalendarPlus}
-              />
-            ) : null}
-            <IconAction label="Ver detalhes" onClick={onEdit} icon={MoreHorizontal} />
-            <IconAction
-              label="Cancelar"
-              disabled={isPending}
-              onClick={() => onStatus("cancelado")}
-              icon={X}
-            />
-          </>
-        ) : null}
+        {canEdit && isScheduled ? <>
+          <IconAction label="Confirmar" disabled={isPending || normalizedStatus === "confirmado"} onClick={() => onStatus("confirmado")} icon={Check} />
+          <IconAction label="Finalizar atendimento" disabled={isPending} onClick={onFinalize} icon={UserCheck} />
+          <IconAction label="Registrar falta" disabled={isPending} onClick={() => onStatus("faltou")} icon={Ban} />
+          <IconAction label="Reagendar" disabled={isPending} onClick={onReschedule} icon={RotateCw} />
+          <IconAction label="Cancelar" disabled={isPending} onClick={() => onStatus("cancelado")} icon={X} />
+        </> : null}
+        {canEdit && visualStatus === "em_andamento" ? <IconAction label="Finalizar atendimento" disabled={isPending} onClick={onFinalize} icon={UserCheck} /> : null}
+        {canEdit && normalizedStatus === "faltou" ? <>
+          <IconAction label="Reagendar" disabled={isPending} onClick={onReschedule} icon={RotateCw} />
+          <IconAction label="Reposição" disabled={isPending} onClick={onReplacement} icon={CalendarPlus} />
+        </> : null}
+        <IconAction label="Ver detalhes" onClick={onEdit} icon={MoreHorizontal} />
         {canDelete ? (
           <IconAction label="Excluir" onClick={onDelete} icon={Trash2} danger />
         ) : null}
@@ -1899,13 +1930,15 @@ function MonthGrid({
   days,
   appointments,
   blocks,
-  onSelectDate
+  onSelectDate,
+  onOpenAppointment
 }: {
   selectedDate: string;
   days: string[];
   appointments: Appointment[];
   blocks: ScheduleBlock[];
   onSelectDate: (date: string) => void;
+  onOpenAppointment: (appointment: Appointment) => void;
 }) {
   const selectedMonth = selectedDate.slice(0, 7);
 
@@ -1968,6 +2001,10 @@ function MonthGrid({
                   return (
                     <span
                       key={appointment.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={(event) => { event.stopPropagation(); onOpenAppointment(appointment); }}
+                      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); onOpenAppointment(appointment); } }}
                       className={cn(
                         "truncate rounded-md px-2 py-1 text-[11px] font-semibold",
                         style.chip
@@ -2080,7 +2117,7 @@ function SidePanel({
           <h3 className="font-semibold">Próximo atendimento</h3>
         </div>
         {nextAppointment ? (
-          <AppointmentSummary appointment={nextAppointment} />
+          <AppointmentSummary appointment={nextAppointment} onOpen={() => onOpen(nextAppointment)} />
         ) : (
           <p className="text-sm text-muted-foreground">Nenhum próximo atendimento.</p>
         )}
@@ -2156,7 +2193,7 @@ function AppointmentSummary({
   const isReplacement = isReplacementAppointment(appointment);
 
   return (
-    <div className="rounded-md border bg-background p-3">
+    <div role={onOpen ? "button" : undefined} tabIndex={onOpen ? 0 : undefined} onClick={onOpen} onKeyDown={(event) => { if (onOpen && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onOpen(); } }} className={cn("rounded-md border bg-background p-3", onOpen && "cursor-pointer transition-colors hover:bg-secondary/40") }>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-semibold text-muted-foreground">
@@ -2255,11 +2292,11 @@ function IconAction({
 
 function AppointmentDetailModal({
   appointment, patients, clinics, patientPackages, canEdit, isPending,
-  onClose, onEdit, onReschedule, onStatus, onFinalize, canReopen, onReopen, onNavigate
+  onClose, onEdit, onReschedule, onStatus, onFinalize, canReopen, onReopen, onCreateNew, onNavigate
 }: {
   appointment: Appointment; patients: Patient[]; clinics: Clinic[]; patientPackages: PatientPackage[];
   canEdit: boolean; isPending: boolean; onClose: () => void; onEdit: () => void; onReschedule: () => void;
-  onStatus: (status: AppointmentStatus) => void; onFinalize: () => void; canReopen: boolean; onReopen: () => void; onNavigate: (href: string) => void;
+  onStatus: (status: AppointmentStatus) => void; onFinalize: () => void; canReopen: boolean; onReopen: () => void; onCreateNew: () => void; onNavigate: (href: string) => void;
 }) {
   const patient = patients.find((item) => item.id === appointment.patient_id);
   const clinic = clinics.find((item) => item.id === appointment.clinic_id);
@@ -2268,7 +2305,10 @@ function AppointmentDetailModal({
   const whatsapp = phone ? "https://wa.me/" + (phone.startsWith("55") ? phone : "55" + phone) : "";
   const isGroup = appointment.service_is_group || getAppointmentType(appointment) === "grupo";
   const normalizedStatus = normalizeStatus(appointment.status);
-  const canUseOperationalActions = normalizedStatus === "agendado" || normalizedStatus === "confirmado";
+  const visualStatus = getVisualStatus(appointment);
+  const isScheduled = visualStatus !== "em_andamento" && (normalizedStatus === "agendado" || normalizedStatus === "confirmado");
+  const isInAttendance = visualStatus === "em_andamento";
+  const hasFinancialPending = appointment.is_billable && appointment.finance_integration_status !== "completed";
   const occupancy = Math.max(appointment.patient_ids.length, 1);
   const financialLabel = appointment.is_billable ? appointment.finance_integration_status : "Cortesia / nao faturavel";
   const packageLabel = patientPackage ? patientPackage.remaining_sessions + " sessões restantes" : "Sem pacote vinculado";
@@ -2301,11 +2341,21 @@ function AppointmentDetailModal({
         </div>
         {isGroup ? <div className="rounded-lg border p-3"><strong>Participantes</strong><p className="mt-1 text-sm text-muted-foreground">{appointment.patient_names.join(", ")}</p></div> : null}
         <div className="flex flex-wrap gap-2">
-          {canReopen && ["realizado", "finalizado", "finalizada"].includes(String(appointment.status ?? "").toLowerCase()) ? <Button type="button" variant="outline" disabled={isPending} onClick={onReopen}><RotateCw className="h-4 w-4" />Reabrir atendimento</Button> : null}
-          {canEdit && canUseOperationalActions ? <><Button type="button" variant="outline" disabled={isPending || normalizedStatus === "confirmado"} onClick={() => onStatus("confirmado")}><Check className="h-4 w-4" />Confirmar presenca</Button><Button type="button" disabled={isPending || normalizeStatus(appointment.status) === "realizado"} onClick={onFinalize}><UserCheck className="h-4 w-4" />Dar baixa</Button><Button type="button" variant="outline" disabled={isPending} onClick={() => onStatus("faltou")}><Ban className="h-4 w-4" />Marcar falta</Button><Button type="button" variant="outline" onClick={onReschedule}><RotateCw className="h-4 w-4" />Reagendar</Button><Button type="button" variant="outline" disabled={isPending} onClick={() => onStatus("cancelado")}><X className="h-4 w-4" />Cancelar</Button><Button type="button" onClick={onEdit}>Editar</Button></> : null}
-          <Button type="button" variant="outline" onClick={() => onNavigate("/prontuarios?q=" + encodeURIComponent(appointment.patient_name))}>Abrir prontuario</Button>
+          {canReopen && normalizedStatus === "realizado" ? <Button type="button" variant="outline" disabled={isPending} onClick={onReopen}><RotateCw className="h-4 w-4" />Reabrir atendimento</Button> : null}
+          {canEdit && isScheduled ? <>
+            <Button type="button" variant="outline" disabled={isPending || normalizedStatus === "confirmado"} onClick={() => onStatus("confirmado")}><Check className="h-4 w-4" />Confirmar presença</Button>
+            <Button type="button" disabled={isPending} onClick={onFinalize}><UserCheck className="h-4 w-4" />Finalizar atendimento</Button>
+            <Button type="button" variant="outline" disabled={isPending} onClick={() => onStatus("faltou")}><Ban className="h-4 w-4" />Registrar falta</Button>
+            <Button type="button" variant="outline" disabled={isPending} onClick={onReschedule}><RotateCw className="h-4 w-4" />Reagendar</Button>
+            <Button type="button" variant="outline" disabled={isPending} onClick={() => onStatus("cancelado")}><X className="h-4 w-4" />Cancelar</Button>
+            <Button type="button" onClick={onEdit}>Editar</Button>
+          </> : null}
+          {canEdit && isInAttendance ? <Button type="button" disabled={isPending} onClick={onFinalize}><UserCheck className="h-4 w-4" />Finalizar atendimento</Button> : null}
+          {canEdit && normalizedStatus === "faltou" ? <Button type="button" variant="outline" disabled={isPending} onClick={onReschedule}><RotateCw className="h-4 w-4" />Reagendar</Button> : null}
+          {canEdit && normalizedStatus === "cancelado" ? <Button type="button" variant="outline" disabled={isPending} onClick={onCreateNew}><CalendarPlus className="h-4 w-4" />Criar novo agendamento</Button> : null}
+          <Button type="button" variant="outline" onClick={() => onNavigate("/prontuarios?q=" + encodeURIComponent(appointment.patient_name))}>Abrir prontuário</Button>
           <Button type="button" variant="outline" onClick={() => onNavigate("/pacientes?patientId=" + appointment.patient_id)}>Abrir ficha</Button>
-          <Button type="button" variant="outline" onClick={() => onNavigate("/financeiro/baixas?patientId=" + appointment.patient_id)}>Receber pagamento</Button>
+          {normalizedStatus === "realizado" && hasFinancialPending ? <Button type="button" variant="outline" onClick={() => onNavigate("/financeiro/baixas?patientId=" + appointment.patient_id)}>Receber pagamento</Button> : null}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" disabled={!whatsapp} onClick={() => openWhatsapp(messages.confirmacao)}><MessageCircle className="h-4 w-4" />WhatsApp: confirmacao</Button>
@@ -2313,6 +2363,45 @@ function AppointmentDetailModal({
           <Button type="button" variant="outline" disabled={!whatsapp} onClick={() => openWhatsapp(messages.reagendamento)}>WhatsApp: reagendamento</Button>
         </div>
       </div>
+    </ModalShell>
+  );
+}
+function ReopenAppointmentModal({
+  appointment,
+  reason,
+  setReason,
+  message,
+  isPending,
+  onSubmit,
+  onClose
+}: {
+  appointment: Appointment;
+  reason: string;
+  setReason: (value: string) => void;
+  message: AgendaActionResult | null;
+  isPending: boolean;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  onClose: () => void;
+}) {
+  return (
+    <ModalShell title="Reabrir atendimento" icon={RotateCw} onClose={onClose}>
+      <form onSubmit={onSubmit} className="grid gap-4">
+        <div className="grid gap-3 rounded-md border bg-muted/30 p-3 text-sm sm:grid-cols-2">
+          <PackageDetail label="Paciente" value={appointment.patient_names.join(", ") || appointment.patient_name} />
+          <PackageDetail label="Atendimento" value={`${formatShortDate(appointment.appointment_date)} às ${formatTime(appointment.start_time)}`} />
+          <PackageDetail label="Profissional" value={appointment.employee_name} />
+          <PackageDetail label="Serviço" value={appointment.service_name} />
+        </div>
+        <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
+          A reabertura desfará automaticamente a finalização e restaurará os vínculos aplicáveis pela lógica existente.
+        </p>
+        <TextAreaField label="Motivo da reabertura" value={reason} onChange={setReason} required />
+        {message ? <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-100">{message.message}</p> : null}
+        <div className="flex justify-end gap-2 border-t pt-3">
+          <Button type="button" variant="outline" disabled={isPending} onClick={onClose}>Cancelar</Button>
+          <Button type="submit" disabled={isPending || !reason.trim()}>{isPending ? "Reabrindo..." : "Confirmar reabertura"}</Button>
+        </div>
+      </form>
     </ModalShell>
   );
 }
@@ -3030,11 +3119,13 @@ function TextField({
 function TextAreaField({
   label,
   value,
-  onChange
+  onChange,
+  required = false
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  required?: boolean;
 }) {
   return (
     <FieldShell label={label}>
@@ -3042,6 +3133,7 @@ function TextAreaField({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         rows={4}
+        required={required}
         className="agenda-input resize-none"
       />
     </FieldShell>

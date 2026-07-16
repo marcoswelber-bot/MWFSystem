@@ -274,8 +274,8 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
         initialPatientId={params.patientId ?? null}
         initialAppointmentId={params.appointmentId ?? null}
         initialOpenNew={params.new === "1"}
-      />
         canReopen={canReopen}
+      />
     </div>
   );
 }
