@@ -200,11 +200,11 @@ const statusStyles: Record<
   },
   confirmado: {
     label: "Confirmada",
-    chip: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200",
-    border: "border-emerald-500",
-    surface: "bg-emerald-50 dark:bg-emerald-950/40",
-    text: "text-emerald-950 dark:text-emerald-50",
-    dot: "bg-emerald-500"
+    chip: "bg-blue-100 text-blue-800 ring-1 ring-blue-200 dark:bg-blue-950 dark:text-blue-100 dark:ring-blue-800",
+    border: "border-blue-500",
+    surface: "bg-gradient-to-br from-blue-50 via-white to-blue-100/70 dark:from-blue-950/80 dark:via-slate-950 dark:to-blue-950/50",
+    text: "text-blue-950 dark:text-blue-50",
+    dot: "bg-blue-500"
   },
   em_andamento: {
     label: "Em andamento",
@@ -216,11 +216,11 @@ const statusStyles: Record<
   },
   realizado: {
     label: "Realizada",
-    chip: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-200",
-    border: "border-blue-500",
-    surface: "bg-blue-50 dark:bg-blue-950/40",
-    text: "text-blue-950 dark:text-blue-50",
-    dot: "bg-blue-500"
+    chip: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-100 dark:ring-emerald-800",
+    border: "border-emerald-500",
+    surface: "bg-gradient-to-br from-emerald-50 via-white to-emerald-100/70 dark:from-emerald-950/80 dark:via-slate-950 dark:to-emerald-950/50",
+    text: "text-emerald-950 dark:text-emerald-50",
+    dot: "bg-emerald-500"
   },
   faltou: {
     label: "Faltou",
@@ -232,11 +232,11 @@ const statusStyles: Record<
   },
   reagendado: {
     label: "Reagendado",
-    chip: "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-200",
-    border: "border-violet-500",
-    surface: "bg-violet-50 dark:bg-violet-950/40",
-    text: "text-violet-950 dark:text-violet-50",
-    dot: "bg-violet-500"
+    chip: "bg-orange-100 text-orange-800 ring-1 ring-orange-200 dark:bg-orange-950 dark:text-orange-100 dark:ring-orange-800",
+    border: "border-orange-500",
+    surface: "bg-gradient-to-br from-orange-50 via-white to-orange-100/70 dark:from-orange-950/80 dark:via-slate-950 dark:to-orange-950/50",
+    text: "text-orange-950 dark:text-orange-50",
+    dot: "bg-orange-500"
   },
   cancelado: {
     label: "Cancelado",
@@ -1170,7 +1170,7 @@ export function AgendaManager({
   }
 
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-5 scroll-smooth">
       {message ? (
         <SystemMessage message={message} onClose={() => setMessage(null)} />
       ) : null}
@@ -1193,8 +1193,8 @@ export function AgendaManager({
         </div>
       ) : null}
 
-      <Card className="overflow-hidden border-none bg-card shadow-[0_14px_40px_rgba(15,23,42,0.07)] dark:shadow-none">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-gradient-to-r from-card via-card to-secondary/30 p-3">
+      <Card className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white/90 shadow-[0_20px_60px_rgba(15,23,42,0.09)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/85 dark:shadow-[0_20px_60px_rgba(0,0,0,0.28)]">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/70 bg-gradient-to-r from-slate-50 via-white to-blue-50/70 p-4 dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-blue-950/30">
           <div className="flex flex-wrap items-center gap-2">
             {canCreate ? (
               <>
@@ -1247,7 +1247,7 @@ export function AgendaManager({
           </div>
         </div>
 
-        <div className="grid gap-2 p-3 sm:grid-cols-2 xl:grid-cols-[minmax(150px,.7fr)_minmax(180px,1fr)_minmax(180px,1fr)_minmax(230px,1.3fr)_auto] xl:items-end">
+        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-[minmax(150px,.7fr)_minmax(180px,1fr)_minmax(180px,1fr)_minmax(230px,1.3fr)_auto] xl:items-end">
           <FieldShell label="Data">
             <input
               type="date"
@@ -1291,7 +1291,7 @@ export function AgendaManager({
               <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className="agenda-input pl-9" placeholder="Paciente, telefone, CPF ou Serviço" />
             </div>
           </FieldShell>
-          <div className="grid grid-cols-3 gap-1 rounded-md border bg-muted/40 p-1">
+          <div className="grid grid-cols-3 gap-1 rounded-xl border border-slate-200 bg-slate-100/80 p-1.5 shadow-inner dark:border-slate-800 dark:bg-slate-900/80">
             {[
               ["day", "Dia"],
               ["week", "Semana"],
@@ -1302,10 +1302,10 @@ export function AgendaManager({
                 type="button"
                 onClick={() => setViewMode(value as ViewMode)}
                 className={cn(
-                  "h-10 rounded-md px-3 text-sm font-semibold transition-colors",
+                  "h-10 rounded-lg px-3 text-sm font-semibold transition-all duration-200",
                   viewMode === value
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "text-muted-foreground hover:bg-background hover:text-foreground"
+                    ? "bg-primary text-primary-foreground shadow-[0_6px_18px_rgba(37,99,235,0.28)]"
+                    : "text-muted-foreground hover:bg-white hover:text-foreground hover:shadow-sm dark:hover:bg-slate-800"
                 )}
               >
                 {label}
@@ -1313,7 +1313,7 @@ export function AgendaManager({
             ))}
           </div>
         </div>
-        <div className="grid gap-3 border-t p-3 sm:grid-cols-[minmax(180px,280px)_auto] sm:items-end">
+        <div className="grid gap-3 border-t border-slate-200/70 bg-slate-50/50 p-4 sm:grid-cols-[minmax(180px,280px)_auto] sm:items-end dark:border-slate-800 dark:bg-slate-900/30">
           <FieldShell label="Status"><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="agenda-input"><option value="all">Todos os status</option>{statusOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></FieldShell>
           <Button type="button" variant="ghost" size="sm" onClick={() => setMoreFiltersOpen((open) => !open)} aria-expanded={moreFiltersOpen}><SlidersHorizontal className="h-4 w-4" />Mais filtros</Button>
         </div>
@@ -1352,18 +1352,18 @@ export function AgendaManager({
         />
       </section>
 
-      <div className="grid gap-4">
-        <Card className="min-w-0 overflow-hidden border-none shadow-[0_18px_55px_rgba(15,23,42,0.08)] dark:shadow-none">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
+      <div className="grid items-start gap-5 scroll-smooth xl:grid-cols-[minmax(0,1fr)_320px]">
+        <Card className="min-w-0 overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.12)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_24px_70px_rgba(0,0,0,0.35)]">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200/70 bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 p-5 text-white dark:border-slate-800">
             <div>
-              <h2 className="text-xl font-semibold tracking-normal">
+              <h2 className="text-xl font-semibold tracking-tight text-white">
                 {getPeriodLabel(viewMode, selectedDate)}
               </h2>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-slate-300">
                 Grade operacional por horários e profissionais
               </p>
             </div>
-            <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-slate-200 shadow-inner backdrop-blur">
               <MoreHorizontal className="h-4 w-4" />
               Pronto para arrastar e soltar
             </div>
@@ -1383,8 +1383,8 @@ export function AgendaManager({
               }}
             />
           ) : (
-            <div className="max-h-[760px] overflow-auto bg-muted/25">
-              <div className="grid gap-4 p-4">
+            <div className="max-h-[760px] scroll-smooth overflow-auto bg-gradient-to-br from-slate-100/90 via-white to-blue-50/60 dark:from-slate-950 dark:via-slate-950 dark:to-blue-950/20">
+              <div className="grid gap-5 p-4 sm:p-5">
                 {visibleDays.map((day) => (
                   <DayTimeline
                     key={day}
@@ -1413,7 +1413,7 @@ export function AgendaManager({
           )}
         </Card>
 
-        <aside className="hidden gap-3 self-start xl:col-start-2 xl:grid">
+        <aside className="hidden gap-4 self-start xl:sticky xl:top-4 xl:grid">
           <MiniMonthCalendar
             selectedDate={selectedDate}
             blocks={scopedBlocks}
@@ -1558,7 +1558,7 @@ function MetricCard({
   detail: string;
 }) {
   return (
-    <Card className="border-none p-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
+    <Card className="rounded-2xl border border-slate-200/70 bg-white/90 p-4 shadow-[0_16px_45px_rgba(15,23,42,0.09)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/90 dark:shadow-[0_16px_45px_rgba(0,0,0,0.25)]">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-medium text-muted-foreground">{label}</p>
@@ -1567,7 +1567,7 @@ function MetricCard({
           </strong>
           <span className="mt-1 block text-xs text-muted-foreground">{detail}</span>
         </div>
-        <span className="rounded-md bg-primary/10 p-2 text-primary">
+        <span className="rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 p-2.5 text-white shadow-[0_8px_20px_rgba(37,99,235,0.3)]">
           <Icon className="h-5 w-5" />
         </span>
       </div>
@@ -1619,9 +1619,9 @@ function DayTimeline({
   const nowTop = currentTimeTop();
 
   return (
-    <section className="overflow-hidden rounded-md border bg-card">
-      <div className="grid gap-2 p-3 md:hidden">
-        <div className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2">
+    <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 shadow-[0_16px_45px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
+      <div className="grid gap-3 p-3 md:hidden">
+        <div className="flex items-center justify-between rounded-xl border border-slate-200/70 bg-gradient-to-r from-slate-50 to-blue-50 px-3 py-2.5 shadow-sm dark:border-slate-800 dark:from-slate-900 dark:to-blue-950/40">
           <div>
             <p className="text-[11px] font-semibold uppercase text-muted-foreground">{formatWeekday(day)}</p>
             <strong className="text-sm">{formatShortDate(day)}</strong>
@@ -1635,7 +1635,7 @@ function DayTimeline({
             {appointments.map((appointment) => {
               const appointmentStyle = statusStyles[getVisualStatus(appointment)];
               return (
-                <article key={appointment.id} role="button" tabIndex={0} onClick={() => onEdit(appointment)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onEdit(appointment); }} className={cn("rounded-lg border-l-4 p-3 shadow-sm", appointmentStyle.border, appointmentStyle.surface)}>
+                <article key={appointment.id} role="button" tabIndex={0} onClick={() => onEdit(appointment)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onEdit(appointment); }} className={cn("cursor-pointer rounded-xl border border-slate-200/70 border-l-4 p-3.5 shadow-[0_8px_24px_rgba(15,23,42,0.08)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_32px_rgba(15,23,42,0.14)] dark:border-slate-800", appointmentStyle.border, appointmentStyle.surface)}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="text-xs font-bold">{formatTime(appointment.start_time)}{appointment.end_time ? ` - ${formatTime(appointment.end_time)}` : ""}</p>
@@ -1657,14 +1657,14 @@ function DayTimeline({
           <p className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">Horario livre ? toque em Novo horario para agendar.</p>
         )}
       </div>
-      <div className="sticky top-0 z-20 hidden border-b bg-card/95 backdrop-blur md:grid">
+      <div className="sticky top-0 z-20 hidden border-b border-slate-200/80 bg-white/90 shadow-sm backdrop-blur-xl md:grid dark:border-slate-800 dark:bg-slate-950/90">
         <div
           className="grid min-w-[860px]"
           style={{
             gridTemplateColumns: `72px repeat(${Math.max(employees.length, 1)}, minmax(260px, 1fr))`
           }}
         >
-          <div className="border-r p-3">
+          <div className="border-r border-slate-200/80 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-900/70">
             <p className="text-xs font-semibold uppercase text-muted-foreground">
               {formatWeekday(day)}
             </p>
@@ -1674,7 +1674,7 @@ function DayTimeline({
             employees.map((employee) => (
               <div
                 key={employee.id}
-                className="flex items-center justify-between gap-2 border-r p-3 last:border-r-0"
+                className="flex items-center justify-between gap-2 border-r border-slate-200/80 bg-white/80 p-3 last:border-r-0 dark:border-slate-800 dark:bg-slate-950/80"
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold">{employee.name}</p>
@@ -1687,7 +1687,7 @@ function DayTimeline({
                     type="button"
                     title="Novo agendamento"
                     onClick={() => onCreateAppointment(day, employee.id)}
-                    className="rounded-md border p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    className="rounded-lg border border-slate-200 bg-white p-2 text-muted-foreground shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:hover:border-blue-700 dark:hover:bg-blue-950/50 dark:hover:text-blue-300"
                   >
                     <Plus className="h-4 w-4" />
                   </button>
@@ -1695,7 +1695,7 @@ function DayTimeline({
                     type="button"
                     title="Novo bloqueio"
                     onClick={() => onCreateBlock(day, employee.id)}
-                    className="rounded-md border p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    className="rounded-lg border border-slate-200 bg-white p-2 text-muted-foreground shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:hover:border-blue-700 dark:hover:bg-blue-950/50 dark:hover:text-blue-300"
                   >
                     <LockKeyhole className="h-4 w-4" />
                   </button>
@@ -1718,11 +1718,11 @@ function DayTimeline({
             minHeight: gridHeight
           }}
         >
-          <div className="relative border-r bg-muted/20">
+          <div className="relative border-r border-slate-200/80 bg-slate-100/70 dark:border-slate-800 dark:bg-slate-900/70">
             {hours.slice(0, -1).map((hour) => (
               <div
                 key={hour}
-                className="border-b px-2 py-2 text-right text-xs font-medium text-muted-foreground"
+                className="border-b border-slate-200/70 px-2 py-2 text-right text-sm font-semibold tabular-nums text-slate-500 dark:border-slate-800 dark:text-slate-400"
                 style={{ height: hourHeight }}
               >
                 {String(hour).padStart(2, "0")}:00
@@ -1734,7 +1734,7 @@ function DayTimeline({
             employees.map((employee) => (
               <div
                 key={employee.id}
-                className="relative border-r bg-background last:border-r-0"
+                className="relative border-r border-slate-200/70 bg-white/75 last:border-r-0 dark:border-slate-800 dark:bg-slate-950/75"
                 style={{ minHeight: gridHeight }}
               >
                 {hours.slice(0, -1).map((hour) => (
@@ -1743,7 +1743,7 @@ function DayTimeline({
                     type="button"
                     title="Agendar neste horario"
                     onClick={() => onCreateAppointment(day, employee.id, String(hour).padStart(2, "0") + ":00")}
-                    className="block w-full border-b border-dashed border-border/80 text-left transition-colors hover:bg-primary/5"
+                    className="block w-full border-b border-dashed border-slate-200/80 text-left transition-colors duration-200 hover:bg-blue-50/80 dark:border-slate-800 dark:hover:bg-blue-950/25"
                     style={{ height: hourHeight }}
                   >
                     <span className="sr-only">Novo agendamento as {String(hour).padStart(2, "0")}:00</span>
@@ -1791,10 +1791,10 @@ function DayTimeline({
 
           {showNow && nowTop >= 0 && nowTop <= gridHeight ? (
             <div
-              className="pointer-events-none absolute left-[72px] right-0 z-30 h-0.5 bg-red-500"
+              className="pointer-events-none absolute left-[72px] right-0 z-30 h-px bg-gradient-to-r from-rose-500 via-red-500 to-transparent shadow-[0_0_10px_rgba(239,68,68,0.8)]"
               style={{ top: nowTop }}
             >
-              <span className="absolute -left-2 -top-1.5 h-3 w-3 rounded-full bg-red-500" />
+              <span className="absolute -left-2 -top-2 h-4 w-4 rounded-full border-2 border-white bg-red-500 shadow-[0_0_14px_rgba(239,68,68,0.9)] dark:border-slate-950" />
             </div>
           ) : null}
         </div>
@@ -1849,7 +1849,7 @@ function TimelineAppointment({
       onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onEdit(); }}
       data-dnd-ready="appointment"
       className={cn(
-        "absolute left-1 right-1 z-10 grid gap-1 overflow-hidden rounded-md border-l-[3px] p-2 shadow-sm transition-transform hover:z-20 hover:-translate-y-0.5 hover:shadow-md",
+        "absolute left-1.5 right-1.5 z-10 grid cursor-pointer gap-1.5 overflow-hidden rounded-xl border border-white/70 border-l-4 p-3 shadow-[0_10px_28px_rgba(15,23,42,0.12)] ring-1 ring-black/5 backdrop-blur-sm transition-all duration-200 hover:z-20 hover:-translate-y-1 hover:scale-[1.01] hover:shadow-[0_18px_38px_rgba(15,23,42,0.18)] dark:border-white/10 dark:ring-white/5",
         style.border,
         style.surface,
         style.text
@@ -1866,7 +1866,7 @@ function TimelineAppointment({
             {appointment.patient_names.join(", ")}
           </h3>
         </div>
-        <span className={cn("rounded-md px-2 py-1 text-[11px] font-semibold", style.chip)}>
+        <span className={cn("rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide shadow-sm", style.chip)}>
           {getStatusLabel(appointment)}
         </span>
       </div>
@@ -1903,7 +1903,7 @@ function TimelineAppointment({
         <MiniStat label="Rest." value={sessionsRemaining} />
       </div>
 
-      <div className="flex flex-wrap gap-1 pt-1">
+      <div className="flex flex-wrap gap-1.5 border-t border-black/5 pt-2 dark:border-white/10">
         <AppointmentPrimaryAction action={primaryAction} isPending={isPending} onConfirm={() => onStatus("confirmado")} onFinalize={onFinalize} onUndoAbsence={onUndoAbsence} onRestoreCancelled={onRestoreCancelled} onOpen={onEdit} />
         <IconAction label="Ver detalhes" onClick={onEdit} icon={MoreHorizontal} />
       </div>
@@ -1967,18 +1967,18 @@ function MonthGrid({
   const selectedMonth = selectedDate.slice(0, 7);
 
   return (
-    <div className="grid gap-px bg-border p-px">
-      <div className="grid grid-cols-7 gap-px bg-border">
+    <div className="grid gap-px bg-slate-200/80 p-px dark:bg-slate-800">
+      <div className="grid grid-cols-7 gap-px bg-slate-200/80 dark:bg-slate-800">
         {["Seg", "Ter", "Qua", "Qui", "Sex", "Sab", "Dom"].map((day) => (
           <div
             key={day}
-            className="bg-muted/80 px-3 py-2 text-xs font-semibold text-muted-foreground"
+            className="bg-slate-900 px-3 py-3 text-center text-[11px] font-bold uppercase tracking-widest text-slate-200 dark:bg-black"
           >
             {day}
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-7 gap-px bg-border">
+      <div className="grid grid-cols-7 gap-px bg-slate-200/80 dark:bg-slate-800">
         {days.map((day) => {
           const dayAppointments = appointments.filter(
             (appointment) => appointment.appointment_date === day
@@ -1996,7 +1996,7 @@ function MonthGrid({
               onClick={() => onSelectDate(day)}
               onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectDate(day); } }}
               className={cn(
-                "min-h-[138px] bg-card p-3 text-left transition-colors hover:bg-secondary/50",
+                "min-h-[150px] bg-white p-3 text-left transition-all duration-200 hover:relative hover:z-10 hover:bg-blue-50/70 hover:shadow-inner dark:bg-slate-950 dark:hover:bg-blue-950/20",
                 muted && "bg-muted/30 text-muted-foreground",
                 hasBlock &&
                   "bg-red-50/80 ring-1 ring-inset ring-red-900/15 dark:bg-red-950/20",
@@ -2007,7 +2007,7 @@ function MonthGrid({
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-sm font-semibold">{toDate(day).getDate()}</span>
                 {day === today() ? (
-                  <span className="rounded-md bg-red-500 px-2 py-0.5 text-[10px] font-semibold text-white">
+                  <span className="rounded-full bg-red-500 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white shadow-sm">
                     Hoje
                   </span>
                 ) : null}
@@ -2031,7 +2031,7 @@ function MonthGrid({
                       onClick={(event) => { event.stopPropagation(); onOpenAppointment(appointment); }}
                       onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); onOpenAppointment(appointment); } }}
                       className={cn(
-                        "truncate rounded-md px-2 py-1 text-[11px] font-semibold",
+                        "truncate rounded-lg px-2 py-1.5 text-[11px] font-semibold shadow-sm ring-1 ring-black/5 transition-transform hover:scale-[1.02] dark:ring-white/10",
                         style.chip
                       )}
                     >
@@ -2042,7 +2042,7 @@ function MonthGrid({
                   );
                 })}
                 {dayAppointments.length + dayBlocks.length > 4 ? (
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="inline-flex w-fit rounded-full bg-slate-900 px-2 py-1 text-[10px] font-bold text-white shadow-sm dark:bg-white dark:text-slate-950">
                     +{dayAppointments.length + dayBlocks.length - 4} registros
                   </span>
                 ) : null}
@@ -2068,8 +2068,8 @@ function MiniMonthCalendar({
   const selectedMonth = selectedDate.slice(0, 7);
 
   return (
-    <Card className="border-none p-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
-      <div className="mb-3 flex items-center justify-between">
+    <Card className="rounded-2xl border border-slate-200/70 bg-white/90 p-4 shadow-[0_16px_45px_rgba(15,23,42,0.09)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/90 dark:shadow-[0_16px_45px_rgba(0,0,0,0.25)]">
+      <div className="mb-4 flex items-center justify-between border-b border-slate-200/70 pb-3 dark:border-slate-800">
         <div>
           <p className="text-sm font-semibold">Mini calendário</p>
           <p className="text-xs capitalize text-muted-foreground">
@@ -2142,9 +2142,9 @@ function SidePanel({
   onRestoreCancelled: (appointment: Appointment) => void;
 }) {
   return (
-    <div className="grid gap-4">
-      <Card className="border-none p-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
-        <div className="mb-3 flex items-center gap-2">
+    <div className="grid gap-5 scroll-smooth">
+      <Card className="rounded-2xl border border-slate-200/70 bg-white/90 p-4 shadow-[0_16px_45px_rgba(15,23,42,0.09)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/90 dark:shadow-[0_16px_45px_rgba(0,0,0,0.25)]">
+        <div className="mb-4 flex items-center gap-3 border-b border-slate-200/70 pb-3 dark:border-slate-800">
           <Stethoscope className="h-5 w-5 text-primary" />
           <h3 className="font-semibold">Próximo atendimento</h3>
         </div>
@@ -2155,15 +2155,15 @@ function SidePanel({
         )}
       </Card>
 
-      <Card className="border-none p-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
-        <div className="mb-3 flex items-center gap-2">
+      <Card className="rounded-2xl border border-slate-200/70 bg-white/90 p-4 shadow-[0_16px_45px_rgba(15,23,42,0.09)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/90 dark:shadow-[0_16px_45px_rgba(0,0,0,0.25)]">
+        <div className="mb-4 flex items-center gap-3 border-b border-slate-200/70 pb-3 dark:border-slate-800">
           <ListChecks className="h-5 w-5 text-primary" />
           <div>
             <h3 className="font-semibold">Agenda do dia</h3>
             <p className="text-xs text-muted-foreground">{fullDate(selectedDate)}</p>
           </div>
         </div>
-        <div className="grid max-h-[300px] gap-2 overflow-auto pr-1">
+        <div className="grid max-h-[340px] scroll-smooth gap-2.5 overflow-auto pr-1">
           {dayAppointments.length > 0 ? (
             dayAppointments.map((appointment) => (
               <AppointmentSummary key={appointment.id} appointment={appointment} compact canEdit={canEdit} canAdminCorrect={canAdminCorrect} isPending={isPending} onOpen={() => onOpen(appointment)} onFinalize={() => onFinalize(appointment)} onStatus={(status) => onStatus(appointment, status)} onUndoAbsence={() => onUndoAbsence(appointment)} onRestoreCancelled={() => onRestoreCancelled(appointment)} />
@@ -2174,8 +2174,8 @@ function SidePanel({
         </div>
       </Card>
 
-      <Card className="border-none p-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
-        <div className="mb-3 flex items-center gap-2">
+      <Card className="rounded-2xl border border-slate-200/70 bg-white/90 p-4 shadow-[0_16px_45px_rgba(15,23,42,0.09)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/90 dark:shadow-[0_16px_45px_rgba(0,0,0,0.25)]">
+        <div className="mb-4 flex items-center gap-3 border-b border-slate-200/70 pb-3 dark:border-slate-800">
           <Search className="h-5 w-5 text-primary" />
           <h3 className="font-semibold">Resumo do dia</h3>
         </div>
@@ -2235,7 +2235,7 @@ function AppointmentSummary({
   const isReplacement = isReplacementAppointment(appointment);
 
   return (
-    <div role={onOpen ? "button" : undefined} tabIndex={onOpen ? 0 : undefined} onClick={(event) => { if ((event.target as HTMLElement).closest("button, a, input, select, textarea")) return; onOpen?.(); }} onKeyDown={(event) => { if (onOpen && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onOpen(); } }} className={cn("rounded-md border bg-background p-3", onOpen && "cursor-pointer transition-colors hover:bg-secondary/40") }>
+    <div role={onOpen ? "button" : undefined} tabIndex={onOpen ? 0 : undefined} onClick={(event) => { if ((event.target as HTMLElement).closest("button, a, input, select, textarea")) return; onOpen?.(); }} onKeyDown={(event) => { if (onOpen && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onOpen(); } }} className={cn("rounded-xl border border-slate-200/80 bg-white/90 p-3.5 shadow-sm", onOpen && "cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50/60 hover:shadow-md dark:border-slate-800 dark:bg-slate-950/80 dark:hover:border-blue-800 dark:hover:bg-blue-950/20") }>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-semibold text-muted-foreground">
@@ -2283,7 +2283,7 @@ function AppointmentSummary({
 
 function SideStat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2">
+    <div className="flex items-center justify-between rounded-xl border border-slate-200/70 bg-slate-50/80 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900/70">
       <span className="text-muted-foreground">{label}</span>
       <strong>{value}</strong>
     </div>
@@ -2321,7 +2321,7 @@ function IconAction({
       onMouseDown={(event) => event.stopPropagation()}
       onClick={(event) => { event.stopPropagation(); onClick(); }}
       className={cn(
-        "inline-flex h-8 items-center gap-1 rounded-md border bg-background/80 px-2 text-[11px] font-semibold shadow-sm transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white/90 px-2.5 text-[11px] font-semibold shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-800 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900/90 dark:hover:border-blue-700 dark:hover:bg-blue-950/40 dark:hover:text-blue-200",
         danger && "text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950"
       )}
     >
@@ -2376,7 +2376,7 @@ function AppointmentDetailModal({
 
   return (
     <ModalShell title="Detalhe rapido do agendamento" icon={CalendarClock} onClose={onClose}>
-      <div className="grid gap-4">
+      <div className="grid gap-5 scroll-smooth">
         <div className="grid gap-3 rounded-lg border bg-muted/20 p-4 sm:grid-cols-2">
           <PackageDetail label="Paciente" value={appointment.patient_names.join(", ")} />
           <PackageDetail label="Telefone" value={patient?.phone ?? "Não informado"} />
@@ -3121,24 +3121,24 @@ function ModalShell({
     return () => window.cancelAnimationFrame(frame);
   }, []);
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/55 p-3 backdrop-blur-sm sm:p-4">
-      <Card ref={modalRef} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} className="max-h-[calc(100dvh-1.5rem)] w-full max-w-5xl scroll-m-4 overflow-auto border-none shadow-2xl outline-none sm:max-h-[92vh]">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-card p-5">
+    <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/70 p-3 backdrop-blur-md sm:p-5">
+      <Card ref={modalRef} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} className="max-h-[calc(100dvh-1.5rem)] w-full max-w-5xl scroll-m-4 overflow-auto rounded-2xl border border-white/20 bg-white/95 shadow-[0_32px_100px_rgba(0,0,0,0.38)] outline-none backdrop-blur-xl sm:max-h-[92vh] dark:border-slate-700 dark:bg-slate-950/95">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200/70 bg-white/90 px-5 py-4 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/90">
           <div className="flex items-center gap-3">
-            <span className="rounded-md bg-primary/10 p-2 text-primary">
+            <span className="rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 p-2.5 text-white shadow-[0_8px_20px_rgba(37,99,235,0.3)]">
               <Icon className="h-5 w-5" />
             </span>
-            <h2 className="text-lg font-semibold tracking-normal">{title}</h2>
+            <h2 className="text-lg font-semibold tracking-tight text-slate-950 dark:text-white">{title}</h2>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"
+            className="rounded-xl border border-transparent p-2 text-muted-foreground transition-all duration-200 hover:rotate-90 hover:border-slate-200 hover:bg-slate-100 hover:text-foreground dark:hover:border-slate-700 dark:hover:bg-slate-900"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
-        <div className="p-5">{children}</div>
+        <div className="p-4 sm:p-6">{children}</div>
       </Card>
     </div>
   );
