@@ -1836,7 +1836,10 @@ function TimelineAppointment({
       draggable={false}
       role="button"
       tabIndex={0}
-      onClick={onEdit}
+      onClick={(event) => {
+        if ((event.target as HTMLElement).closest("button, a, input, select, textarea")) return;
+        onEdit();
+      }}
       onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onEdit(); }}
       data-dnd-ready="appointment"
       className={cn(
@@ -2226,7 +2229,7 @@ function AppointmentSummary({
   const isReplacement = isReplacementAppointment(appointment);
 
   return (
-    <div role={onOpen ? "button" : undefined} tabIndex={onOpen ? 0 : undefined} onClick={onOpen} onKeyDown={(event) => { if (onOpen && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onOpen(); } }} className={cn("rounded-md border bg-background p-3", onOpen && "cursor-pointer transition-colors hover:bg-secondary/40") }>
+    <div role={onOpen ? "button" : undefined} tabIndex={onOpen ? 0 : undefined} onClick={(event) => { if ((event.target as HTMLElement).closest("button, a, input, select, textarea")) return; onOpen?.(); }} onKeyDown={(event) => { if (onOpen && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onOpen(); } }} className={cn("rounded-md border bg-background p-3", onOpen && "cursor-pointer transition-colors hover:bg-secondary/40") }>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-semibold text-muted-foreground">
@@ -2308,6 +2311,8 @@ function IconAction({
       type="button"
       title={label}
       disabled={disabled}
+      onPointerDown={(event) => event.stopPropagation()}
+      onMouseDown={(event) => event.stopPropagation()}
       onClick={(event) => { event.stopPropagation(); onClick(); }}
       className={cn(
         "inline-flex h-8 items-center gap-1 rounded-md border bg-background/80 px-2 text-[11px] font-semibold shadow-sm transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50",
