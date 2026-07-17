@@ -107,7 +107,7 @@ type AgendaManagerProps = {
 
 const calendarStartHour = 7;
 const calendarEndHour = 21;
-const hourHeight = 92;
+const hourHeight = 116;
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -1170,7 +1170,7 @@ export function AgendaManager({
   }
 
   return (
-    <div className="grid gap-5 scroll-smooth">
+    <div className="agenda-workspace grid gap-4 scroll-smooth">
       {message ? (
         <SystemMessage message={message} onClose={() => setMessage(null)} />
       ) : null}
@@ -1352,7 +1352,7 @@ export function AgendaManager({
         />
       </section>
 
-      <div className="grid items-start gap-5 scroll-smooth xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid items-start gap-4 scroll-smooth xl:grid-cols-[minmax(0,7fr)_minmax(300px,3fr)]">
         <Card className="min-w-0 overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.12)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_24px_70px_rgba(0,0,0,0.35)]">
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200/70 bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 p-5 text-white dark:border-slate-800">
             <div>
@@ -1383,7 +1383,7 @@ export function AgendaManager({
               }}
             />
           ) : (
-            <div className="max-h-[760px] scroll-smooth overflow-auto bg-gradient-to-br from-slate-100/90 via-white to-blue-50/60 dark:from-slate-950 dark:via-slate-950 dark:to-blue-950/20">
+            <div className="max-h-[calc(100vh-190px)] min-h-[720px] scroll-smooth overflow-auto bg-gradient-to-br from-slate-100/90 via-white to-blue-50/60 dark:from-slate-950 dark:via-slate-950 dark:to-blue-950/20">
               <div className="grid gap-5 p-4 sm:p-5">
                 {visibleDays.map((day) => (
                   <DayTimeline
@@ -1413,7 +1413,7 @@ export function AgendaManager({
           )}
         </Card>
 
-        <aside className="hidden gap-4 self-start xl:sticky xl:top-4 xl:grid">
+        <aside className="hidden gap-4 self-start xl:sticky xl:top-[72px] xl:grid">
           <MiniMonthCalendar
             selectedDate={selectedDate}
             blocks={scopedBlocks}
@@ -1661,7 +1661,7 @@ function DayTimeline({
         <div
           className="grid min-w-[860px]"
           style={{
-            gridTemplateColumns: `72px repeat(${Math.max(employees.length, 1)}, minmax(260px, 1fr))`
+            gridTemplateColumns: `88px repeat(${Math.max(employees.length, 1)}, minmax(320px, 1fr))`
           }}
         >
           <div className="border-r border-slate-200/80 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-900/70">
@@ -1714,7 +1714,7 @@ function DayTimeline({
         <div
           className="grid min-w-[860px]"
           style={{
-            gridTemplateColumns: `72px repeat(${Math.max(employees.length, 1)}, minmax(260px, 1fr))`,
+            gridTemplateColumns: `88px repeat(${Math.max(employees.length, 1)}, minmax(320px, 1fr))`,
             minHeight: gridHeight
           }}
         >
@@ -1722,7 +1722,7 @@ function DayTimeline({
             {hours.slice(0, -1).map((hour) => (
               <div
                 key={hour}
-                className="border-b border-slate-200/70 px-2 py-2 text-right text-sm font-semibold tabular-nums text-slate-500 dark:border-slate-800 dark:text-slate-400"
+                className="border-b border-slate-200/70 px-3 py-3 text-right text-base font-bold tabular-nums text-slate-600 dark:border-slate-800 dark:text-slate-300"
                 style={{ height: hourHeight }}
               >
                 {String(hour).padStart(2, "0")}:00
@@ -1768,7 +1768,7 @@ function DayTimeline({
                     <TimelineAppointment
                       key={appointment.id}
                       appointment={appointment}
-                      position={(() => { const base = getCalendarPosition(appointment.start_time, appointment.end_time); const sameSlot = employeeAppointments.slice(0, appointmentIndex).filter((item) => item.start_time === appointment.start_time).length; return { ...base, top: base.top + sameSlot * (Math.min(base.height, 92) + 6), height: Math.min(base.height, 92) }; })()}
+                      position={(() => { const base = getCalendarPosition(appointment.start_time, appointment.end_time); const sameSlot = employeeAppointments.slice(0, appointmentIndex).filter((item) => item.start_time === appointment.start_time).length; return { ...base, top: base.top + sameSlot * (Math.min(base.height, 112) + 6), height: Math.min(base.height, 112) }; })()}
                       canEdit={canEdit}
                       canAdminCorrect={canAdminCorrect}
                       isPending={isPending}
@@ -1791,7 +1791,7 @@ function DayTimeline({
 
           {showNow && nowTop >= 0 && nowTop <= gridHeight ? (
             <div
-              className="pointer-events-none absolute left-[72px] right-0 z-30 h-px bg-gradient-to-r from-rose-500 via-red-500 to-transparent shadow-[0_0_10px_rgba(239,68,68,0.8)]"
+              className="pointer-events-none absolute left-[88px] right-0 z-30 h-px bg-gradient-to-r from-rose-500 via-red-500 to-transparent shadow-[0_0_10px_rgba(239,68,68,0.8)]"
               style={{ top: nowTop }}
             >
               <span className="absolute -left-2 -top-2 h-4 w-4 rounded-full border-2 border-white bg-red-500 shadow-[0_0_14px_rgba(239,68,68,0.9)] dark:border-slate-950" />
@@ -1849,7 +1849,7 @@ function TimelineAppointment({
       onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onEdit(); }}
       data-dnd-ready="appointment"
       className={cn(
-        "absolute left-1.5 right-1.5 z-10 grid cursor-pointer gap-1.5 overflow-hidden rounded-xl border border-white/70 border-l-4 p-3 shadow-[0_10px_28px_rgba(15,23,42,0.12)] ring-1 ring-black/5 backdrop-blur-sm transition-all duration-200 hover:z-20 hover:-translate-y-1 hover:scale-[1.01] hover:shadow-[0_18px_38px_rgba(15,23,42,0.18)] dark:border-white/10 dark:ring-white/5",
+        "absolute left-2 right-2 z-10 grid cursor-pointer gap-2 overflow-hidden rounded-xl border border-white/80 border-l-[6px] p-4 shadow-[0_12px_32px_rgba(15,23,42,0.16)] ring-1 ring-black/5 backdrop-blur-sm transition-all duration-200 hover:z-20 hover:-translate-y-1 hover:shadow-[0_20px_44px_rgba(15,23,42,0.22)] dark:border-white/10 dark:ring-white/5",
         style.border,
         style.surface,
         style.text
@@ -1858,11 +1858,11 @@ function TimelineAppointment({
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-xs font-semibold">
+          <p className="text-sm font-bold tabular-nums">
             {formatTime(appointment.start_time)}
             {appointment.end_time ? ` - ${formatTime(appointment.end_time)}` : ""}
           </p>
-          <h3 className="truncate text-sm font-semibold tracking-normal">
+          <h3 className="truncate text-base font-bold tracking-tight">
             {appointment.patient_names.join(", ")}
           </h3>
         </div>
@@ -1871,8 +1871,8 @@ function TimelineAppointment({
         </span>
       </div>
 
-      <div className="grid gap-1 text-xs">
-        <p className="truncate">{appointment.service_name}</p>
+      <div className="grid gap-1 text-sm">
+        <p className="truncate font-medium">{appointment.service_name}</p>
         <p className="truncate text-muted-foreground">{appointment.employee_name}</p>
         <p className="truncate text-muted-foreground">{appointment.is_billable ? (appointment.finance_integration_status === "completed" ? "Pagamento recebido" : "Pagamento pendente") : "Cortesia"}</p>
         <div className="flex flex-wrap gap-1">
@@ -3290,7 +3290,3 @@ function MultiSelectField({
     </FieldShell>
   );
 }
-
-
-
-

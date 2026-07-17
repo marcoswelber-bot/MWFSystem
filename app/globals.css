@@ -335,6 +335,12 @@ table tbody tr:hover { background: hsl(var(--primary) / .055); }
   .app-main [role="dialog"], .app-main dialog { max-height: calc(100dvh - 2rem); max-width: min(42rem, calc(100vw - 2rem)); overflow-y: auto; }
 }
 
+.app-main:has(.agenda-workspace) {
+  max-width: none;
+  padding-left: clamp(1rem, 1.6vw, 2rem);
+  padding-right: clamp(1rem, 1.6vw, 2rem);
+}
+
 @media (max-width: 767px) {
   .app-main { padding: 1rem !important; }
   .app-main > * { max-width: 100%; }
