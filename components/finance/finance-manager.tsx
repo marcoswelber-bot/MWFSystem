@@ -826,6 +826,22 @@ export function FinanceManager({
     setSettlementNotes("");
     setMessage(null);
   }
+  function openExistingReceipt(item: FinancialTransaction) {
+    const paidAmount = getPaidAmount(item);
+    if (paidAmount <= 0 || !item.payment_date) {
+      setMessage({ ok: false, message: "Este lançamento ainda não possui pagamento para gerar recibo." });
+      return;
+    }
+    setDetailTransaction(null);
+    setReceiptSnapshot({
+      transaction: item,
+      clinic: clinicForTransaction(item),
+      paidAmount,
+      paymentMethod: (item.payment_method as PaymentMethod | null) ?? "pix",
+      paidAt: item.payment_date,
+      receiptNumber: `REC-${item.id.slice(0, 8).toUpperCase()}`
+    });
+  }
 
   function markAsPaid(item: FinancialTransaction) {
     openSettlement(item, "total");
@@ -998,7 +1014,7 @@ export function FinanceManager({
 
       <Card className="border p-4 shadow-none">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <SelectField label="Clínica" value={clinicFilter} onChange={setClinicFilter} options={[...(isAdmMaster ? [["all", "Todas as clínicas"] as [string, string]] : []), ...clinics.map((clinic) => [clinic.id, clinic.name] as [string, string])]} disabled={!isAdmMaster} />
+          <div className="min-w-0 md:col-span-2 xl:col-span-2"><SelectField label="Clínica" value={clinicFilter} onChange={setClinicFilter} options={[...(isAdmMaster ? [["all", "Todas as clínicas"] as [string, string]] : []), ...clinics.map((clinic) => [clinic.id, clinic.name] as [string, string])]} disabled={!isAdmMaster} /></div>
           <SelectField label="Status" value={statusFilter} onChange={(value) => setStatusFilter(value as FinancialStatus | "all")} options={[["all", "Todos"], ...statusOptions]} />
           <TextField label="Data início" type="date" value={periodStart} onChange={setPeriodStart} />
           <TextField label="Data fim" type="date" value={periodEnd} onChange={setPeriodEnd} />
@@ -1028,7 +1044,7 @@ export function FinanceManager({
         </FinanceTable>
       ) : null}
 
-      {detailTransaction ? <TransactionDetailsModal item={detailTransaction} settlements={settlements.filter((settlement) => settlement.financial_transaction_id === detailTransaction.id)} canEdit={canEdit} isPending={isPending} onCancelSettlement={cancelSettlement} onClose={() => setDetailTransaction(null)} /> : null}
+      {detailTransaction ? <TransactionDetailsModal item={detailTransaction} settlements={settlements.filter((settlement) => settlement.financial_transaction_id === detailTransaction.id)} canEdit={canEdit} isPending={isPending} onPaid={(item) => { setDetailTransaction(null); markAsPaid(item); }} onPartial={(item) => { setDetailTransaction(null); markAsPartiallyPaid(item); }} onEdit={(item) => { setDetailTransaction(null); openEditForm(item); }} onCharge={(item) => { setDetailTransaction(null); openChargeModal(item); }} onReceipt={openExistingReceipt} onCancelSettlement={cancelSettlement} onClose={() => setDetailTransaction(null)} /> : null}
       {chargeDebts ? (
         <ChargeWhatsappModal
           debts={chargeDebts}
@@ -1761,10 +1777,22 @@ function ReceiptModal({
   );
 }
 
-function TransactionDetailsModal({ item, settlements, canEdit, isPending, onCancelSettlement, onClose }: { item: FinancialTransaction; settlements: PaymentSettlement[]; canEdit: boolean; isPending: boolean; onCancelSettlement: (settlement: PaymentSettlement) => void; onClose: () => void }) {
+function TransactionDetailsModal({ item, settlements, canEdit, isPending, onPaid, onPartial, onEdit, onCharge, onReceipt, onCancelSettlement, onClose }: {
+  item: FinancialTransaction;
+  settlements: PaymentSettlement[];
+  canEdit: boolean;
+  isPending: boolean;
+  onPaid: (item: FinancialTransaction) => void;
+  onPartial: (item: FinancialTransaction) => void;
+  onEdit: (item: FinancialTransaction) => void;
+  onCharge: (item: FinancialTransaction) => void;
+  onReceipt: (item: FinancialTransaction) => void;
+  onCancelSettlement: (settlement: PaymentSettlement) => void;
+  onClose: () => void;
+}) {
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm">
-      <Card className="w-full max-w-2xl border-none p-5 shadow-2xl">
+    <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/55 p-3 backdrop-blur-sm sm:p-4">
+      <Card className="my-auto max-h-[94vh] w-full max-w-3xl overflow-y-auto border-none p-4 shadow-2xl sm:p-5">
         <div className="flex items-start justify-between gap-4 border-b pb-4">
           <div>
             <h2 className="text-lg font-semibold tracking-normal">Detalhes financeiros</h2>
@@ -1774,7 +1802,7 @@ function TransactionDetailsModal({ item, settlements, canEdit, isPending, onCanc
             <X className="h-5 w-5" />
           </button>
         </div>
-        <div className="mt-4 grid gap-3 text-sm md:grid-cols-2">
+        <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
           <DetailItem label="Clínica" value={item.clinic_name} />
           <DetailItem label="Status" value={statusLabel(item.derived_status)} />
           <DetailItem label="Paciente" value={item.patient_name} />
@@ -1789,8 +1817,16 @@ function TransactionDetailsModal({ item, settlements, canEdit, isPending, onCanc
           <DetailItem label="Origem" value={item.origin ?? "-"} />
         </div>
         {item.notes ? <div className="mt-4 rounded-md bg-muted p-3 text-sm text-muted-foreground">{item.notes}</div> : null}
-        {settlements.length > 0 ? (
-          <div className="mt-4 grid gap-2">
+        <div className="mt-4 flex flex-wrap gap-2 border-t pt-4">
+          {canEdit && getOpenAmount(item) > 0 ? <Button type="button" onClick={() => onPaid(item)} disabled={isPending}>Receber pagamento</Button> : null}
+          {canEdit && getOpenAmount(item) > 0 ? <Button type="button" variant="outline" onClick={() => onPartial(item)} disabled={isPending}>Baixa parcial</Button> : null}
+          {canEdit ? <Button type="button" variant="outline" onClick={() => onEdit(item)} disabled={isPending}>Editar lançamento</Button> : null}
+          {item.transaction_type === "receita" && getOpenAmount(item) > 0 ? <Button type="button" variant="outline" onClick={() => onCharge(item)}><MessageCircle className="h-4 w-4" />Cobrar via WhatsApp</Button> : null}
+          <Button type="button" variant="outline" onClick={() => onReceipt(item)} disabled={getPaidAmount(item) <= 0}><ReceiptText className="h-4 w-4" />Gerar recibo</Button>
+          <Button type="button" variant="outline" onClick={() => document.getElementById(`financial-history-${item.id}`)?.scrollIntoView({ behavior: "smooth" })}>Histórico financeiro</Button>
+          <Button type="button" variant="ghost" onClick={onClose}>Fechar</Button>
+        </div>
+        <div id={`financial-history-${item.id}`} className="mt-4 grid scroll-mt-4 gap-2">
             <h3 className="text-sm font-semibold">Baixas registradas</h3>
             {settlements.map((settlement) => (
               <div key={settlement.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3 text-sm">
@@ -1798,8 +1834,8 @@ function TransactionDetailsModal({ item, settlements, canEdit, isPending, onCanc
                 {canEdit ? <Button type="button" size="sm" variant="outline" disabled={isPending} onClick={() => onCancelSettlement(settlement)}>Cancelar baixa</Button> : null}
               </div>
             ))}
-          </div>
-        ) : null}
+            {settlements.length === 0 ? <p className="rounded-md border p-3 text-sm text-muted-foreground">Nenhuma baixa registrada para este lançamento.</p> : null}
+        </div>
       </Card>
     </div>
   );

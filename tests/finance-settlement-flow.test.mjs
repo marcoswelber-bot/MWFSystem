@@ -5,6 +5,7 @@ import { calculateFinanceIndicators } from "../lib/finance-indicators.ts";
 
 const actions = readFileSync(new URL("../app/(app)/financeiro/actions.ts", import.meta.url), "utf8");
 const manager = readFileSync(new URL("../components/finance/finance-manager.tsx", import.meta.url), "utf8");
+const shell = readFileSync(new URL("../components/app-shell.tsx", import.meta.url), "utf8");
 const row = {
   id: "demo-revenue",
   transaction_type: "receita",
@@ -46,4 +47,29 @@ test("desktop mantém tabela e ações fixas; mobile mantém cards", () => {
   assert.match(manager, /sticky right-0/);
   assert.match(manager, />Baixa parcial</);
   assert.match(manager, />Abrir ficha</);
+});
+
+test("modal de detalhes reutiliza o mesmo fluxo de baixa e mantém módulos sincronizados", () => {
+  assert.match(manager, /onPaid=\{\(item\).*markAsPaid\(item\)/);
+  assert.match(manager, /onPartial=\{\(item\).*markAsPartiallyPaid\(item\)/);
+  assert.match(manager, /settleFinancialTransactions\(/);
+  for (const path of ["/financeiro", "/financeiro/baixas", "/dashboard", "/relatorios", "/pacientes", "/portal"]) {
+    assert.match(actions, new RegExp(`revalidatePath\\("${path.replaceAll("/", "\\/")}"\\)`));
+  }
+});
+
+test("modal financeiro expõe ações essenciais e permanece dentro da viewport", () => {
+  for (const label of ["Receber pagamento", "Baixa parcial", "Editar lançamento", "Cobrar via WhatsApp", "Gerar recibo", "Histórico financeiro"]) {
+    assert.match(manager, new RegExp(label));
+  }
+  assert.match(manager, /max-h-\[94vh\]/);
+  assert.match(manager, /overflow-y-auto/);
+});
+
+test("seletor multicliníca mostra nomes completos, pesquisa e usa tela inteira no celular", () => {
+  assert.match(shell, /Pesquisar clínica/);
+  assert.match(shell, /fixed inset-0 z-\[100\]/);
+  assert.match(shell, /break-words/);
+  assert.match(shell, /overflow-y-auto/);
+  assert.match(shell, /filteredClinics/);
 });

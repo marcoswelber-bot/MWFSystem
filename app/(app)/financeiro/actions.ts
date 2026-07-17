@@ -676,6 +676,8 @@ export async function settleFinancialTransactions(
     revalidatePath("/financeiro/baixas");
     revalidatePath("/dashboard");
     revalidatePath("/relatorios");
+    revalidatePath("/pacientes");
+    revalidatePath("/portal");
 
     return {
       ok: true,
@@ -754,6 +756,8 @@ export async function cancelFinancialSettlement(
     revalidatePath("/financeiro/baixas");
     revalidatePath("/dashboard");
     revalidatePath("/relatorios");
+    revalidatePath("/pacientes");
+    revalidatePath("/portal");
     return { ok: true, message: "Baixa cancelada e indicadores recalculados." };
   } catch (error) {
     return { ok: false, message: getErrorMessage(error) };
