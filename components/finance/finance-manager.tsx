@@ -20,9 +20,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { calculateFinanceIndicators } from "@/lib/finance-indicators";
 import type { PermissionSet } from "@/lib/permission-modules";
 import type { Database } from "@/types/database";
 import {
+  cancelFinancialSettlement,
   cancelFinancialTransaction,
   createFinancialTransaction,
   deleteFinancialTransaction,
@@ -50,9 +52,11 @@ type Clinic = Database["public"]["Tables"]["clinics"]["Row"];
 type Patient = Database["public"]["Tables"]["patients"]["Row"];
 type Service = Database["public"]["Tables"]["services"]["Row"];
 type Employee = Database["public"]["Tables"]["employees"]["Row"];
+type PaymentSettlement = Database["public"]["Tables"]["payment_settlements"]["Row"];
 
 type FinanceManagerProps = {
   transactions: FinancialTransaction[];
+  settlements: PaymentSettlement[];
   clinics: Clinic[];
   patients: Patient[];
   services: Service[];
@@ -532,6 +536,7 @@ function buildBalanceRows(rows: FinancialTransaction[]) {
 
 export function FinanceManager({
   transactions,
+  settlements,
   clinics,
   patients,
   services,
@@ -580,10 +585,16 @@ export function FinanceManager({
     if (periodEnd && item.due_date > periodEnd) return false;
     return true;
   });
-
-  const activeTransactions = filteredTransactions.filter(
-    (item) => item.derived_status !== "cancelado"
+  const scopedTransactions = transactions.filter(
+    (item) => clinicFilter === "all" || item.clinic_id === clinicFilter
   );
+  const periodIndicators = calculateFinanceIndicators(
+    scopedTransactions,
+    settlements,
+    periodStart || "0000-01-01",
+    periodEnd || "9999-12-31"
+  );
+
   const incomeRows = filteredTransactions.filter(
     (item) => item.transaction_type === "receita"
   );
@@ -593,18 +604,12 @@ export function FinanceManager({
   const patientRows = incomeRows.filter((item) => item.derived_status !== "cancelado" && getOpenAmount(item) > 0);
   const balanceRows = buildBalanceRows(filteredTransactions);
 
-  const revenueTransactions = activeTransactions.filter(
-    (item) => item.transaction_type === "receita"
-  );
-  const expenseTransactions = activeTransactions.filter(
-    (item) => item.transaction_type === "despesa"
-  );
-  const totalEntries = revenueTransactions.reduce((total, item) => total + Number(item.amount ?? 0), 0);
-  const totalOutflows = expenseTransactions.reduce((total, item) => total + Number(item.amount ?? 0), 0);
-  const totalEntriesRealized = revenueTransactions.reduce((total, item) => total + getPaidAmount(item), 0);
-  const totalOutflowsRealized = expenseTransactions.reduce((total, item) => total + getPaidAmount(item), 0);
-  const periodBalance = totalEntries - totalOutflows;
-  const realizedBalance = totalEntriesRealized - totalOutflowsRealized;
+  const totalEntries = periodIndicators.billedRevenue;
+  const totalOutflows = periodIndicators.expectedExpenses;
+  const totalEntriesRealized = periodIndicators.receivedRevenue;
+  const totalOutflowsRealized = periodIndicators.paidExpenses;
+  const periodBalance = periodIndicators.expectedResult;
+  const realizedBalance = periodIndicators.cashBalance;
 
   const cashFlowTotals = {
     revenueExpected: totalEntries,
@@ -627,14 +632,23 @@ export function FinanceManager({
   const todayKey = now.toISOString().slice(0, 10);
   const yearKey = todayKey.slice(0, 4);
   const monthKey = todayKey.slice(0, 7);
-  const scopedActive = transactions.filter((item) => item.derived_status !== "cancelado" && (clinicFilter === "all" || item.clinic_id === clinicFilter));
-  const realizedFor = (type: FinancialTransactionType, prefix: string) => scopedActive
-    .filter((item) => item.transaction_type === type && (item.payment_date ?? item.due_date).startsWith(prefix))
-    .reduce((total, item) => total + getPaidAmount(item), 0);
+  const scopedActive = scopedTransactions.filter((item) => item.derived_status !== "cancelado");
+  const indicatorsFor = (prefix: string) => {
+    const start = prefix.length === 10 ? prefix : prefix.length === 7 ? `${prefix}-01` : `${prefix}-01-01`;
+    const end = prefix.length === 10
+      ? prefix
+      : prefix.length === 7
+        ? new Date(Number(prefix.slice(0, 4)), Number(prefix.slice(5, 7)), 0).toISOString().slice(0, 10)
+        : `${prefix}-12-31`;
+    return calculateFinanceIndicators(scopedTransactions, settlements, start, end);
+  };
+  const todayIndicators = indicatorsFor(todayKey);
+  const monthIndicators = indicatorsFor(monthKey);
+  const yearIndicators = indicatorsFor(yearKey);
   const openRows = scopedActive.filter((item) => item.transaction_type === "receita" && getOpenAmount(item) > 0);
   const dueSoon = openRows.filter((item) => item.due_date >= todayKey).reduce((total, item) => total + getOpenAmount(item), 0);
   const debtorPatients = new Set(openRows.map((item) => item.patient_id).filter(Boolean)).size;
-  const currentBalance = scopedActive.reduce((total, item) => total + (item.transaction_type === "receita" ? getPaidAmount(item) : -getPaidAmount(item)), 0);
+  const currentBalance = calculateFinanceIndicators(scopedTransactions, settlements, "0000-01-01", todayKey).cashBalance;
   const ratioTotal = totalEntries + totalOutflows;
   const revenueRatio = ratioTotal > 0 ? Math.round((totalEntries / ratioTotal) * 100) : 50;
   const expenseRatio = ratioTotal > 0 ? 100 - revenueRatio : 50;
@@ -877,6 +891,18 @@ export function FinanceManager({
     });
   }
 
+  function cancelSettlement(settlement: PaymentSettlement) {
+    if (!window.confirm(`Cancelar a baixa de ${money(Number(settlement.amount))} registrada em ${formatDate(settlement.paid_at)}?`)) return;
+    startTransition(async () => {
+      const result = await cancelFinancialSettlement(settlement.id);
+      setMessage(result);
+      if (result.ok) {
+        setDetailTransaction(null);
+        refresh();
+      }
+    });
+  }
+
   function removeTransaction(item: FinancialTransaction) {
     if (!window.confirm("Excluir esta movimentação?")) return;
 
@@ -906,10 +932,11 @@ export function FinanceManager({
         </div>
       </section>
 
+      <section className="grid gap-4 lg:grid-cols-2">
       <Card className="border p-5 shadow-none">
         <div className="grid gap-5 lg:grid-cols-[1fr_1.5fr] lg:items-center">
           <div>
-            <p className="text-sm text-muted-foreground">Saldo do mês</p>
+            <p className="text-sm text-muted-foreground">Resultado previsto</p>
             <strong className={cn("mt-2 block font-mono text-4xl tracking-normal", periodBalance >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300")}>{money(periodBalance)}</strong>
             <span className={cn("mt-3 inline-flex rounded-md px-2.5 py-1 text-xs font-semibold", periodBalance >= 0 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-100" : "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-100")}>{balanceBadge}</span>
           </div>
@@ -925,14 +952,23 @@ export function FinanceManager({
           </div>
         </div>
       </Card>
+      <Card className="border p-5 shadow-none">
+        <p className="text-sm text-muted-foreground">Saldo de caixa</p>
+        <strong className={cn("mt-2 block whitespace-nowrap font-mono text-4xl tracking-normal", realizedBalance >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300")}>{money(realizedBalance)}</strong>
+        <p className="mt-3 text-sm text-muted-foreground">Recebido {money(totalEntriesRealized)} menos despesas pagas {money(totalOutflowsRealized)} no período selecionado.</p>
+      </Card>
+      </section>
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        <SummaryCard label="Receitas do dia" value={money(realizedFor("receita", todayKey))} tone="positive" onClick={() => { setActiveTab("receitas"); setPeriodStart(todayKey); setPeriodEnd(todayKey); }} />
-        <SummaryCard label="Receitas do mês" value={money(realizedFor("receita", monthKey))} tone="positive" onClick={() => { setActiveTab("receitas"); setPeriodStart(monthStart()); setPeriodEnd(monthEnd()); }} />
-        <SummaryCard label="Receitas do ano" value={money(realizedFor("receita", yearKey))} tone="positive" onClick={() => { setActiveTab("receitas"); setPeriodStart(`${yearKey}-01-01`); setPeriodEnd(`${yearKey}-12-31`); }} />
-        <SummaryCard label="Despesas do dia" value={money(realizedFor("despesa", todayKey))} tone="danger" onClick={() => { setActiveTab("despesas"); setPeriodStart(todayKey); setPeriodEnd(todayKey); }} />
-        <SummaryCard label="Despesas do mês" value={money(realizedFor("despesa", monthKey))} tone="danger" onClick={() => { setActiveTab("despesas"); setPeriodStart(monthStart()); setPeriodEnd(monthEnd()); }} />
-        <SummaryCard label="Despesas do ano" value={money(realizedFor("despesa", yearKey))} tone="danger" onClick={() => { setActiveTab("despesas"); setPeriodStart(`${yearKey}-01-01`); setPeriodEnd(`${yearKey}-12-31`); }} />
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <SummaryCard label="Faturado no mês" value={money(monthIndicators.billedRevenue)} tone="neutral" onClick={() => { setActiveTab("receitas"); setPeriodStart(monthStart()); setPeriodEnd(monthEnd()); }} />
+        <SummaryCard label="Recebido no mês" value={money(monthIndicators.receivedRevenue)} tone="positive" onClick={() => { setActiveTab("receitas"); setPeriodStart(monthStart()); setPeriodEnd(monthEnd()); }} />
+        <SummaryCard label="Em aberto" value={money(monthIndicators.openRevenue)} tone="warning" onClick={() => { setActiveTab("pacientes"); setPeriodStart(monthStart()); setPeriodEnd(monthEnd()); }} />
+        <SummaryCard label="Despesas previstas" value={money(monthIndicators.expectedExpenses)} tone="warning" onClick={() => { setActiveTab("despesas"); setPeriodStart(monthStart()); setPeriodEnd(monthEnd()); }} />
+        <SummaryCard label="Despesas pagas" value={money(monthIndicators.paidExpenses)} tone="danger" onClick={() => { setActiveTab("despesas"); setPeriodStart(monthStart()); setPeriodEnd(monthEnd()); }} />
+        <SummaryCard label="Recebido hoje" value={money(todayIndicators.receivedRevenue)} tone="positive" onClick={() => { setActiveTab("receitas"); setPeriodStart(todayKey); setPeriodEnd(todayKey); }} />
+        <SummaryCard label="Recebido no ano" value={money(yearIndicators.receivedRevenue)} tone="positive" onClick={() => { setActiveTab("receitas"); setPeriodStart(`${yearKey}-01-01`); setPeriodEnd(`${yearKey}-12-31`); }} />
+        <SummaryCard label="Despesas pagas hoje" value={money(todayIndicators.paidExpenses)} tone="danger" onClick={() => { setActiveTab("despesas"); setPeriodStart(todayKey); setPeriodEnd(todayKey); }} />
+        <SummaryCard label="Despesas pagas no ano" value={money(yearIndicators.paidExpenses)} tone="danger" onClick={() => { setActiveTab("despesas"); setPeriodStart(`${yearKey}-01-01`); setPeriodEnd(`${yearKey}-12-31`); }} />
         <SummaryCard label="Saldo atual" value={money(currentBalance)} tone={currentBalance >= 0 ? "positive" : "danger"} onClick={() => setActiveTab("fluxo")} />
         <SummaryCard label="Contas vencidas" value={money(totalOverdueAccounts)} tone="danger" onClick={() => { setActiveTab("pacientes"); setStatusFilter("vencido"); setPeriodStart(""); setPeriodEnd(""); }} />
         <SummaryCard label="Contas a vencer" value={money(dueSoon)} tone="warning" onClick={() => { setActiveTab("pacientes"); setStatusFilter("pendente"); setPeriodStart(todayKey); setPeriodEnd(""); }} />
@@ -981,7 +1017,7 @@ export function FinanceManager({
         </FinanceTable>
       ) : null}
 
-      {detailTransaction ? <TransactionDetailsModal item={detailTransaction} onClose={() => setDetailTransaction(null)} /> : null}
+      {detailTransaction ? <TransactionDetailsModal item={detailTransaction} settlements={settlements.filter((settlement) => settlement.financial_transaction_id === detailTransaction.id)} canEdit={canEdit} isPending={isPending} onCancelSettlement={cancelSettlement} onClose={() => setDetailTransaction(null)} /> : null}
       {chargeDebts ? (
         <ChargeWhatsappModal
           debts={chargeDebts}
@@ -1650,7 +1686,7 @@ function ReceiptModal({
   );
 }
 
-function TransactionDetailsModal({ item, onClose }: { item: FinancialTransaction; onClose: () => void }) {
+function TransactionDetailsModal({ item, settlements, canEdit, isPending, onCancelSettlement, onClose }: { item: FinancialTransaction; settlements: PaymentSettlement[]; canEdit: boolean; isPending: boolean; onCancelSettlement: (settlement: PaymentSettlement) => void; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm">
       <Card className="w-full max-w-2xl border-none p-5 shadow-2xl">
@@ -1678,6 +1714,17 @@ function TransactionDetailsModal({ item, onClose }: { item: FinancialTransaction
           <DetailItem label="Origem" value={item.origin ?? "-"} />
         </div>
         {item.notes ? <div className="mt-4 rounded-md bg-muted p-3 text-sm text-muted-foreground">{item.notes}</div> : null}
+        {settlements.length > 0 ? (
+          <div className="mt-4 grid gap-2">
+            <h3 className="text-sm font-semibold">Baixas registradas</h3>
+            {settlements.map((settlement) => (
+              <div key={settlement.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3 text-sm">
+                <div><strong>{money(Number(settlement.amount))}</strong><p className="text-xs text-muted-foreground">{formatDate(settlement.paid_at)} · {settlement.payment_method ?? "Forma não informada"}</p></div>
+                {canEdit ? <Button type="button" size="sm" variant="outline" disabled={isPending} onClick={() => onCancelSettlement(settlement)}>Cancelar baixa</Button> : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
       </Card>
     </div>
   );

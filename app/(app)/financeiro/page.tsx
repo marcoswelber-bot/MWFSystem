@@ -15,6 +15,7 @@ type Clinic = Database["public"]["Tables"]["clinics"]["Row"];
 type Patient = Database["public"]["Tables"]["patients"]["Row"];
 type Service = Database["public"]["Tables"]["services"]["Row"];
 type Employee = Database["public"]["Tables"]["employees"]["Row"];
+type PaymentSettlement = Database["public"]["Tables"]["payment_settlements"]["Row"];
 
 type HydratedFinancialTransaction = FinancialTransaction & {
   clinic_name: string;
@@ -76,6 +77,7 @@ export default async function FinanceiroPage() {
   let patients: Patient[] = [];
   let services: Service[] = [];
   let employees: Employee[] = [];
+  let settlements: PaymentSettlement[] = [];
   let loadError: string | undefined;
 
   if (!clinicScope.isAdmMaster && !clinicScope.clinicId) {
@@ -108,7 +110,14 @@ export default async function FinanceiroPage() {
         ? supabase.from("employees").select("*").eq("clinic_id", clinicFilter)
         : supabase.from("employees").select("*");
 
-      const [transactionsResult, clinicsResult, patientsResult, servicesResult, employeesResult] =
+      const settlementsQuery = clinicFilter
+        ? supabase
+            .from("payment_settlements")
+            .select("*,financial_transactions!inner(clinic_id)")
+            .eq("financial_transactions.clinic_id", clinicFilter)
+        : supabase.from("payment_settlements").select("*");
+
+      const [transactionsResult, clinicsResult, patientsResult, servicesResult, employeesResult, settlementsResult] =
         await Promise.all([
           readSupabaseList<FinancialTransaction>(
             "financial_transactions",
@@ -129,6 +138,10 @@ export default async function FinanceiroPage() {
           readSupabaseList<Employee>(
             "employees",
             employeesQuery.order("name", { ascending: true })
+          ),
+          readSupabaseList<PaymentSettlement>(
+            "payment_settlements",
+            settlementsQuery.order("paid_at", { ascending: false })
           )
         ]);
 
@@ -137,13 +150,15 @@ export default async function FinanceiroPage() {
       patients = patientsResult.data;
       services = servicesResult.data;
       employees = employeesResult.data;
+      settlements = settlementsResult.data;
 
       [
         transactionsResult.error,
         clinicsResult.error,
         patientsResult.error,
         servicesResult.error,
-        employeesResult.error
+        employeesResult.error,
+        settlementsResult.error
       ].forEach((error) => {
         if (error) {
           loadError = appendLoadError(loadError, error);
@@ -197,6 +212,7 @@ export default async function FinanceiroPage() {
 
       <FinanceManager
         transactions={hydratedTransactions}
+        settlements={settlements}
         clinics={clinics}
         patients={patients}
         services={services}

@@ -689,6 +689,77 @@ export async function settleFinancialTransactions(
   }
 }
 
+export async function cancelFinancialSettlement(
+  settlementId: string
+): Promise<FinancialActionResult> {
+  try {
+    await assertCan("financeiro", "edit");
+    const supabase = await createClient();
+    const { data: settlement, error: settlementReadError } = await supabase
+      .from("payment_settlements")
+      .select("*")
+      .eq("id", settlementId)
+      .single();
+    if (settlementReadError || !settlement) throw settlementReadError;
+
+    const { data: transaction, error: transactionReadError } = await supabase
+      .from("financial_transactions")
+      .select("*")
+      .eq("id", settlement.financial_transaction_id)
+      .single();
+    if (transactionReadError || !transaction) throw transactionReadError;
+    await assertTransactionsInClinicScope([transaction]);
+
+    const { error: deleteError } = await supabase
+      .from("payment_settlements")
+      .delete()
+      .eq("id", settlementId);
+    if (deleteError) throw deleteError;
+
+    const { data: remainingSettlements, error: remainingError } = await supabase
+      .from("payment_settlements")
+      .select("amount,paid_at,payment_method")
+      .eq("financial_transaction_id", transaction.id)
+      .order("paid_at", { ascending: false });
+    if (remainingError) throw remainingError;
+
+    const paidAmount = roundMoney(
+      (remainingSettlements ?? []).reduce((total, item) => total + Number(item.amount ?? 0), 0)
+    );
+    const isPaid = paidAmount >= Number(transaction.amount);
+    const status = isPaid
+      ? "pago"
+      : paidAmount > 0
+        ? "parcial"
+        : transaction.due_date < today()
+          ? "vencido"
+          : "pendente";
+    const latestSettlement = remainingSettlements?.[0] ?? null;
+    const { error: updateError } = await supabase
+      .from("financial_transactions")
+      .update({
+        paid_amount: Math.min(paidAmount, Number(transaction.amount)),
+        status,
+        payment_date: latestSettlement?.paid_at ?? null,
+        payment_method: latestSettlement?.payment_method ?? transaction.payment_method
+      })
+      .eq("id", transaction.id);
+
+    if (updateError) {
+      await supabase.from("payment_settlements").insert(settlement);
+      throw updateError;
+    }
+
+    revalidatePath("/financeiro");
+    revalidatePath("/financeiro/baixas");
+    revalidatePath("/dashboard");
+    revalidatePath("/relatorios");
+    return { ok: true, message: "Baixa cancelada e indicadores recalculados." };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
+}
+
 export async function cancelFinancialTransaction(
   id: string
 ): Promise<FinancialActionResult> {
