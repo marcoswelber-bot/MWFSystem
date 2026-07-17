@@ -571,6 +571,7 @@ export function FinanceManager({
   const [settlementPaymentMethod, setSettlementPaymentMethod] =
     React.useState<PaymentMethod>("pix");
   const [settlementNotes, setSettlementNotes] = React.useState("");
+  const [settlementPaidAt, setSettlementPaidAt] = React.useState(today());
   const [chargeDebts, setChargeDebts] = React.useState<FinancialTransaction[] | null>(null);
   const [receiptSnapshot, setReceiptSnapshot] = React.useState<ReceiptSnapshot | null>(null);
 
@@ -817,18 +818,28 @@ export function FinanceManager({
     });
   }
 
-  function markAsPaid(item: FinancialTransaction) {
+  function openSettlement(item: FinancialTransaction, mode: "total" | "partial") {
     setSettlementTransaction(item);
-    setSettlementAmount(getOpenAmount(item).toFixed(2));
+    setSettlementAmount(mode === "total" ? getOpenAmount(item).toFixed(2) : "");
     setSettlementPaymentMethod((item.payment_method as PaymentMethod | null) ?? "pix");
+    setSettlementPaidAt(today());
     setSettlementNotes("");
     setMessage(null);
+  }
+
+  function markAsPaid(item: FinancialTransaction) {
+    openSettlement(item, "total");
+  }
+
+  function markAsPartiallyPaid(item: FinancialTransaction) {
+    openSettlement(item, "partial");
   }
 
   function closeSettlementModal() {
     setSettlementTransaction(null);
     setSettlementAmount("");
     setSettlementPaymentMethod("pix");
+    setSettlementPaidAt(today());
     setSettlementNotes("");
   }
 
@@ -860,7 +871,7 @@ export function FinanceManager({
         mode: paidAmount >= openAmount ? "total" : "partial",
         amount: settlementAmount,
         payment_method: settlementPaymentMethod,
-        paid_at: today(),
+        paid_at: settlementPaidAt,
         notes: settlementNotes
       });
 
@@ -873,7 +884,7 @@ export function FinanceManager({
             clinic: clinicForTransaction(settlementTransaction),
             paidAmount,
             paymentMethod: settlementPaymentMethod,
-            paidAt: today(),
+            paidAt: settlementPaidAt,
             receiptNumber: `REC-${settlementTransaction.id.slice(0, 8).toUpperCase()}-${Date.now().toString().slice(-6)}`
           });
         }
@@ -1002,7 +1013,7 @@ export function FinanceManager({
 
       {activeTab === "receitas" ? <FinanceTable title="Receitas" description="Entradas de pacientes, avulsos, pacotes pagos e outros créditos."><EntriesTable rows={incomeRows} canEdit={canEdit} canDelete={canDelete} isPending={isPending} onDetails={setDetailTransaction} onEdit={openEditForm} onPaid={markAsPaid} onCancel={cancelTransaction} onDelete={removeTransaction} /></FinanceTable> : null}
       {activeTab === "despesas" ? <FinanceTable title="Despesas" description="Saídas da clínica, folha, encargos e comissões."><OutflowsTable rows={outflowRows} canEdit={canEdit} canDelete={canDelete} isPending={isPending} onDetails={setDetailTransaction} onEdit={openEditForm} onPaid={markAsPaid} onCancel={cancelTransaction} onDelete={removeTransaction} /></FinanceTable> : null}
-      {activeTab === "pacientes" ? <FinanceTable title="Pacientes em aberto" description="Cobrança e baixa de pacientes. Baixas em lote continuam em Baixas e Repasses."><PatientPaymentsTable rows={patientRows} canEdit={canEdit} canDelete={canDelete} isPending={isPending} onDetails={setDetailTransaction} onEdit={openEditForm} onPaid={markAsPaid} onCancel={cancelTransaction} onDelete={removeTransaction} onCharge={openChargeModal} /></FinanceTable> : null}
+      {activeTab === "pacientes" ? <FinanceTable title="Pacientes em aberto" description="Baixas individuais são feitas aqui. Use Baixas e Repasses somente para lotes e operações administrativas."><PatientPaymentsTable rows={patientRows} canEdit={canEdit} canDelete={canDelete} isPending={isPending} onDetails={setDetailTransaction} onEdit={openEditForm} onPaid={markAsPaid} onPartial={markAsPartiallyPaid} onCancel={cancelTransaction} onDelete={removeTransaction} onCharge={openChargeModal} onOpenPatient={(item) => item.patient_id && router.push(`/pacientes?patientId=${item.patient_id}` as Route)} /></FinanceTable> : null}
       {activeTab === "contracheques" ? <PaychecksPanel summaries={paycheckSummaries} canEdit={canEdit} onExportAll={exportAllPaychecks} onPrintOne={(summary) => setPrintPaychecks([summary])} onDetails={openCommissionReport} /> : null}
       {activeTab === "fluxo" ? (
         <FinanceTable title="Fluxo de caixa" description="Resumo do período com entradas, saídas, saldo e composição do balancete.">
@@ -1043,10 +1054,12 @@ export function FinanceManager({
           item={settlementTransaction}
           amount={settlementAmount}
           paymentMethod={settlementPaymentMethod}
+          paidAt={settlementPaidAt}
           notes={settlementNotes}
           isPending={isPending}
           onAmountChange={setSettlementAmount}
           onPaymentMethodChange={setSettlementPaymentMethod}
+          onPaidAtChange={setSettlementPaidAt}
           onNotesChange={setSettlementNotes}
           onSubmit={submitSettlement}
           onClose={closeSettlementModal}
@@ -1085,9 +1098,11 @@ type TableActionProps = {
   onDetails: (item: FinancialTransaction) => void;
   onEdit: (item: FinancialTransaction) => void;
   onPaid: (item: FinancialTransaction) => void;
+  onPartial?: (item: FinancialTransaction) => void;
   onCancel: (item: FinancialTransaction) => void;
   onDelete: (item: FinancialTransaction) => void;
   onCharge?: (item: FinancialTransaction) => void;
+  onOpenPatient?: (item: FinancialTransaction) => void;
 };
 
 function EntriesTable({
@@ -1214,12 +1229,47 @@ function PatientPaymentsTable({
   onDetails,
   onEdit,
   onPaid,
+  onPartial,
   onCancel,
   onDelete,
-  onCharge
+  onCharge,
+  onOpenPatient
 }: TableActionProps) {
   return (
-    <table className="w-full min-w-[1240px] text-left text-xs">
+    <>
+    <div className="grid gap-3 p-3 md:hidden">
+      {rows.length > 0 ? rows.map((item) => (
+        <article key={item.id} className="grid min-w-0 gap-3 rounded-lg border bg-background p-4">
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className="min-w-0"><strong className="block truncate">{item.patient_name}</strong><p className="truncate text-sm text-muted-foreground">{item.service_name} · {item.employee_name}</p></div>
+            <span className={cn("shrink-0 rounded-md px-2 py-1 text-xs font-semibold", statusClass(item.derived_status))}>{statusLabel(item.derived_status)}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <DetailItem label="Valor total" value={money(Number(item.amount ?? 0))} />
+            <DetailItem label="Em aberto" value={money(getOpenAmount(item))} />
+            <DetailItem label="Valor pago" value={money(getPaidAmount(item))} />
+            <DetailItem label="Vencimento" value={formatDate(item.due_date)} />
+          </div>
+          <div className="grid gap-2">
+            {canEdit ? <Button type="button" className="min-h-11" onClick={() => onPaid(item)} disabled={isPending}>Dar baixa</Button> : null}
+            {canEdit && onPartial ? <Button type="button" className="min-h-11" variant="outline" onClick={() => onPartial(item)} disabled={isPending}>Baixa parcial</Button> : null}
+            <div className="grid grid-cols-2 gap-2">
+              <Button type="button" className="min-h-11" variant="outline" onClick={() => onDetails(item)}>Ver detalhes</Button>
+              {onOpenPatient ? <Button type="button" className="min-h-11" variant="outline" onClick={() => onOpenPatient(item)}>Abrir ficha</Button> : null}
+            </div>
+            {onCharge ? <Button type="button" className="min-h-11" variant="outline" onClick={() => onCharge(item)}><MessageCircle className="h-4 w-4" />Cobrar via WhatsApp</Button> : null}
+          </div>
+        </article>
+      )) : <div className="p-6 text-center text-sm text-muted-foreground">Nenhum registro encontrado.</div>}
+    </div>
+    <div className="hidden max-w-full overflow-x-auto md:block">
+    <table className="w-full min-w-[1480px] table-fixed text-left text-xs xl:min-w-[1540px]">
+      <colgroup>
+        <col className="w-[180px]" /><col className="w-[170px]" /><col className="w-[130px]" />
+        <col className="w-[170px]" /><col className="w-[160px]" /><col className="w-[110px]" />
+        <col className="w-[110px]" /><col className="w-[120px]" /><col className="w-[110px]" />
+        <col className="w-[105px]" /><col className="w-[500px]" />
+      </colgroup>
       <thead className="bg-muted/60 uppercase text-muted-foreground">
         <tr>
           <th className="px-3 py-2">Paciente</th>
@@ -1232,27 +1282,29 @@ function PatientPaymentsTable({
           <th className="px-3 py-2 text-right">Valor em aberto</th>
           <th className="px-3 py-2">Vencimento</th>
           <th className="px-3 py-2">Status</th>
-          <th className="px-3 py-2 text-right">Ações</th>
+          <th className="sticky right-0 z-20 whitespace-nowrap border-l bg-muted px-3 py-2 text-right shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.8)]">Ações</th>
         </tr>
       </thead>
       <tbody>
         {rows.length > 0 ? rows.map((item) => (
           <tr key={item.id} className="border-t hover:bg-muted/30">
-            <TruncatedCell strong value={item.patient_name} />
-            <TruncatedCell value={item.clinic_name} />
+            <td className="truncate px-3 py-2 font-semibold" title={item.patient_name}>{item.patient_name}</td>
+            <td className="truncate px-3 py-2" title={item.clinic_name}>{item.clinic_name}</td>
             <td className="whitespace-nowrap px-3 py-2">{formatDate(item.appointment_date ?? item.due_date)}</td>
-            <TruncatedCell value={item.service_name} />
-            <TruncatedCell value={item.employee_name} />
+            <td className="truncate px-3 py-2" title={item.service_name}>{item.service_name}</td>
+            <td className="truncate px-3 py-2" title={item.employee_name}>{item.employee_name}</td>
             <td className="whitespace-nowrap px-3 py-2 text-right font-semibold">{money(Number(item.amount ?? 0))}</td>
             <td className="whitespace-nowrap px-3 py-2 text-right">{money(getPaidAmount(item))}</td>
             <td className="whitespace-nowrap px-3 py-2 text-right font-semibold">{money(getOpenAmount(item))}</td>
             <td className="whitespace-nowrap px-3 py-2">{formatDate(item.due_date)}</td>
             <StatusCell status={item.derived_status} compact />
-            <FinanceActionCell item={item} primaryLabel="Dar baixa" canEdit={canEdit} canDelete={canDelete} isPending={isPending} onDetails={onDetails} onEdit={onEdit} onPaid={onPaid} onCancel={onCancel} onDelete={onDelete} onCharge={onCharge} />
+            <FinanceActionCell item={item} primaryLabel="Dar baixa" canEdit={canEdit} canDelete={canDelete} isPending={isPending} onDetails={onDetails} onEdit={onEdit} onPaid={onPaid} onPartial={onPartial} onCancel={onCancel} onDelete={onDelete} onCharge={onCharge} onOpenPatient={onOpenPatient} sticky />
           </tr>
         )) : <EmptyRow colSpan={11} />}
       </tbody>
     </table>
+    </div>
+    </>
   );
 }
 
@@ -1418,9 +1470,12 @@ function FinanceActionCell({
   onDetails,
   onEdit,
   onPaid,
+  onPartial,
   onCancel,
   onDelete,
-  onCharge
+  onCharge,
+  onOpenPatient,
+  sticky = false
 }: {
   item: FinancialTransaction;
   primaryLabel: string;
@@ -1430,18 +1485,23 @@ function FinanceActionCell({
   onDetails: (item: FinancialTransaction) => void;
   onEdit: (item: FinancialTransaction) => void;
   onPaid: (item: FinancialTransaction) => void;
+  onPartial?: (item: FinancialTransaction) => void;
   onCancel: (item: FinancialTransaction) => void;
   onDelete: (item: FinancialTransaction) => void;
   onCharge?: (item: FinancialTransaction) => void;
+  onOpenPatient?: (item: FinancialTransaction) => void;
+  sticky?: boolean;
 }) {
   return (
-    <td className="whitespace-nowrap px-3 py-2">
-      <div className="flex justify-end gap-1">
+    <td className={cn("whitespace-nowrap px-3 py-2", sticky && "sticky right-0 z-10 border-l bg-background shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.8)]")}>
+      <div className="flex min-w-max justify-end gap-1">
         <Button type="button" size="sm" variant="outline" onClick={() => onDetails(item)}>Ver detalhes</Button>
         {onCharge && getOpenAmount(item) > 0 ? <Button type="button" size="sm" variant="outline" onClick={() => onCharge(item)}><MessageCircle className="h-4 w-4" />Cobrar via WhatsApp</Button> : null}
+        {onOpenPatient && item.patient_id ? <Button type="button" size="sm" variant="outline" onClick={() => onOpenPatient(item)}>Abrir ficha</Button> : null}
         {canEdit ? (
           <>
             <Button type="button" size="sm" onClick={() => onPaid(item)} disabled={isPending || item.derived_status === "pago"}>{primaryLabel}</Button>
+            {onPartial ? <Button type="button" size="sm" variant="outline" onClick={() => onPartial(item)} disabled={isPending || item.derived_status === "pago"}>Baixa parcial</Button> : null}
             <Button type="button" size="sm" variant="outline" onClick={() => onCancel(item)} disabled={isPending || item.derived_status === "cancelado"}>Cancelar</Button>
             <IconButton label="Editar" onClick={() => onEdit(item)} icon={Edit3} />
           </>
@@ -1611,10 +1671,12 @@ function ReceiptModal({
   item,
   amount,
   paymentMethod,
+  paidAt,
   notes,
   isPending,
   onAmountChange,
   onPaymentMethodChange,
+  onPaidAtChange,
   onNotesChange,
   onSubmit,
   onClose
@@ -1622,10 +1684,12 @@ function ReceiptModal({
   item: FinancialTransaction;
   amount: string;
   paymentMethod: PaymentMethod;
+  paidAt: string;
   notes: string;
   isPending: boolean;
   onAmountChange: (value: string) => void;
   onPaymentMethodChange: (value: PaymentMethod) => void;
+  onPaidAtChange: (value: string) => void;
   onNotesChange: (value: string) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
   onClose: () => void;
@@ -1651,7 +1715,11 @@ function ReceiptModal({
         </div>
 
         <form onSubmit={onSubmit} className="mt-4 grid gap-4">
-          <div className="grid gap-3 rounded-md border bg-muted/30 p-3 text-sm md:grid-cols-2">
+          <div className="grid gap-3 rounded-md border bg-muted/30 p-3 text-sm sm:grid-cols-2">
+            <DetailItem label="Paciente" value={item.patient_name} />
+            <DetailItem label="Serviço" value={item.service_name} />
+            <DetailItem label="Valor total" value={money(Number(item.amount ?? 0))} />
+            <DetailItem label="Valor já pago" value={money(getPaidAmount(item))} />
             <DetailItem label="Valor em aberto" value={money(openAmount)} />
             <DetailItem label="Saldo após baixa" value={money(remainingAmount)} />
           </div>
@@ -1671,10 +1739,17 @@ function ReceiptModal({
               onChange={onAmountChange}
               required
             />
+            <TextField
+              label="Data da baixa"
+              type="date"
+              value={paidAt}
+              onChange={onPaidAtChange}
+              required
+            />
           </div>
           <TextAreaField label="Observação" value={notes} onChange={onNotesChange} />
           <p className="text-sm text-muted-foreground">
-            Tipo de baixa: {isPartial ? "parcial" : "total"}. A data de pagamento será preenchida automaticamente com a data de hoje.
+            Tipo de baixa: {isPartial ? "parcial" : "total"}. Somente o valor confirmado será somado aos indicadores de caixa.
           </p>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
