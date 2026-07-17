@@ -2,6 +2,10 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { Eye, FileDown, Printer, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import type { PermissionSet } from "@/lib/permission-modules";
 import type { Database } from "@/types/database";
 import {
   activateMedicalRecord,
@@ -28,6 +32,7 @@ export type EmployeeOption = {
 type DisplayMedicalRecord = MedicalRecord & {
   patient_name: string;
   employee_name: string;
+  clinic_name: string;
 };
 
 type StatusFilter = "all" | "active" | "inactive";
@@ -38,6 +43,7 @@ type MedicalRecordsManagerProps = {
   employees: EmployeeOption[];
   initialSearch: string;
   loadError?: string;
+  permissions?: PermissionSet;
 };
 
 const emptyForm: MedicalRecordFormInput = {
@@ -72,6 +78,7 @@ export function MedicalRecordsManager({
   employees,
   initialSearch,
   loadError
+  ,permissions
 }: MedicalRecordsManagerProps) {
   const router = useRouter();
   const [isPending, startTransition] = React.useTransition();
@@ -79,6 +86,7 @@ export function MedicalRecordsManager({
   const [editingRecord, setEditingRecord] =
     React.useState<DisplayMedicalRecord | null>(null);
   const [form, setForm] = React.useState<MedicalRecordFormInput>(emptyForm);
+  const [viewingRecord,setViewingRecord]=React.useState<DisplayMedicalRecord|null>(null);
   const [search, setSearch] = React.useState(initialSearch);
   const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("all");
   const [message, setMessage] = React.useState<MedicalRecordActionResult | null>(
@@ -97,6 +105,16 @@ export function MedicalRecordsManager({
 
     return record.status === statusFilter;
   });
+  const canCreate=permissions?.create ?? true;
+  const canEdit=permissions?.edit ?? true;
+  const canToggle=permissions?.toggle ?? true;
+  const canDelete=permissions?.delete ?? true;
+
+  function printRecord(record:DisplayMedicalRecord){
+    setViewingRecord(record);
+    document.body.classList.add("mwf-record-printing");
+    window.setTimeout(()=>{ window.print(); document.body.classList.remove("mwf-record-printing"); },80);
+  }
 
   function updateForm(field: keyof MedicalRecordFormInput, value: string) {
     setForm((currentForm) => ({ ...currentForm, [field]: value }));
@@ -235,7 +253,7 @@ export function MedicalRecordsManager({
           </button>
         </form>
 
-        <button
+        {canCreate ? <button
           type="button"
           onClick={openCreateForm}
           style={{
@@ -245,7 +263,7 @@ export function MedicalRecordsManager({
           }}
         >
           Novo prontuario
-        </button>
+        </button> : null}
       </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
@@ -454,8 +472,24 @@ export function MedicalRecordsManager({
         </section>
       ) : null}
 
+      {viewingRecord ? <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 p-3 sm:p-6 print:static print:bg-white print:p-0">
+        <Card className="medical-record-print-root mx-auto w-full max-w-4xl p-4 sm:p-7 print:max-w-none print:border-0 print:shadow-none">
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-4 print:hidden">
+            <div><p className="text-sm text-muted-foreground">Prontuário clínico</p><h2 className="text-xl font-bold">{viewingRecord.title}</h2></div>
+            <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={()=>printRecord(viewingRecord)}><Printer className="h-4 w-4"/>Imprimir</Button><Button variant="outline" onClick={()=>printRecord(viewingRecord)}><FileDown className="h-4 w-4"/>Gerar PDF</Button><Button variant="ghost" onClick={()=>setViewingRecord(null)}><X className="h-4 w-4"/>Fechar</Button></div>
+          </div>
+          <article className="space-y-5 pt-4 text-sm leading-relaxed">
+            <header className="border-b pb-4"><strong className="block text-lg">{viewingRecord.clinic_name}</strong><span>MWFSystem · Prontuário clínico</span></header>
+            <div className="grid gap-3 sm:grid-cols-2"><Detail label="Paciente" value={viewingRecord.patient_name}/><Detail label="Profissional" value={viewingRecord.employee_name}/><Detail label="Data e horário" value={new Date(viewingRecord.created_at).toLocaleString("pt-BR")}/><Detail label="Status" value={viewingRecord.status === "active" ? "Ativo" : viewingRecord.status === "reaberto" ? "Reaberto" : "Inativo"}/></div>
+            <RecordSection label="Título" value={viewingRecord.title}/><RecordSection label="Queixa" value={viewingRecord.complaint}/><RecordSection label="Histórico" value={viewingRecord.history}/><RecordSection label="Conduta" value={viewingRecord.conduct}/><RecordSection label="Evolução" value={viewingRecord.evolution}/><RecordSection label="Observações" value={viewingRecord.notes}/>
+            <footer className="border-t pt-5"><p>Profissional responsável: {viewingRecord.employee_name}</p><p className="mt-8 text-center text-xs text-muted-foreground">Documento emitido pelo MWFSystem</p></footer>
+          </article>
+        </Card>
+        <style jsx global>{`@media print{body.mwf-record-printing *{visibility:hidden!important}body.mwf-record-printing .medical-record-print-root,body.mwf-record-printing .medical-record-print-root *{visibility:visible!important}body.mwf-record-printing .medical-record-print-root{position:absolute;inset:0;width:100%;color:#111;background:#fff}}`}</style>
+      </div>:null}
+
       <div style={{ overflowX: "auto" }}>
-        <table style={{ borderCollapse: "collapse", width: "100%" }}>
+        <table style={{ borderCollapse: "collapse", width: "100%", minWidth:"900px" }}>
           <thead>
             <tr>
               {["Paciente", "Funcionario", "Titulo", "Observacoes", "Status", "Acoes"].map(
@@ -501,22 +535,25 @@ export function MedicalRecordsManager({
                     }}
                   >
                     <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "flex-end" }}>
-                      <button
+                      <Button type="button" variant="outline" onClick={()=>setViewingRecord(record)}><Eye className="h-4 w-4"/>Visualizar</Button>
+                      <Button type="button" variant="outline" onClick={()=>printRecord(record)}><Printer className="h-4 w-4"/>Imprimir</Button>
+                      <Button type="button" variant="outline" onClick={()=>printRecord(record)}><FileDown className="h-4 w-4"/>PDF</Button>
+                      {canEdit ? <button
                         type="button"
                         onClick={() => openEditForm(record)}
                         style={buttonStyle}
                       >
                         Editar
-                      </button>
-                      <button
+                      </button>:null}
+                      {canToggle ? <button
                         type="button"
                         disabled={isPending}
                         onClick={() => toggleRecordStatus(record)}
                         style={buttonStyle}
                       >
                         {record.status === "active" ? "Inativar" : "Ativar"}
-                      </button>
-                      <button
+                      </button>:null}
+                      {canDelete ? <button
                         type="button"
                         disabled={isPending}
                         onClick={() => handleDeleteRecord(record)}
@@ -527,7 +564,7 @@ export function MedicalRecordsManager({
                         }}
                       >
                         Excluir definitivo
-                      </button>
+                      </button>:null}
                     </div>
                   </td>
                 </tr>
@@ -545,3 +582,6 @@ export function MedicalRecordsManager({
     </div>
   );
 }
+
+function Detail({label,value}:{label:string;value:string}){return <div><span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</span><span className="font-medium">{value || "-"}</span></div>}
+function RecordSection({label,value}:{label:string;value:string|null}){return <section><h3 className="font-bold">{label}</h3><p className="mt-1 whitespace-pre-wrap">{value?.trim() || "Não informado."}</p></section>}

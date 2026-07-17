@@ -58,7 +58,7 @@ async function readSupabaseList<T>(
   }
 }
 
-export default async function AgendaPage({ searchParams }: { searchParams: Promise<{ patientId?: string; appointmentId?: string; new?: string }> }) {
+export default async function AgendaPage({ searchParams }: { searchParams: Promise<{ patientId?: string; appointmentId?: string; new?: string; type?: string }> }) {
   const params = await searchParams;
   const permissions = await getCurrentPermissionMap();
   const clinicScope = await getCurrentClinicScope();
@@ -282,6 +282,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
         initialPatientId={params.patientId ?? null}
         initialAppointmentId={params.appointmentId ?? null}
         initialOpenNew={params.new === "1"}
+        initialAppointmentType={params.type === "retorno" ? "retorno" : null}
         canReopen={canReopen}
       />
     </div>

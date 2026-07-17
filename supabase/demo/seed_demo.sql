@@ -247,7 +247,7 @@ select md5('MWF_DEMO_V1:participant:' || n)::uuid,
          else 'agendado' end,
        false, case when n <= 20 then 'pacote' else 'pendente' end,
        case when n <= 20 then 0 else (70 + (((n - 1) % 10) + 1) * 25)::numeric end,
-       0, 'DADO DE HOMOLOGAÃ‡ÃƒO MWFSystem | MWF_DEMO_V1', false
+       0, 'DADO DE HOMOLOGAÇÃO MWFSystem | MWF_DEMO_V1', false
 from generate_series(1, 150) n
 on conflict do nothing;
 
@@ -286,7 +286,7 @@ select md5('MWF_DEMO_V1:participant:group:' || appointment_number || ':' || pati
        md5('MWF_DEMO_V1:appointment:' || appointment_number)::uuid,
        md5('MWF_DEMO_V1:patient:' || patient_number)::uuid,
        'agendado', false, 'pendente', 150, 0,
-       'DADO DE HOMOLOGAÃ‡ÃƒO MWFSystem | MWF_DEMO_V1 | participante grupo V2', false
+       'DADO DE HOMOLOGAÇÃO MWFSystem | MWF_DEMO_V1 | participante grupo V2', false
 from (values
   (24, 1), (24, 2),
   (27, 25), (27, 26), (27, 28), (27, 29), (27, 30),
@@ -339,12 +339,12 @@ insert into public.patient_session_history(
    md5('MWF_DEMO_V1:patient:10')::uuid,md5('MWF_DEMO_V1:employee:4')::uuid,
    md5('MWF_DEMO_V1:service:4')::uuid,md5('MWF_DEMO_V1:appointment:64')::uuid,
    md5('MWF_DEMO_V1:participant:group:64:10')::uuid,current_date+33,'realizado',
-   'DADO DE HOMOLOGAÃ‡ÃƒO MWFSystem | MWF_DEMO_V1 | sessao individual consumida','not_applicable','generated','consumed'),
+   'DADO DE HOMOLOGAÇÃO MWFSystem | MWF_DEMO_V1 | sessão individual consumida','not_applicable','generated','consumed'),
   (md5('MWF_DEMO_V1:session:group:64:4')::uuid,md5('MWF_DEMO_V1:clinic:1')::uuid,
    md5('MWF_DEMO_V1:patient:4')::uuid,md5('MWF_DEMO_V1:employee:4')::uuid,
    md5('MWF_DEMO_V1:service:4')::uuid,md5('MWF_DEMO_V1:appointment:64')::uuid,
    md5('MWF_DEMO_V1:participant:group:64:4')::uuid,current_date+33,'reaberto',
-   'DADO DE HOMOLOGAÃ‡ÃƒO MWFSystem | MWF_DEMO_V1 | sessao individual devolvida','reverted','reverted','restored')
+   'DADO DE HOMOLOGAÇÃO MWFSystem | MWF_DEMO_V1 | sessão individual devolvida','reverted','reverted','restored')
 on conflict (id) do update set status=excluded.status,package_session_status=excluded.package_session_status;
 
 insert into public.medical_records(
@@ -354,12 +354,12 @@ insert into public.medical_records(
    md5('MWF_DEMO_V1:patient:10')::uuid,md5('MWF_DEMO_V1:employee:4')::uuid,
    md5('MWF_DEMO_V1:appointment:64')::uuid,md5('MWF_DEMO_V1:participant:group:64:10')::uuid,
    'DEMO â€” Evolucao individual do grupo','Evolucao ficticia de teste.',
-   'DADO DE HOMOLOGAÃ‡ÃƒO MWFSystem | MWF_DEMO_V1','active'),
+   'DADO DE HOMOLOGAÇÃO MWFSystem | MWF_DEMO_V1','active'),
   (md5('MWF_DEMO_V1:record:group:64:4')::uuid,md5('MWF_DEMO_V1:clinic:1')::uuid,
    md5('MWF_DEMO_V1:patient:4')::uuid,md5('MWF_DEMO_V1:employee:4')::uuid,
    md5('MWF_DEMO_V1:appointment:64')::uuid,md5('MWF_DEMO_V1:participant:group:64:4')::uuid,
    'DEMO â€” Evolucao reaberta do grupo','Registro ficticio reaberto.',
-   'DADO DE HOMOLOGAÃ‡ÃƒO MWFSystem | MWF_DEMO_V1','reaberto')
+   'DADO DE HOMOLOGAÇÃO MWFSystem | MWF_DEMO_V1','reaberto')
 on conflict (id) do update set status=excluded.status,updated_at=now();
 
 insert into public.schedule_blocks (

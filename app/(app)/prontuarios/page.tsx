@@ -7,11 +7,13 @@ import { PageHeader } from "@/components/page-header";
 import { createClient } from "@/lib/supabase/server";
 import { getErrorMessage } from "@/lib/supabase/env";
 import { getCurrentClinicScope } from "@/lib/access-control";
+import { getCurrentPermissionMap } from "@/lib/permissions";
 import type { Database } from "@/types/database";
 
 type MedicalRecord = Database["public"]["Tables"]["medical_records"]["Row"];
 type Patient = Database["public"]["Tables"]["patients"]["Row"];
 type Employee = Database["public"]["Tables"]["employees"]["Row"];
+type Clinic = Database["public"]["Tables"]["clinics"]["Row"];
 
 type ProntuariosPageProps = {
   searchParams: Promise<{
@@ -36,14 +38,18 @@ export default async function ProntuariosPage({
   let records: MedicalRecord[] = [];
   let patients: Patient[] = [];
   let employees: Employee[] = [];
+  let clinics: Clinic[] = [];
   let loadError: string | undefined;
   const clinicScope = await getCurrentClinicScope();
+  const permissions = await getCurrentPermissionMap();
 
   if (!clinicScope.isAdmMaster && !clinicScope.clinicId) {
     loadError = "Usuario sem clinica vinculada.";
   } else {
     try {
     const supabase = await createClient();
+    let clinicsQuery = supabase.from("clinics").select("*").order("name");
+    if (clinicScope.clinicId) clinicsQuery = clinicsQuery.eq("id",clinicScope.clinicId);
     let recordsQuery = supabase
       .from("medical_records")
       .select("*")
@@ -53,7 +59,9 @@ export default async function ProntuariosPage({
       recordsQuery = recordsQuery.eq("clinic_id", clinicScope.clinicId);
     }
 
-    const recordsResult = await recordsQuery;
+    const [recordsResult,clinicsResult] = await Promise.all([recordsQuery,clinicsQuery]);
+    clinics=clinicsResult.data ?? [];
+    if(clinicsResult.error) loadError=appendLoadError(loadError,clinicsResult.error);
 
     if (recordsResult.error) {
       loadError = appendLoadError(loadError, recordsResult.error);
@@ -105,6 +113,7 @@ export default async function ProntuariosPage({
   const employeesById = new Map(
     employees.map((employee) => [employee.id, employee.name])
   );
+  const clinicsById = new Map(clinics.map((clinic)=>[clinic.id,clinic.name]));
 
   const displayRecords = records
     .map((record) => ({
@@ -114,7 +123,8 @@ export default async function ProntuariosPage({
         : "-",
       employee_name: record.employee_id
         ? employeesById.get(record.employee_id) ?? "Funcionario nao encontrado"
-        : "-"
+        : "-",
+      clinic_name: record.clinic_id ? clinicsById.get(record.clinic_id) ?? "Clínica não encontrada" : "-"
     }))
     .filter((record) => {
       if (!search) {
@@ -151,6 +161,7 @@ export default async function ProntuariosPage({
         employees={employeeOptions}
         initialSearch={search}
         loadError={loadError}
+        permissions={permissions.prontuarios}
       />
     </div>
   );

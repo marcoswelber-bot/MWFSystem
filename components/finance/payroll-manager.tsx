@@ -312,8 +312,7 @@ export function PayrollManager({ entries, commissionTransactions, clinics, emplo
       {message ? <SystemMessage message={message} onClose={() => setMessage(null)} /> : null}
 
       <div className="flex flex-wrap gap-2 print:hidden">
-        {canCreate ? <Button type="button" onClick={openCreateForm}><Plus className="h-4 w-4" />Novo lançamento</Button> : null}
-        <Button type="button" variant="outline" onClick={openCreateForm}>Gerar folha do mês</Button>
+        {canCreate ? <Button type="button" onClick={openCreateForm}><Plus className="h-4 w-4" />Novo lançamento da folha</Button> : null}
         <Button type="button" onClick={openSelectedPayments} disabled={selectedEmployeeIds.length === 0 || selectedOpen <= 0}>Pagar selecionados</Button>
         <Button type="button" variant="outline" onClick={() => selectedEmployeeIds.length === 1 && setPayslipEmployeeId(selectedEmployeeIds[0])} disabled={selectedEmployeeIds.length !== 1}>Ver contracheques</Button>
         <div className="relative">
@@ -321,6 +320,10 @@ export function PayrollManager({ entries, commissionTransactions, clinics, emplo
           {moreOptionsOpen ? <div className="absolute right-0 z-20 mt-2 grid min-w-52 gap-1 rounded-md border bg-card p-2 shadow-xl"><Button type="button" variant="ghost" onClick={() => router.push("/financeiro/baixas")}>Baixas e Repasses</Button><Button type="button" variant="ghost" onClick={() => router.push("/financeiro")}>Voltar ao Financeiro</Button><Button type="button" variant="ghost" onClick={() => window.print()}><Printer className="h-4 w-4" />Imprimir</Button></div> : null}
         </div>
       </div>
+
+      <Card className="border-amber-200 bg-amber-50/70 p-4 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100 print:hidden">
+        A geração automática mensal ainda não está disponível porque o cadastro atual não possui salário, benefícios, descontos e encargos recorrentes configuráveis por funcionário. Use <strong>Novo lançamento da folha</strong> para registrar cada verba manualmente, sem risco de gerar despesas duplicadas.
+      </Card>
 
       <section className="grid gap-3 md:grid-cols-3 print:hidden">
         <MetricCard label="Total líquido" value={money(net)} icon={FileText} />

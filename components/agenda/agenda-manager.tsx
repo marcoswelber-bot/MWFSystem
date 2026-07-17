@@ -108,6 +108,7 @@ type AgendaManagerProps = {
   initialPatientId?: string | null;
   initialAppointmentId?: string | null;
   initialOpenNew?: boolean;
+  initialAppointmentType?: AppointmentType | null;
   canReopen?: boolean;
 };
 
@@ -206,11 +207,11 @@ const statusStyles: Record<
   },
   confirmado: {
     label: "Confirmada",
-    chip: "bg-blue-100 text-blue-800 ring-1 ring-blue-200 dark:bg-blue-950 dark:text-blue-100 dark:ring-blue-800",
-    border: "border-blue-500",
-    surface: "bg-gradient-to-br from-blue-50 via-white to-blue-100/70 dark:from-blue-950/80 dark:via-slate-950 dark:to-blue-950/50",
-    text: "text-blue-950 dark:text-blue-50",
-    dot: "bg-blue-500"
+    chip: "bg-green-100 text-green-800 ring-1 ring-green-200 dark:bg-green-950 dark:text-green-100 dark:ring-green-800",
+    border: "border-green-500",
+    surface: "bg-gradient-to-br from-green-50 via-white to-green-100/70 dark:from-green-950/80 dark:via-slate-950 dark:to-green-950/50",
+    text: "text-green-950 dark:text-green-50",
+    dot: "bg-green-500"
   },
   em_andamento: {
     label: "Em andamento",
@@ -253,6 +254,42 @@ const statusStyles: Record<
     dot: "bg-zinc-400"
   }
 };
+
+function getAppointmentStyle(appointment: Appointment) {
+  const visualStatus = getVisualStatus(appointment);
+  if (visualStatus === "faltou" || visualStatus === "cancelado" || visualStatus === "realizado") {
+    return statusStyles[visualStatus];
+  }
+
+  const type = getAppointmentType(appointment);
+  if (type === "cortesia" || type === "experimental") {
+    return {
+      ...statusStyles[visualStatus],
+      chip: "bg-purple-100 text-purple-800 ring-1 ring-purple-200 dark:bg-purple-950 dark:text-purple-100 dark:ring-purple-800",
+      border: "border-purple-500",
+      surface: "bg-purple-50 dark:bg-purple-950/40",
+      dot: "bg-purple-500"
+    };
+  }
+  if (type === "reposicao" || type === "reposicao_extra") {
+    return {
+      ...statusStyles[visualStatus],
+      chip: "bg-violet-100 text-violet-800 ring-1 ring-violet-200 dark:bg-violet-950 dark:text-violet-100 dark:ring-violet-800",
+      border: "border-violet-500",
+      surface: "bg-violet-50 dark:bg-violet-950/40",
+      dot: "bg-violet-500"
+    };
+  }
+  if (appointment.is_billable && appointment.finance_integration_status !== "completed") {
+    return {
+      ...statusStyles[visualStatus],
+      border: "border-amber-500",
+      surface: "bg-amber-50 dark:bg-amber-950/40",
+      dot: "bg-amber-500"
+    };
+  }
+  return statusStyles[visualStatus];
+}
 
 const emptyAppointmentForm: AppointmentFormInput = {
   clinic_id: "",
@@ -712,6 +749,7 @@ export function AgendaManager({
   initialPatientId,
   initialAppointmentId,
   initialOpenNew,
+  initialAppointmentType,
   canReopen
 }: AgendaManagerProps) {
   const router = useRouter();
@@ -906,11 +944,22 @@ export function AgendaManager({
     if (selected) {
       setSelectedAppointment(selected);
     } else if (initialOpenNew && initialPatientId) {
+      const responsibleEmployeeId = appointments
+        .filter((item) => item.patient_ids.includes(initialPatientId))
+        .sort((a, b) => `${b.appointment_date} ${b.start_time}`.localeCompare(`${a.appointment_date} ${a.start_time}`))[0]?.employee_id ?? "";
       setEditingAppointment(null);
-      setAppointmentForm((current) => ({ ...current, patient_id: initialPatientId, patient_ids: [initialPatientId], clinic_id: currentClinicId ?? "" }));
+      setAppointmentForm({
+        ...emptyAppointmentForm,
+        patient_id: initialPatientId,
+        patient_ids: [initialPatientId],
+        clinic_id: currentClinicId ?? "",
+        employee_id: responsibleEmployeeId,
+        appointment_type: initialAppointmentType ?? "avulso",
+        appointment_origin: initialAppointmentType ?? "avulso"
+      });
       setAppointmentFormOpen(true);
     }
-  }, [initialAppointmentId, initialOpenNew, initialPatientId, appointments, currentClinicId]);
+  }, [initialAppointmentId, initialOpenNew, initialPatientId, initialAppointmentType, appointments, currentClinicId]);
 
   React.useEffect(() => {
     setSelectedAppointment((current) => {
@@ -1661,7 +1710,7 @@ function DayTimeline({
         {appointments.length ? (
           <div className="grid gap-2">
             {appointments.map((appointment) => {
-              const appointmentStyle = statusStyles[getVisualStatus(appointment)];
+              const appointmentStyle = getAppointmentStyle(appointment);
               return (
                 <article key={appointment.id} role="button" tabIndex={0} onClick={() => onEdit(appointment)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onEdit(appointment); }} className={cn("cursor-pointer rounded-xl border border-slate-200/70 border-l-4 p-3.5 shadow-[0_8px_24px_rgba(15,23,42,0.08)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_32px_rgba(15,23,42,0.14)] dark:border-slate-800", appointmentStyle.border, appointmentStyle.surface)}>
                   <div className="flex items-start justify-between gap-2">
@@ -1854,10 +1903,9 @@ function TimelineAppointment({
   onUndoAbsence: () => void;
   onRestoreCancelled: () => void;
 }) {
-  const visualStatus = getVisualStatus(appointment);
   const availableActions = getAppointmentAvailableActions(appointment, { canEdit, canAdminCorrect });
   const primaryAction = getPrimaryAppointmentAction(availableActions);
-  const style = statusStyles[visualStatus];
+  const style = getAppointmentStyle(appointment);
   const sessionsContracted = appointment.sessions_contracted ?? 1;
   const sessionsCompleted = appointment.sessions_completed ?? 0;
   const sessionsRemaining = Math.max(sessionsContracted - sessionsCompleted, 0);
@@ -1918,6 +1966,9 @@ function TimelineAppointment({
             Origem: {appointmentOriginLabels[appointmentOrigin]}
           </span>
         </div>
+        {appointment.service_is_group || appointmentType === "grupo" ? (
+          <GroupStatusSummary appointment={appointment} />
+        ) : null}
         {appointment.original_appointment_label ? (
           <p className="truncate text-[11px] text-muted-foreground">
             Original: {appointment.original_appointment_label}
@@ -2050,7 +2101,7 @@ function MonthGrid({
                   </span>
                 ))}
                 {dayAppointments.slice(0, 3).map((appointment) => {
-                  const style = statusStyles[getVisualStatus(appointment)];
+                  const style = getAppointmentStyle(appointment);
                   return (
                     <span
                       key={appointment.id}
@@ -2255,7 +2306,7 @@ function AppointmentSummary({
   onUndoAbsence?: () => void;
   onRestoreCancelled?: () => void;
 }) {
-  const style = statusStyles[getVisualStatus(appointment)];
+  const style = getAppointmentStyle(appointment);
   const availableActions = getAppointmentAvailableActions(appointment, { canEdit, canAdminCorrect });
   const primaryAction = getPrimaryAppointmentAction(availableActions);
   const appointmentType = getAppointmentType(appointment);
@@ -2323,6 +2374,23 @@ function MiniStat({ label, value }: { label: string; value: number }) {
     <div className="rounded-md bg-background/70 px-2 py-1">
       <strong>{value}</strong>
       <span className="block text-muted-foreground">{label}</span>
+    </div>
+  );
+}
+
+function GroupStatusSummary({ appointment }: { appointment: Appointment }) {
+  const participants = appointment.participant_details;
+  const count = (status: string) => participants.filter((participant) => participant.status === status).length;
+  const total = participants.length;
+  const capacity = appointment.participant_limit ?? total;
+  return (
+    <div className="flex flex-wrap gap-1 text-[10px] font-semibold" aria-label="Resumo dos participantes do grupo">
+      <span className="rounded bg-cyan-100 px-1.5 py-0.5 text-cyan-900 dark:bg-cyan-950 dark:text-cyan-100">Grupo {total}/{capacity}</span>
+      <span className="rounded bg-green-100 px-1.5 py-0.5 text-green-900 dark:bg-green-950 dark:text-green-100">Conf. {count("confirmado")}</span>
+      <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">Real. {count("realizado")}</span>
+      <span className="rounded bg-red-100 px-1.5 py-0.5 text-red-900 dark:bg-red-950 dark:text-red-100">Faltas {count("faltou")}</span>
+      <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100">Canc. {count("cancelado")}</span>
+      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-900 dark:bg-slate-800 dark:text-slate-100">Vagas {Math.max(capacity - total, 0)}</span>
     </div>
   );
 }

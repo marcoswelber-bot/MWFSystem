@@ -427,7 +427,7 @@ export function OperationalReport({
         </Card>
       ) : null}
 
-      <div className="grid gap-3 md:grid-cols-4 xl:grid-cols-8">
+      <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
         <MetricCard icon={CalendarClock} label="Total de atendimentos" value={totals.total} />
         <MetricCard icon={UserCheck} label="Realizados" value={totals.realized} />
         <MetricCard icon={CalendarClock} label="Pendentes" value={totals.pending} />
@@ -443,7 +443,7 @@ export function OperationalReport({
       </div>
 
       <Card className="report-screen-only border-none p-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
-        <div className="grid gap-3 md:grid-cols-4 xl:grid-cols-8">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
           <label className="space-y-1 text-sm xl:col-span-2">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Pesquisa
@@ -528,7 +528,25 @@ export function OperationalReport({
         </div>
       </Card>
 
-      <Card className="overflow-hidden border-none shadow-[0_18px_55px_rgba(15,23,42,0.08)] dark:shadow-none">
+      <div className="grid gap-3 md:hidden">
+        {visibleRows.map((row) => (
+          <Card key={row.id} className="grid min-w-0 gap-3 p-4">
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0"><strong className="block truncate">{row.patientName}</strong><span className="text-sm text-muted-foreground">{formatDate(row.appointmentDate)} · {shortTime(row.startTime)}–{shortTime(row.endTime)}</span></div>
+              <span className={cn("shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold", statusClass(row.status))}>{titleCaseStatus(row.status)}</span>
+            </div>
+            <dl className="grid min-w-0 grid-cols-2 gap-2 text-sm">
+              <div className="min-w-0"><dt className="text-xs text-muted-foreground">Serviço</dt><dd className="truncate">{row.serviceName}</dd></div>
+              <div className="min-w-0"><dt className="text-xs text-muted-foreground">Profissional</dt><dd className="truncate">{row.employeeName}</dd></div>
+              <div className="min-w-0"><dt className="text-xs text-muted-foreground">Tipo</dt><dd className="truncate">{typeLabel(row.type)}</dd></div>
+              <div className="min-w-0"><dt className="text-xs text-muted-foreground">Clínica</dt><dd className="truncate">{row.clinicName}</dd></div>
+            </dl>
+            {row.participantCount > 1 ? <p className="text-xs text-muted-foreground">{row.participantCount} participantes · {Object.entries(row.participantStatusCounts).map(([participantStatus, count]) => `${participantStatus}: ${count}`).join(" · ")}</p> : null}
+          </Card>
+        ))}
+      </div>
+
+      <Card className="hidden overflow-hidden border-none shadow-[0_18px_55px_rgba(15,23,42,0.08)] dark:shadow-none md:block">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1180px] text-sm">
             <thead className="bg-muted/70 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -608,10 +626,10 @@ function MetricCard({
     <Card className="report-metric-card border-none p-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <p className="min-h-8 text-xs font-medium uppercase leading-4 tracking-wide text-muted-foreground">
             {label}
           </p>
-          <p className="mt-2 text-2xl font-bold">{value}</p>
+          <p className="mt-2 whitespace-nowrap text-2xl font-bold tabular-nums">{value}</p>
         </div>
         <div className="report-metric-icon rounded-lg bg-primary/10 p-2 text-primary">
           <Icon className="h-5 w-5" />

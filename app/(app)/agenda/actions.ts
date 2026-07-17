@@ -315,6 +315,27 @@ function getAppointmentPayload(input: AppointmentFormInput): AppointmentInsert {
   };
 }
 
+async function applyZeroChargeAuthorization(payload: AppointmentInsert | AppointmentUpdate) {
+  const isCourtesy = payload.appointment_type === "cortesia" || payload.appointment_origin === "cortesia";
+  if (!isCourtesy) return;
+
+  if (!(await canReopenAppointments())) {
+    throw new Error("Somente administradores autorizados podem cadastrar cortesia.");
+  }
+  const reason = cleanOptionalValue(payload.notes ?? undefined);
+  if (!reason) {
+    throw new Error("Informe o motivo da cortesia nas observações.");
+  }
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const auditMarker = "[CORTESIA AUTORIZADA";
+  if (!reason.includes(auditMarker)) {
+    payload.notes = `${reason}\n${auditMarker} em ${new Date().toISOString()} por ${user?.email ?? "usuário autenticado"}]`;
+  }
+  payload.is_billable = false;
+}
+
 function getBlockPayload(input: ScheduleBlockFormInput): ScheduleBlockInsert {
   assertRequired(input.block_date, "Informe a data do bloqueio.");
 
@@ -722,6 +743,7 @@ export async function createAppointment(
     await assertCan("agenda", "create");
     const supabase = await createClient();
     const payload = getAppointmentPayload(input);
+    await applyZeroChargeAuthorization(payload);
     const patientIds = cleanPatientIds(input);
     payload.clinic_id = await resolveClinicId(input.clinic_id);
     payload.status = "agendado";
@@ -760,6 +782,7 @@ export async function updateAppointment(
     await assertCan("agenda", "edit");
     const supabase = await createClient();
     const payload = getAppointmentPayload(input) satisfies AppointmentUpdate;
+    await applyZeroChargeAuthorization(payload);
     const patientIds = cleanPatientIds(input);
     payload.clinic_id = await resolveClinicId(input.clinic_id);
     delete payload.status;

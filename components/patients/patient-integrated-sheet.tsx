@@ -451,7 +451,7 @@ export function PatientIntegratedSheet({
         {field("Total pago", money(totalPaid))}
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-        <button type="button" onClick={() => onNavigate("/agenda?patientId=" + patient.id + "&new=1")} style={primaryButtonStyle}>Agendar retorno</button>
+        <button type="button" onClick={() => onNavigate("/agenda?patientId=" + patient.id + "&new=1&type=retorno")} style={primaryButtonStyle}>Agendar retorno</button>
         <button type="button" onClick={() => onNavigate("/financeiro/baixas?patientId=" + patient.id)} style={primaryButtonStyle}>Receber</button>
         <button type="button" onClick={() => whatsappHref && window.open(whatsappHref + "?text=" + encodeURIComponent(billingMessage), "_blank")} disabled={!whatsappHref || totalOpen <= 0} style={buttonStyle}>Cobrar via WhatsApp</button>
         <button type="button" onClick={printCurrentView} style={buttonStyle}>Imprimir ficha</button>
