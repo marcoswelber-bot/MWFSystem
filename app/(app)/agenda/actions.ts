@@ -71,6 +71,17 @@ export type AppointmentFormInput = {
 };
 
 export type AppointmentBillingStatus = "pago" | "em_aberto" | "parcial" | "cortesia";
+export type GroupParticipantStatus = "agendado" | "confirmado" | "realizado" | "faltou" | "cancelado";
+
+export type GroupParticipantBillingInput = {
+  participant_id: string;
+  patient_package_id?: string;
+  billing_status?: "pendente" | "pago" | "vencido" | "parcial" | "cortesia";
+  payment_method?: "pix" | "dinheiro" | "cartao" | "boleto" | "parcelado" | "transferencia" | "outro";
+  amount_due?: string;
+  amount_paid?: string;
+  notes?: string;
+};
 
 export type FinalizeAppointmentBillingInput = {
   appointment_id: string;
@@ -459,7 +470,7 @@ async function assertNoAppointmentConflict(
   });
 
   if (conflictingBlock) {
-    throw new Error("Nï¿½o ï¿½ possï¿½vel agendar: horï¿½rio bloqueado.");
+    throw new Error("Não é possível agendar: horário bloqueado.");
   }
 }
 
@@ -529,18 +540,39 @@ async function syncAppointmentParticipants(
   patientIds: string[]
 ) {
   const supabase = await createClient();
-  const { error: deleteError } = await supabase
+  const { data: existing, error: existingError } = await supabase
     .from("appointment_participants")
-    .delete()
+    .select("id,patient_id,status,package_session_consumed,financial_transaction_id,commission_id")
     .eq("appointment_id", appointmentId);
 
-  if (deleteError) {
-    throw deleteError;
+  if (existingError) throw existingError;
+  const desired = new Set(patientIds);
+  const removed = (existing ?? []).filter((participant) => !desired.has(participant.patient_id));
+  const protectedParticipant = removed.find((participant) =>
+    participant.status === "realizado" || participant.package_session_consumed ||
+    participant.financial_transaction_id || participant.commission_id
+  );
+  if (protectedParticipant) {
+    throw new Error("Reabra e reverta o participante finalizado antes de removê-lo do grupo.");
+  }
+  const removedIds = removed.map((participant) => participant.id);
+  if (removedIds.length > 0) {
+    const { error: deleteError } = await supabase
+      .from("appointment_participants").delete().in("id", removedIds);
+    if (deleteError) throw deleteError;
   }
 
-  const rows: AppointmentParticipantInsert[] = patientIds.map((patientId) => ({
+  const existingPatients = new Set((existing ?? []).map((participant) => participant.patient_id));
+  const rows: AppointmentParticipantInsert[] = patientIds
+    .filter((patientId) => !existingPatients.has(patientId))
+    .map((patientId) => ({
     appointment_id: appointmentId,
-    patient_id: patientId
+    patient_id: patientId,
+    status: "agendado",
+    package_session_consumed: false,
+    billing_status: "pendente",
+    amount_paid: 0,
+    legacy_aggregate: false
   }));
 
   if (rows.length === 0) {
@@ -765,7 +797,7 @@ export async function finalizeAppointmentBilling(
 ): Promise<AgendaActionResult> {
   try {
     await assertCan("agenda", "edit");
-    assertRequired(input.appointment_id, "Atendimento obrigatï¿½rio.");
+    assertRequired(input.appointment_id, "Atendimento obrigatório.");
     const supabase = await createClient();
     const { data: appointment, error: appointmentError } = await supabase
       .from("appointments")
@@ -777,6 +809,9 @@ export async function finalizeAppointmentBilling(
       return { ok: false, message: getErrorMessage(appointmentError) };
     }
 
+    if (appointment.appointment_type === "grupo" || appointment.appointment_origin === "grupo") {
+      return { ok: false, message: "Finalize os participantes individualmente ou use Finalizar presentes." };
+    }
     if (appointment.status === "realizado") {
       return { ok: false, message: "Este atendimento já foi finalizado." };
     }
@@ -910,6 +945,10 @@ export async function restoreAppointmentOperationalStatus(
       return { ok: false, message: getErrorMessage(appointmentError) };
     }
 
+    if (appointment.appointment_type === "grupo" || appointment.appointment_origin === "grupo") {
+      return { ok: false, message: "Restaure o participante individualmente no detalhe do grupo." };
+    }
+
     if (appointment.status !== expectedStatus) {
       return {
         ok: false,
@@ -976,6 +1015,13 @@ export async function setAppointmentStatus(
     await assertCan("agenda", "edit");
     const supabase = await createClient();
 
+    const { data: currentAppointment, error: currentAppointmentError } = await supabase
+      .from("appointments").select("appointment_type,appointment_origin").eq("id", id).single();
+    if (currentAppointmentError) return { ok: false, message: getErrorMessage(currentAppointmentError) };
+    if (currentAppointment.appointment_type === "grupo" || currentAppointment.appointment_origin === "grupo") {
+      return { ok: false, message: "Use as ações individuais ou em lote do detalhe do grupo." };
+    }
+
     if (status === "realizado") {
       const { data: appointment, error: appointmentError } = await supabase
         .from("appointments")
@@ -1026,6 +1072,128 @@ export async function deleteAppointment(id: string): Promise<AgendaActionResult>
 
     revalidatePath("/agenda");
     return { ok: true, message: "Agendamento excluido." };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
+}
+
+function revalidateGroupParticipantPaths() {
+  revalidatePath("/agenda");
+  revalidatePath("/pacientes");
+  revalidatePath("/pacotes");
+  revalidatePath("/financeiro");
+  revalidatePath("/comissoes");
+  revalidatePath("/prontuarios");
+  revalidatePath("/relatorios");
+  revalidatePath("/dashboard");
+}
+
+export async function setGroupParticipantStatus(
+  participantId: string,
+  status: Exclude<GroupParticipantStatus, "realizado">,
+  notes?: string
+): Promise<AgendaActionResult> {
+  try {
+    await assertCan("agenda", "edit");
+    const supabase = await createClient();
+    const { error } = await supabase.rpc("set_group_participant_status", {
+      p_participant_id: participantId,
+      p_status: status,
+      p_notes: cleanOptionalValue(notes)
+    });
+    if (error) throw error;
+    revalidateGroupParticipantPaths();
+    return { ok: true, message: "Participante atualizado sem alterar os demais." };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
+}
+
+export async function configureGroupParticipant(
+  input: GroupParticipantBillingInput
+): Promise<AgendaActionResult> {
+  try {
+    await assertCan("agenda", "edit");
+    const supabase = await createClient();
+    const { error } = await supabase.rpc("configure_group_participant", {
+      p_participant_id: input.participant_id,
+      p_patient_package_id: cleanOptionalValue(input.patient_package_id),
+      p_billing_status: input.patient_package_id ? "pacote" : input.billing_status ?? "pendente",
+      p_payment_method: cleanOptionalValue(input.payment_method),
+      p_amount_due: cleanMoney(input.amount_due),
+      p_amount_paid: cleanMoney(input.amount_paid),
+      p_notes: cleanOptionalValue(input.notes)
+    });
+    if (error) throw error;
+    revalidateGroupParticipantPaths();
+    return { ok: true, message: "Pacote e cobrança do participante atualizados." };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
+}
+
+export async function finalizeGroupParticipant(participantId: string): Promise<AgendaActionResult> {
+  try {
+    await assertCan("agenda", "edit");
+    const supabase = await createClient();
+    const { error } = await supabase.rpc("finalize_group_participant", {
+      p_participant_id: participantId
+    });
+    if (error) throw error;
+    revalidateGroupParticipantPaths();
+    return { ok: true, message: "Participante finalizado individualmente." };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
+}
+
+export async function reopenGroupParticipant(
+  participantId: string,
+  reason: string
+): Promise<AgendaActionResult> {
+  try {
+    await assertCan("agenda", "edit");
+    if (!reason.trim()) throw new Error("Informe o motivo da reabertura.");
+    const supabase = await createClient();
+    const { error } = await supabase.rpc("reopen_group_participant", {
+      p_participant_id: participantId,
+      p_reason: reason.trim()
+    });
+    if (error) throw error;
+    revalidateGroupParticipantPaths();
+    return { ok: true, message: "Participante reaberto e efeitos individuais revertidos." };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
+}
+
+export async function updateGroupParticipantsInBatch(
+  appointmentId: string,
+  action: "confirm_all" | "finalize_present" | "cancel_all"
+): Promise<AgendaActionResult> {
+  try {
+    await assertCan("agenda", "edit");
+    const supabase = await createClient();
+    const { data: participants, error } = await supabase.from("appointment_participants")
+      .select("id,status").eq("appointment_id", appointmentId);
+    if (error) throw error;
+    const targets = (participants ?? []).filter((participant) => {
+      if (action === "confirm_all") return participant.status === "agendado";
+      if (action === "finalize_present") return ["agendado", "confirmado"].includes(participant.status ?? "");
+      return !["realizado", "cancelado"].includes(participant.status ?? "");
+    });
+    for (const participant of targets) {
+      const result = action === "finalize_present"
+        ? await supabase.rpc("finalize_group_participant", { p_participant_id: participant.id })
+        : await supabase.rpc("set_group_participant_status", {
+            p_participant_id: participant.id,
+            p_status: action === "confirm_all" ? "confirmado" : "cancelado",
+            p_notes: action === "cancel_all" ? "Cancelamento em lote do grupo." : null
+          });
+      if (result.error) throw result.error;
+    }
+    revalidateGroupParticipantPaths();
+    return { ok: true, message: `${targets.length} participante(s) atualizado(s).` };
   } catch (error) {
     return { ok: false, message: getErrorMessage(error) };
   }

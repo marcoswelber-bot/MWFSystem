@@ -11,6 +11,7 @@ type Appointment = Database["public"]["Tables"]["appointments"]["Row"] & {
   patient_name: string;
   patient_names: string[];
   patient_ids: string[];
+  participant_details: Database["public"]["Tables"]["appointment_participants"]["Row"][];
   employee_name: string;
   service_name: string;
   service_is_group: boolean;
@@ -216,6 +217,12 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
     },
     new Map<string, string[]>()
   );
+  const participantDetailsByAppointmentId = rawParticipants.reduce((accumulator, participant) => {
+    const current = accumulator.get(participant.appointment_id) ?? [];
+    current.push(participant);
+    accumulator.set(participant.appointment_id, current);
+    return accumulator;
+  }, new Map<string, Database["public"]["Tables"]["appointment_participants"]["Row"][]>());
   const rawAppointmentsById = new Map(
     rawAppointments.map((appointment) => [appointment.id, appointment])
   );
@@ -224,6 +231,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
     ...appointment,
     patient_ids:
       participantsByAppointmentId.get(appointment.id) ?? [appointment.patient_id],
+    participant_details: participantDetailsByAppointmentId.get(appointment.id) ?? [],
     patient_names: (
       participantsByAppointmentId.get(appointment.id) ?? [appointment.patient_id]
     ).map((patientId) => patientsById.get(patientId) ?? "Paciente nao encontrado"),

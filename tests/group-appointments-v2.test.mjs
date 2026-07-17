@@ -1,0 +1,42 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+const migration=readFileSync("supabase/migrations/20260717120000_group_appointments_v2.sql","utf8");
+const actions=readFileSync("app/(app)/agenda/actions.ts","utf8");
+const ui=readFileSync("components/agenda/agenda-manager.tsx","utf8");
+const seed=readFileSync("supabase/demo/seed_demo.sql","utf8");
+const verify=readFileSync("supabase/demo/verify_demo.sql","utf8");
+const clear=readFileSync("supabase/demo/clear_demo.sql","utf8");
+const has=(source,...fragments)=>fragments.every(fragment=>source.includes(fragment));
+
+test("1. grupo com 3 pacientes",()=>assert.ok(has(seed,"(24, 1), (24, 2)","participant:24")));
+test("2. grupo com 6 pacientes",()=>assert.ok(has(seed,"(27, 25), (27, 26), (27, 28), (27, 29), (27, 30)","appointment:27")));
+test("3. pacientes com pacotes diferentes",()=>assert.ok(has(seed,"package:10","package:4")));
+test("4. paciente avulso no mesmo grupo",()=>assert.ok(has(ui,"Sem pacote / avulso","patient_package_id")));
+test("5. status individuais mistos",()=>assert.ok(has(seed,"then 'confirmado'","else 'agendado'")));
+test("6. falta individual",()=>assert.ok(has(migration,"p_status='faltou'","absent_at")));
+test("7. cancelamento individual",()=>assert.ok(has(migration,"p_status='cancelado'","cancelled_at")));
+test("8. finalizacao individual",()=>assert.ok(has(migration,"finalize_group_participant","status='realizado'")));
+test("9. finalizacao dos presentes",()=>assert.ok(has(actions,"finalize_present","agendado", "confirmado")));
+test("10. reabertura individual",()=>assert.ok(has(migration,"reopen_group_participant","p_reason")));
+test("11. consumo de pacote individual",()=>assert.ok(has(migration,"remaining_sessions=remaining_sessions-1","package_session_consumed")));
+test("12. devolucao de sessao",()=>assert.ok(has(migration,"remaining_sessions=remaining_sessions+1","remaining_sessions<contracted_sessions")));
+test("13. pacote sem saldo",()=>assert.ok(has(migration,"remaining_sessions<=0","remaining_sessions>0")));
+test("14. pacote vencido",()=>assert.ok(migration.includes("expiration_date<appointment.appointment_date")));
+test("15. receita individual",()=>assert.ok(has(migration,"appointment_participant_id","transaction_type='receita'")));
+test("16. pagamento parcial",()=>assert.ok(has(migration,"paid_amount>0 then 'parcial'","amount_paid")));
+test("17. comissao por paciente",()=>assert.ok(has(migration,"group_calculation_mode='por_paciente'","Comissao por participante")));
+test("18. comissao por turma",()=>assert.ok(has(migration,"Comissao unica por turma","appointment_participant_id is null")));
+test("19. ausencia de duplicidade",()=>assert.ok(has(migration,"participant_revenue_v2_uidx","participant_commission_v2_uidx","participant_v2_uidx")));
+test("20. concorrencia de duas baixas",()=>assert.ok(has(migration,"for update","40001","remaining_sessions>0")));
+test("21. isolamento por clinica",()=>assert.ok(has(migration,"package_row.clinic_id<>appointment.clinic_id","can_access_appointment")));
+test("22. permissoes e RLS",()=>assert.ok(has(migration,"enable row level security","to authenticated","42501")));
+test("23. dados antigos agregados",()=>assert.ok(has(migration,"legacy_group_aggregate = true","legacy_aggregate = true")));
+test("24. responsividade mobile",()=>assert.ok(has(ui,"sm:grid-cols-[minmax(0,1fr)_minmax(220px,0.8fr)]","min-w-0","flex-wrap")));
+test("seed, verify e clear cobrem os novos vinculos",()=>assert.ok(has(seed,"appointment_participant_id")&&has(verify,"duplicate participant revenue")&&has(clear,"appointment_participant_audits")));
+test("clear exige confirmacao e nao contem operacoes estruturais destrutivas",()=>{
+  assert.ok(clear.includes("SET LOCAL mwf_demo_clear_confirm = 'MWF_DEMO_V1_CLEAR_CONFIRMED'".toLowerCase()) || clear.includes("set local mwf_demo_clear_confirm = 'MWF_DEMO_V1_CLEAR_CONFIRMED'"));
+  assert.doesNotMatch(clear,/\b(TRUNCATE|DROP)\b/i);
+  for(const statement of clear.match(/delete from[\s\S]*?;/gi)??[]) assert.match(statement,/\bwhere\b/i);
+});

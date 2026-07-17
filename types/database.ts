@@ -77,6 +77,8 @@ export type Database = {
           base_amount: number | null;
           commission_type: string | null;
           commission_rule_id: string | null;
+          appointment_participant_id: string | null;
+          legacy_group_aggregate: boolean;
           status: string;
           notes: string | null;
           future_agenda_source_id: string | null;
@@ -107,6 +109,8 @@ export type Database = {
           base_amount?: number | null;
           commission_type?: string | null;
           commission_rule_id?: string | null;
+          appointment_participant_id?: string | null;
+          legacy_group_aggregate?: boolean;
           status?: string;
           notes?: string | null;
           future_agenda_source_id?: string | null;
@@ -137,6 +141,8 @@ export type Database = {
           base_amount?: number | null;
           commission_type?: string | null;
           commission_rule_id?: string | null;
+          appointment_participant_id?: string | null;
+          legacy_group_aggregate?: boolean;
           status?: string;
           notes?: string | null;
           future_agenda_source_id?: string | null;
@@ -1350,19 +1356,70 @@ export type Database = {
           id: string;
           appointment_id: string;
           patient_id: string;
+          status: string | null;
+          patient_package_id: string | null;
+          package_session_consumed: boolean | null;
+          billing_status: string | null;
+          payment_method: string | null;
+          amount_due: number | null;
+          amount_paid: number | null;
+          confirmed_at: string | null;
+          finalized_at: string | null;
+          cancelled_at: string | null;
+          absent_at: string | null;
+          reopened_at: string | null;
+          notes: string | null;
+          financial_transaction_id: string | null;
+          commission_id: string | null;
+          legacy_aggregate: boolean;
           created_at: string;
+          updated_at: string;
         };
         Insert: {
           id?: string;
           appointment_id: string;
           patient_id: string;
+          status?: string | null;
+          patient_package_id?: string | null;
+          package_session_consumed?: boolean | null;
+          billing_status?: string | null;
+          payment_method?: string | null;
+          amount_due?: number | null;
+          amount_paid?: number | null;
+          confirmed_at?: string | null;
+          finalized_at?: string | null;
+          cancelled_at?: string | null;
+          absent_at?: string | null;
+          reopened_at?: string | null;
+          notes?: string | null;
+          financial_transaction_id?: string | null;
+          commission_id?: string | null;
+          legacy_aggregate?: boolean;
           created_at?: string;
+          updated_at?: string;
         };
         Update: {
           id?: string;
           appointment_id?: string;
           patient_id?: string;
+          status?: string | null;
+          patient_package_id?: string | null;
+          package_session_consumed?: boolean | null;
+          billing_status?: string | null;
+          payment_method?: string | null;
+          amount_due?: number | null;
+          amount_paid?: number | null;
+          confirmed_at?: string | null;
+          finalized_at?: string | null;
+          cancelled_at?: string | null;
+          absent_at?: string | null;
+          reopened_at?: string | null;
+          notes?: string | null;
+          financial_transaction_id?: string | null;
+          commission_id?: string | null;
+          legacy_aggregate?: boolean;
           created_at?: string;
+          updated_at?: string;
         };
         Relationships: [];
       };
@@ -1416,6 +1473,7 @@ export type Database = {
           employee_id: string | null;
           service_id: string | null;
           appointment_id: string | null;
+          appointment_participant_id: string | null;
           session_date: string;
           status: string;
           notes: string | null;
@@ -1431,6 +1489,7 @@ export type Database = {
           employee_id?: string | null;
           service_id?: string | null;
           appointment_id?: string | null;
+          appointment_participant_id?: string | null;
           session_date: string;
           status?: string;
           notes?: string | null;
@@ -1446,6 +1505,7 @@ export type Database = {
           employee_id?: string | null;
           service_id?: string | null;
           appointment_id?: string | null;
+          appointment_participant_id?: string | null;
           session_date?: string;
           status?: string;
           notes?: string | null;
@@ -1461,6 +1521,7 @@ export type Database = {
           id: string;
           clinic_id: string | null;
           appointment_id: string | null;
+          appointment_participant_id: string | null;
           patient_id: string | null;
           employee_id: string | null;
           title: string;
@@ -1477,6 +1538,7 @@ export type Database = {
           id?: string;
           clinic_id?: string | null;
           appointment_id?: string | null;
+          appointment_participant_id?: string | null;
           patient_id?: string | null;
           employee_id?: string | null;
           title: string;
@@ -1493,6 +1555,7 @@ export type Database = {
           id?: string;
           clinic_id?: string | null;
           appointment_id?: string | null;
+          appointment_participant_id?: string | null;
           patient_id?: string | null;
           employee_id?: string | null;
           title?: string;
@@ -1588,6 +1651,30 @@ export type Database = {
     };
     Views: Record<string, never>;
     Functions: {
+      configure_group_participant: {
+        Args: {
+          p_participant_id: string;
+          p_patient_package_id?: string | null;
+          p_billing_status?: string | null;
+          p_payment_method?: string | null;
+          p_amount_due?: number | null;
+          p_amount_paid?: number | null;
+          p_notes?: string | null;
+        };
+        Returns: Json;
+      };
+      finalize_group_participant: {
+        Args: { p_participant_id: string };
+        Returns: Json;
+      };
+      reopen_group_participant: {
+        Args: { p_participant_id: string; p_reason: string };
+        Returns: Json;
+      };
+      set_group_participant_status: {
+        Args: { p_participant_id: string; p_status: string; p_notes?: string | null };
+        Returns: Json;
+      };
       reopen_appointment: {
         Args: { p_appointment_id: string; p_reason: string };
         Returns: Json;

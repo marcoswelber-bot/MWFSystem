@@ -175,6 +175,12 @@ export default async function RelatorioOperacionalPage() {
     },
     new Map<string, string[]>()
   );
+  const participantRowsByAppointmentId = participants.reduce((accumulator, participant) => {
+    const current = accumulator.get(participant.appointment_id) ?? [];
+    current.push(participant);
+    accumulator.set(participant.appointment_id, current);
+    return accumulator;
+  }, new Map<string, AppointmentParticipant[]>());
   const rows: OperationalAppointment[] = appointments.map((appointment) => {
     const service = servicesById.get(appointment.service_id);
     const patientIds =
@@ -205,7 +211,12 @@ export default async function RelatorioOperacionalPage() {
       status: appointment.status,
       origin: appointment.appointment_origin ?? appointmentType,
       notes: appointment.notes,
-      participantCount: patientIds.length
+      participantCount: patientIds.length,
+      participantStatusCounts: (participantRowsByAppointmentId.get(appointment.id) ?? []).reduce<Record<string,number>>((counts,participant)=>{
+        const status=participant.status ?? "legado";
+        counts[status]=(counts[status]??0)+1;
+        return counts;
+      },{})
     };
   });
 

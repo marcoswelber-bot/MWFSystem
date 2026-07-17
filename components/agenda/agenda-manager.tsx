@@ -33,10 +33,15 @@ import {
   createAppointment,
   createScheduleBlock,
   deleteScheduleBlock,
+  configureGroupParticipant,
+  finalizeGroupParticipant,
   finalizeAppointmentBilling,
+  reopenGroupParticipant,
   reopenAppointment,
   restoreAppointmentOperationalStatus,
   setAppointmentStatus,
+  setGroupParticipantStatus,
+  updateGroupParticipantsInBatch,
   updateAppointment,
   type AgendaActionResult,
   type AppointmentBillingStatus,
@@ -51,6 +56,7 @@ type Appointment = Database["public"]["Tables"]["appointments"]["Row"] & {
   patient_name: string;
   patient_names: string[];
   patient_ids: string[];
+  participant_details: Database["public"]["Tables"]["appointment_participants"]["Row"][];
   employee_name: string;
   service_name: string;
   service_is_group: boolean;
@@ -1041,6 +1047,11 @@ export function AgendaManager({
   }
 
   function openFinalizeAppointment(appointment: Appointment) {
+    if (appointment.service_is_group || getAppointmentType(appointment) === "grupo") {
+      setSelectedAppointment(appointment);
+      setMessage({ ok: false, message: "Finalize cada participante ou use 'Finalizar presentes' no detalhe do grupo." });
+      return;
+    }
     const value = getServiceValue(appointment.service_id);
     setFinalizingAppointment(appointment);
     setFinalizeMessage(null);
@@ -1082,6 +1093,11 @@ export function AgendaManager({
   }
 
   function openReopenAppointment(appointment: Appointment) {
+    if (appointment.service_is_group || getAppointmentType(appointment) === "grupo") {
+      setSelectedAppointment(appointment);
+      setMessage({ ok: false, message: "Reabra o participante no detalhe do grupo para preservar os demais." });
+      return;
+    }
     setSelectedAppointment(null);
     setReopeningAppointment(appointment);
     setReopenReason("");
@@ -1141,6 +1157,18 @@ export function AgendaManager({
     });
   }
   function changeStatus(appointment: Appointment, status: AppointmentStatus) {
+    const isGroup=appointment.service_is_group || getAppointmentType(appointment) === "grupo";
+    if(isGroup){
+      if(status === "confirmado" || status === "cancelado"){
+        const action=status === "confirmado" ? "confirm_all" : "cancel_all";
+        const count=appointment.participant_details.filter(item=>status === "confirmado" ? item.status === "agendado" : !["realizado","cancelado"].includes(item.status??"")).length;
+        if(count>0 && window.confirm(`${count} participante(s) serão afetados. Confirmar?`)) startTransition(async()=>{ const result=await updateGroupParticipantsInBatch(appointment.id,action); setMessage(result); if(result.ok) refresh(); });
+      } else {
+        setSelectedAppointment(appointment);
+        setMessage({ok:false,message:"Use as ações individuais no detalhe do grupo."});
+      }
+      return;
+    }
     if (status === "cancelado" && !window.confirm(`Cancelar o atendimento de ${appointment.patient_name}?`)) {
       return;
     }
@@ -2347,6 +2375,95 @@ function AppointmentPrimaryAction({ action, isPending, onConfirm, onFinalize, on
   if (action === "receive") return <IconAction label="Receber" disabled={isPending} onClick={onOpen} icon={UserCheck} />;
   return null;
 }
+
+const participantStatusStyles: Record<string, string> = {
+  agendado: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200",
+  confirmado: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200",
+  realizado: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200",
+  faltou: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200",
+  cancelado: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200"
+};
+
+function GroupParticipantRow({ participant, patient, packages, canEdit, onDone }: {
+  participant: Appointment["participant_details"][number];
+  patient?: Patient;
+  packages: PatientPackage[];
+  canEdit: boolean;
+  onDone: (result: AgendaActionResult) => void;
+}) {
+  const [isPending, startTransition] = React.useTransition();
+  const [packageId, setPackageId] = React.useState(participant.patient_package_id ?? "");
+  const [billingStatus, setBillingStatus] = React.useState(participant.billing_status ?? "pendente");
+  const [amountDue, setAmountDue] = React.useState(String(participant.amount_due ?? 0));
+  const [amountPaid, setAmountPaid] = React.useState(String(participant.amount_paid ?? 0));
+  const availablePackages = packages.filter((item) => item.patient_id === participant.patient_id);
+  const run = (operation: () => Promise<AgendaActionResult>) => startTransition(async () => onDone(await operation()));
+  const status = participant.status ?? "agendado";
+  const selectedPackage = packages.find((item) => item.id === packageId);
+  return <div className="grid gap-3 rounded-lg border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(220px,0.8fr)]">
+    <div className="min-w-0 space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <strong className="truncate">{patient?.full_name ?? "Paciente não encontrado"}</strong>
+        <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold", participantStatusStyles[status])}>{status}</span>
+        {participant.legacy_aggregate ? <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs text-violet-800">legado agregado</span> : null}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {selectedPackage ? `${selectedPackage.remaining_sessions} sessão(ões) restante(s)` : "Atendimento avulso"}
+        {` · ${currencyFormatter.format(Number(participant.amount_paid ?? 0))} pago de ${currencyFormatter.format(Number(participant.amount_due ?? 0))}`}
+      </p>
+      {canEdit ? <div className="flex flex-wrap gap-2">
+        {status === "agendado" ? <Button size="sm" variant="outline" disabled={isPending} onClick={() => run(() => setGroupParticipantStatus(participant.id,"confirmado"))}>Confirmar</Button> : null}
+        {["agendado","confirmado"].includes(status) ? <Button size="sm" disabled={isPending} onClick={() => run(() => finalizeGroupParticipant(participant.id))}>Finalizar</Button> : null}
+        {["agendado","confirmado"].includes(status) ? <Button size="sm" variant="outline" disabled={isPending} onClick={() => run(() => setGroupParticipantStatus(participant.id,"faltou"))}>Falta</Button> : null}
+        {status !== "realizado" && status !== "cancelado" ? <Button size="sm" variant="outline" disabled={isPending} onClick={() => run(() => setGroupParticipantStatus(participant.id,"cancelado"))}>Cancelar</Button> : null}
+        {["faltou","cancelado"].includes(status) ? <Button size="sm" variant="outline" disabled={isPending} onClick={() => run(() => setGroupParticipantStatus(participant.id,"agendado"))}>Restaurar</Button> : null}
+        {status === "realizado" ? <Button size="sm" variant="outline" disabled={isPending} onClick={() => { const reason=window.prompt("Motivo da reabertura individual:"); if(reason?.trim()) run(() => reopenGroupParticipant(participant.id,reason)); }}>Reabrir</Button> : null}
+      </div> : null}
+    </div>
+    {canEdit && status !== "realizado" ? <div className="grid gap-2 text-xs">
+      <select className="h-9 rounded-md border bg-background px-2" value={packageId} onChange={(event) => setPackageId(event.target.value)}>
+        <option value="">Sem pacote / avulso</option>
+        {availablePackages.map((item) => <option key={item.id} value={item.id}>{item.remaining_sessions} sessões · vence {item.expiration_date ?? "sem data"}</option>)}
+      </select>
+      {!packageId ? <div className="grid grid-cols-3 gap-2">
+        <select className="h-9 rounded-md border bg-background px-2" value={billingStatus} onChange={(event) => setBillingStatus(event.target.value)}>
+          <option value="pendente">Pendente</option><option value="pago">Pago</option><option value="parcial">Parcial</option><option value="cortesia">Cortesia</option>
+        </select>
+        <input aria-label="Valor devido" className="h-9 min-w-0 rounded-md border bg-background px-2" value={amountDue} onChange={(event) => setAmountDue(event.target.value)} />
+        <input aria-label="Valor pago" className="h-9 min-w-0 rounded-md border bg-background px-2" value={amountPaid} onChange={(event) => setAmountPaid(event.target.value)} />
+      </div> : null}
+      <Button size="sm" variant="outline" disabled={isPending} onClick={() => run(() => configureGroupParticipant({participant_id:participant.id,patient_package_id:packageId,billing_status:billingStatus as "pendente",amount_due:amountDue,amount_paid:amountPaid}))}>Salvar pacote/cobrança</Button>
+    </div> : null}
+  </div>;
+}
+
+function GroupParticipantsPanel({ appointment, patients, packages, canEdit }: {
+  appointment: Appointment; patients: Patient[]; packages: PatientPackage[]; canEdit: boolean;
+}) {
+  const router = useRouter();
+  const [message,setMessage] = React.useState<AgendaActionResult | null>(null);
+  const [isPending,startTransition] = React.useTransition();
+  const participants=appointment.participant_details;
+  const counts=participants.reduce<Record<string,number>>((acc,item)=>{ const status=item.status ?? "agendado"; acc[status]=(acc[status]??0)+1; return acc; },{});
+  const finish=(result:AgendaActionResult)=>{ setMessage(result); if(result.ok) router.refresh(); };
+  const batch=(action:"confirm_all"|"finalize_present"|"cancel_all",count:number)=>{
+    if(count<=0 || !window.confirm(`${count} participante(s) serão afetados. Confirmar?`)) return;
+    startTransition(async()=>finish(await updateGroupParticipantsInBatch(appointment.id,action)));
+  };
+  return <div className="grid gap-3 rounded-lg border p-3">
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <strong>Participantes ({participants.length})</strong>
+      <div className="flex flex-wrap gap-1 text-xs"><span>Confirmados: {counts.confirmado??0}</span><span>· Realizados: {counts.realizado??0}</span><span>· Faltas: {counts.faltou??0}</span><span>· Cancelados: {counts.cancelado??0}</span></div>
+    </div>
+    {canEdit ? <div className="flex flex-wrap gap-2">
+      <Button size="sm" variant="outline" disabled={isPending} onClick={()=>batch("confirm_all",counts.agendado??0)}>Confirmar todos ({counts.agendado??0})</Button>
+      <Button size="sm" variant="outline" disabled={isPending} onClick={()=>batch("finalize_present",(counts.agendado??0)+(counts.confirmado??0))}>Finalizar presentes ({(counts.agendado??0)+(counts.confirmado??0)})</Button>
+      <Button size="sm" variant="outline" disabled={isPending} onClick={()=>batch("cancel_all",participants.filter(item=>!["realizado","cancelado"].includes(item.status??"")).length)}>Cancelar grupo</Button>
+    </div> : null}
+    {message ? <p className={cn("rounded-md border p-2 text-sm",message.ok?"border-emerald-200 bg-emerald-50 text-emerald-800":"border-red-200 bg-red-50 text-red-800")}>{message.message}</p> : null}
+    <div className="grid gap-2">{participants.map((participant)=><GroupParticipantRow key={participant.id} participant={participant} patient={patients.find(item=>item.id===participant.patient_id)} packages={packages} canEdit={canEdit} onDone={finish}/>)}</div>
+  </div>;
+}
 function AppointmentDetailModal({
   appointment, patients, clinics, patientPackages, canEdit, isPending,
   onClose, onEdit, onReschedule, onStatus, onFinalize, canReopen, onReopen, onUndoAbsence, onRestoreCancelled, onCreateNew, onNavigate
@@ -2392,7 +2509,7 @@ function AppointmentDetailModal({
           <PackageDetail label="Observações" value={appointment.notes ?? "Sem observações"} />
           {isGroup ? <PackageDetail label="Ocupacao coletiva" value={occupancy + "/" + (appointment.participant_limit ?? "sem limite")} /> : null}
         </div>
-        {isGroup ? <div className="rounded-lg border p-3"><strong>Participantes</strong><p className="mt-1 text-sm text-muted-foreground">{appointment.patient_names.join(", ")}</p></div> : null}
+        {isGroup ? <GroupParticipantsPanel appointment={appointment} patients={patients} packages={patientPackages} canEdit={canEdit} /> : null}
         <div className="flex flex-wrap gap-2">
           {availableActions.has("reopen") ? <Button type="button" variant="outline" disabled={isPending} onClick={onReopen}><RotateCw className="h-4 w-4" />Reabrir atendimento</Button> : null}
           {availableActions.has("undo_absence") ? <Button type="button" variant="outline" disabled={isPending} onClick={onUndoAbsence}><RotateCw className="h-4 w-4" />Desfazer falta</Button> : null}

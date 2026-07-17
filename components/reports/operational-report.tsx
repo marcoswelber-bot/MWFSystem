@@ -45,6 +45,7 @@ export type OperationalAppointment = {
   origin: string;
   notes: string | null;
   participantCount: number;
+  participantStatusCounts: Record<string, number>;
 };
 
 type OperationalReportProps = {
@@ -183,6 +184,7 @@ function downloadCsv(fileName: string, rows: OperationalAppointment[]) {
     "Tipo",
     "Status",
     "Origem",
+    "Status dos participantes",
     "Observacoes"
   ];
   const csvRows = rows.map((row) =>
@@ -196,6 +198,7 @@ function downloadCsv(fileName: string, rows: OperationalAppointment[]) {
       typeLabel(row.type),
       titleCaseStatus(row.status),
       originLabel(row.origin),
+      Object.entries(row.participantStatusCounts).map(([participantStatus,count])=>`${participantStatus}: ${count}`).join(" | "),
       row.notes ?? ""
     ]
       .map((value) => `"${value.replace(/"/g, '""')}"`)
@@ -355,8 +358,8 @@ export function OperationalReport({
         <td className="px-4 py-3 font-medium">
           {row.patientName}
           {row.participantCount > 1 ? (
-            <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-              {row.participantCount} pacientes
+            <span className="mt-1 block text-xs text-muted-foreground">
+              {row.participantCount} pacientes · {Object.entries(row.participantStatusCounts).map(([status,count])=>`${status}: ${count}`).join(" · ")}
             </span>
           ) : null}
         </td>
