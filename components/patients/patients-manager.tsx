@@ -35,6 +35,9 @@ type PatientsManagerProps = {
   medicalRecords: MedicalRecord[];
   employees: Employee[];
   services: Service[];
+  totalPatients: number;
+  currentPage: number;
+  pageSize: number;
   isAdmMaster: boolean;
   currentClinicId: string | null;
   initialSearch: string;
@@ -85,6 +88,9 @@ export function PatientsManager({
   medicalRecords,
   employees,
   services,
+  totalPatients,
+  currentPage,
+  pageSize,
   isAdmMaster,
   currentClinicId,
   initialSearch,
@@ -100,7 +106,7 @@ export function PatientsManager({
   const [form, setForm] = React.useState<PatientFormInput>(() => ({ ...emptyForm, clinic_id: initialOpenNew && !isAdmMaster ? currentClinicId ?? "" : "" }));
   const [search, setSearch] = React.useState(initialSearch);
   const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("all");
-  const [selectedPatientId, setSelectedPatientId] = React.useState<string | null>(initialPatientId);
+  const selectedPatientId = initialPatientId;
   const [message, setMessage] = React.useState<PatientActionResult | null>(
     loadError ? { ok: false, message: loadError } : null
   );
@@ -160,6 +166,15 @@ export function PatientsManager({
     event.preventDefault();
     const query = search.trim();
     router.push(query ? `/pacientes?q=${encodeURIComponent(query)}` : "/pacientes");
+  }
+
+  function patientHref(patientId?: string, page = currentPage) {
+    const params = new URLSearchParams();
+    if (initialSearch) params.set("q", initialSearch);
+    if (page > 1) params.set("page", String(page));
+    if (patientId) params.set("patientId", patientId);
+    const query = params.toString();
+    return query ? `/pacientes?${query}` : "/pacientes";
   }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -360,7 +375,7 @@ export function PatientsManager({
           medicalRecords={medicalRecords}
           employees={employees}
           services={services}
-          onClose={() => setSelectedPatientId(null)}
+          onClose={() => router.push(patientHref() as Route)}
           onEdit={openEditForm}
           onNavigate={(href) => router.push(href as Route)}
         />
@@ -583,7 +598,7 @@ export function PatientsManager({
                     <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "flex-end" }}>
                       <button
                         type="button"
-                        onClick={() => setSelectedPatientId(patient.id)}
+                        onClick={() => router.push(patientHref(patient.id) as Route)}
                         style={{
                           ...buttonStyle,
                           background: "#1D9E75",
@@ -640,6 +655,15 @@ export function PatientsManager({
           </tbody>
         </table>
       </div>
+      {totalPatients > pageSize ? (
+        <nav aria-label="Paginacao de pacientes" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", marginTop: "16px" }}>
+          <span>Pagina {currentPage} de {Math.ceil(totalPatients / pageSize)} ({totalPatients} pacientes)</span>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button type="button" disabled={currentPage <= 1} onClick={() => router.push(patientHref(undefined, currentPage - 1) as Route)} style={buttonStyle}>Anterior</button>
+            <button type="button" disabled={currentPage * pageSize >= totalPatients} onClick={() => router.push(patientHref(undefined, currentPage + 1) as Route)} style={buttonStyle}>Proxima</button>
+          </div>
+        </nav>
+      ) : null}
         </>
       ) : null}
     </div>

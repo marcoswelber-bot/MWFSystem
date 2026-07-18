@@ -109,6 +109,7 @@ type AgendaManagerProps = {
   initialAppointmentId?: string | null;
   initialOpenNew?: boolean;
   initialAppointmentType?: AppointmentType | null;
+  initialSelectedDate?: string;
   canReopen?: boolean;
 };
 
@@ -750,12 +751,13 @@ export function AgendaManager({
   initialAppointmentId,
   initialOpenNew,
   initialAppointmentType,
+  initialSelectedDate,
   canReopen
 }: AgendaManagerProps) {
   const router = useRouter();
   const [isPending, startTransition] = React.useTransition();
   const [viewMode, setViewMode] = React.useState<ViewMode>("day");
-  const [selectedDate, setSelectedDate] = React.useState(today());
+  const [selectedDate, setSelectedDate] = React.useState(initialSelectedDate ?? today());
   const [employeeFilter, setEmployeeFilter] = React.useState("all");
   const [serviceFilter, setServiceFilter] = React.useState("all");
   const [statusFilter, setStatusFilter] = React.useState("all");
@@ -905,6 +907,9 @@ export function AgendaManager({
     }
 
     setSelectedDate(date);
+    const params = new URLSearchParams(window.location.search);
+    params.set("date", date);
+    router.replace(`/agenda?${params.toString()}`);
     return true;
   }
 
@@ -938,6 +943,10 @@ export function AgendaManager({
     setAppointmentFormMessage(null);
     setAppointmentFormOpen(true);
   }
+
+  React.useEffect(() => {
+    if (initialSelectedDate) setSelectedDate(initialSelectedDate);
+  }, [initialSelectedDate]);
 
   React.useEffect(() => {
     const selected = initialAppointmentId ? appointments.find((item) => item.id === initialAppointmentId) : null;

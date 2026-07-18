@@ -300,7 +300,14 @@ export function AppShell({
           </div>
         </header>
 
-        <main className="app-main mx-auto w-full max-w-7xl p-4 md:p-6">{children}</main>
+        <main className="app-main relative mx-auto w-full max-w-7xl p-4 md:p-6" aria-busy={isChangingClinic}>
+          {isChangingClinic ? (
+            <div className="absolute inset-0 z-20 flex min-h-40 items-start justify-center bg-background/70 pt-12 backdrop-blur-sm" role="status">
+              <span className="rounded-md border bg-background px-4 py-2 text-sm font-medium shadow-sm">Atualizando dados da clinica...</span>
+            </div>
+          ) : null}
+          {children}
+        </main>
       </div>
     </div>
   );

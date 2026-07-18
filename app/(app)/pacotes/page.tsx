@@ -61,7 +61,10 @@ function getDerivedStatus(item: PatientPackage): PackageStatus {
   return item.status as PackageStatus;
 }
 
-export default async function PacotesPage() {
+export default async function PacotesPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
+  const params = await searchParams;
+  const page = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
+  const pageSize = 50;
   const permissions = await getCurrentPermissionMap();
   const isAdmMaster = await isCurrentUserAdmMaster();
   const clinicScope = await getCurrentClinicScope();
@@ -71,6 +74,7 @@ export default async function PacotesPage() {
   let services: Service[] = [];
   let employees: Employee[] = [];
   let loadError: string | undefined;
+  let packageCount = 0;
 
   if (!clinicScope.isAdmMaster && !clinicScope.clinicId) {
     loadError = "Usuario sem clinica vinculada.";
@@ -86,6 +90,9 @@ export default async function PacotesPage() {
       const packagesQuery = clinicFilter
         ? supabase.from("patient_packages").select("*").eq("clinic_id", clinicFilter)
         : supabase.from("patient_packages").select("*");
+      const countQuery = clinicFilter
+        ? supabase.from("patient_packages").select("id", { count: "exact", head: true }).eq("clinic_id", clinicFilter)
+        : supabase.from("patient_packages").select("id", { count: "exact", head: true });
 
       const patientsQuery = clinicFilter
         ? supabase.from("patients").select("*").eq("clinic_id", clinicFilter)
@@ -104,11 +111,12 @@ export default async function PacotesPage() {
         clinicsResult,
         patientsResult,
         servicesResult,
-        employeesResult
+        employeesResult,
+        countResult
       ] = await Promise.all([
         readSupabaseList<PatientPackage>(
           "pacotes",
-          packagesQuery.order("created_at", { ascending: false })
+          packagesQuery.order("created_at", { ascending: false }).range((page - 1) * pageSize, page * pageSize - 1)
         ),
         readSupabaseList<Clinic>(
           "clinics",
@@ -125,7 +133,8 @@ export default async function PacotesPage() {
         readSupabaseList<Employee>(
           "employees",
           employeesQuery.order("name", { ascending: true })
-        )
+        ),
+        countQuery
       ]);
 
       packages = packagesResult.data;
@@ -133,6 +142,7 @@ export default async function PacotesPage() {
       patients = patientsResult.data;
       services = servicesResult.data;
       employees = employeesResult.data;
+      packageCount = countResult.count ?? packages.length;
 
       [
         packagesResult.error,
@@ -184,6 +194,9 @@ export default async function PacotesPage() {
         patients={patients}
         services={services}
         employees={employees}
+        totalPackages={packageCount}
+        currentPage={page}
+        pageSize={pageSize}
         currentClinicId={clinicScope.clinicId}
         isAdmMaster={isAdmMaster}
         loadError={loadError}

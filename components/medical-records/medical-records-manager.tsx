@@ -15,6 +15,7 @@ import {
   type MedicalRecordActionResult,
   type MedicalRecordFormInput,
   updateMedicalRecord
+  ,getMedicalRecord
 } from "@/app/(app)/prontuarios/actions";
 
 type MedicalRecord = Database["public"]["Tables"]["medical_records"]["Row"];
@@ -42,6 +43,9 @@ type MedicalRecordsManagerProps = {
   patients: PatientOption[];
   employees: EmployeeOption[];
   initialSearch: string;
+  totalRecords: number;
+  currentPage: number;
+  pageSize: number;
   loadError?: string;
   permissions?: PermissionSet;
 };
@@ -77,6 +81,9 @@ export function MedicalRecordsManager({
   patients,
   employees,
   initialSearch,
+  totalRecords,
+  currentPage,
+  pageSize,
   loadError
   ,permissions
 }: MedicalRecordsManagerProps) {
@@ -110,10 +117,37 @@ export function MedicalRecordsManager({
   const canToggle=permissions?.toggle ?? true;
   const canDelete=permissions?.delete ?? true;
 
+  async function loadFullRecord(record: DisplayMedicalRecord) {
+    const result = await getMedicalRecord(record.id);
+    if (!result.ok || !result.record) {
+      setMessage({ ok: false, message: result.message });
+      return null;
+    }
+    return { ...record, ...result.record };
+  }
+
+  function viewRecord(record: DisplayMedicalRecord) {
+    startTransition(async () => {
+      const fullRecord = await loadFullRecord(record);
+      if (fullRecord) setViewingRecord(fullRecord);
+    });
+  }
+
   function printRecord(record:DisplayMedicalRecord){
-    setViewingRecord(record);
-    document.body.classList.add("mwf-record-printing");
-    window.setTimeout(()=>{ window.print(); document.body.classList.remove("mwf-record-printing"); },80);
+    startTransition(async () => {
+      const fullRecord = await loadFullRecord(record);
+      if (!fullRecord) return;
+      setViewingRecord(fullRecord);
+      document.body.classList.add("mwf-record-printing");
+      window.setTimeout(()=>{ window.print(); document.body.classList.remove("mwf-record-printing"); },80);
+    });
+  }
+
+  function editRecord(record: DisplayMedicalRecord) {
+    startTransition(async () => {
+      const fullRecord = await loadFullRecord(record);
+      if (fullRecord) openEditForm(fullRecord);
+    });
   }
 
   function updateForm(field: keyof MedicalRecordFormInput, value: string) {
@@ -265,6 +299,15 @@ export function MedicalRecordsManager({
           Novo prontuario
         </button> : null}
       </div>
+      {!initialSearch && totalRecords > pageSize ? (
+        <nav aria-label="Paginacao de prontuarios" className="mt-4 flex items-center justify-between gap-3">
+          <span className="text-sm text-muted-foreground">Pagina {currentPage} de {Math.ceil(totalRecords / pageSize)} ({totalRecords} prontuarios)</span>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" disabled={currentPage <= 1} onClick={() => router.push(`/prontuarios?page=${currentPage - 1}`)}>Anterior</Button>
+            <Button type="button" variant="outline" disabled={currentPage * pageSize >= totalRecords} onClick={() => router.push(`/prontuarios?page=${currentPage + 1}`)}>Proxima</Button>
+          </div>
+        </nav>
+      ) : null}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
         {[
@@ -535,12 +578,12 @@ export function MedicalRecordsManager({
                     }}
                   >
                     <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "flex-end" }}>
-                      <Button type="button" variant="outline" onClick={()=>setViewingRecord(record)}><Eye className="h-4 w-4"/>Visualizar</Button>
+                      <Button type="button" variant="outline" onClick={()=>viewRecord(record)}><Eye className="h-4 w-4"/>Visualizar</Button>
                       <Button type="button" variant="outline" onClick={()=>printRecord(record)}><Printer className="h-4 w-4"/>Imprimir</Button>
                       <Button type="button" variant="outline" onClick={()=>printRecord(record)}><FileDown className="h-4 w-4"/>PDF</Button>
                       {canEdit ? <button
                         type="button"
-                        onClick={() => openEditForm(record)}
+                        onClick={() => editRecord(record)}
                         style={buttonStyle}
                       >
                         Editar

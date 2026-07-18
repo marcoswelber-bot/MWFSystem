@@ -29,6 +29,29 @@ export type MedicalRecordActionResult = {
   message: string;
 };
 
+export type MedicalRecordReadResult = MedicalRecordActionResult & {
+  record?: Database["public"]["Tables"]["medical_records"]["Row"];
+};
+
+export async function getMedicalRecord(
+  id: string
+): Promise<MedicalRecordReadResult> {
+  try {
+    await assertCan("prontuarios", "view");
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("medical_records")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return { ok: false, message: "Prontuario nao encontrado." };
+    return { ok: true, message: "Prontuario carregado.", record: data };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
+}
+
 function cleanOptionalValue(value?: string) {
   const cleanValue = value?.trim();
   return cleanValue ? cleanValue : null;

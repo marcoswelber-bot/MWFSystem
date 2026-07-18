@@ -579,22 +579,22 @@ export function FinanceManager({
   const canEdit = permissions?.edit ?? true;
   const canDelete = permissions?.delete ?? true;
 
-  const filteredTransactions = transactions.filter((item) => {
+  const filteredTransactions = React.useMemo(() => transactions.filter((item) => {
     if (clinicFilter !== "all" && item.clinic_id !== clinicFilter) return false;
     if (statusFilter !== "all" && item.derived_status !== statusFilter) return false;
     if (periodStart && item.due_date < periodStart) return false;
     if (periodEnd && item.due_date > periodEnd) return false;
     return true;
-  });
-  const scopedTransactions = transactions.filter(
+  }), [transactions, clinicFilter, statusFilter, periodStart, periodEnd]);
+  const scopedTransactions = React.useMemo(() => transactions.filter(
     (item) => clinicFilter === "all" || item.clinic_id === clinicFilter
-  );
-  const periodIndicators = calculateFinanceIndicators(
+  ), [transactions, clinicFilter]);
+  const periodIndicators = React.useMemo(() => calculateFinanceIndicators(
     scopedTransactions,
     settlements,
     periodStart || "0000-01-01",
     periodEnd || "9999-12-31"
-  );
+  ), [scopedTransactions, settlements, periodStart, periodEnd]);
 
   const incomeRows = filteredTransactions.filter(
     (item) => item.transaction_type === "receita"
@@ -654,7 +654,10 @@ export function FinanceManager({
   const revenueRatio = ratioTotal > 0 ? Math.round((totalEntries / ratioTotal) * 100) : 50;
   const expenseRatio = ratioTotal > 0 ? 100 - revenueRatio : 50;
   const balanceBadge = periodBalance >= 0 ? "receitas acima das despesas" : "despesas acima das receitas";
-  const paycheckSummaries = buildPaycheckSummaries({ employees, rows: filteredTransactions, clinics, clinicFilter, periodLabel: referenceLabel });
+  const paycheckSummaries = React.useMemo(
+    () => buildPaycheckSummaries({ employees, rows: filteredTransactions, clinics, clinicFilter, periodLabel: referenceLabel }),
+    [employees, filteredTransactions, clinics, clinicFilter, referenceLabel]
+  );
 
   const tabOptions: Array<[FinanceTab, string]> = [
     ["receitas", "Receitas"],

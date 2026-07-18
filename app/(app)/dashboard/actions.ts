@@ -53,10 +53,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     appointmentsQuery = appointmentsQuery.eq("clinic_id", clinicScope.clinicId);
   }
 
-  const { data: todayRaw } = await appointmentsQuery;
-  const todayAppointments = todayRaw ?? [];
-
-  // Buscar agendamentos passados sem baixa (ultimos 7 dias)
+  // Preparar consultas independentes para executá-las sem waterfall.
   const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
   let pendingQuery = supabase
     .from("appointments")
@@ -68,9 +65,6 @@ export async function getDashboardData(): Promise<DashboardData> {
   if (clinicScope.clinicId) {
     pendingQuery = pendingQuery.eq("clinic_id", clinicScope.clinicId);
   }
-
-  const { data: pendingRaw } = await pendingQuery;
-  const pendingAppointments = pendingRaw ?? [];
 
   // Buscar agendamentos com falta (ultimos 7 dias)
   let absentQuery = supabase
@@ -84,9 +78,6 @@ export async function getDashboardData(): Promise<DashboardData> {
     absentQuery = absentQuery.eq("clinic_id", clinicScope.clinicId);
   }
 
-  const { data: absentRaw } = await absentQuery;
-  const absentAppointments = absentRaw ?? [];
-
   // Buscar contas vencidas
   let overdueQuery = supabase
     .from("financial_transactions")
@@ -99,7 +90,20 @@ export async function getDashboardData(): Promise<DashboardData> {
     overdueQuery = overdueQuery.eq("clinic_id", clinicScope.clinicId);
   }
 
-  const { data: overdueRaw } = await overdueQuery;
+  const [
+    { data: todayRaw },
+    { data: pendingRaw },
+    { data: absentRaw },
+    { data: overdueRaw }
+  ] = await Promise.all([
+    appointmentsQuery,
+    pendingQuery,
+    absentQuery,
+    overdueQuery
+  ]);
+  const todayAppointments = todayRaw ?? [];
+  const pendingAppointments = pendingRaw ?? [];
+  const absentAppointments = absentRaw ?? [];
   const overduePayments = overdueRaw ?? [];
 
   // Buscar nomes

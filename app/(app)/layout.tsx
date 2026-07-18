@@ -34,12 +34,14 @@ export default async function ProtectedLayout({
     redirect(`/login?error=${encodeURIComponent(accessProfile.reason)}`);
   }
 
-  const permissions = await getCurrentPermissionMap();
+  const [permissions, clinicScope, availableClinics] = await Promise.all([
+    getCurrentPermissionMap(),
+    getCurrentClinicScope(),
+    getAvailableClinicsForProfile(accessProfile)
+  ]);
   const visibleModules = Object.entries(permissions)
     .filter(([, permission]) => permission.view)
     .map(([moduleKey]) => moduleKey as PermissionModuleKey);
-  const clinicScope = await getCurrentClinicScope();
-  const availableClinics = await getAvailableClinicsForProfile(accessProfile);
   const userName = accessProfile?.employee?.name ?? user.email ?? "Usuario";
   const userRole =
     accessProfile?.kind === "adm_master"

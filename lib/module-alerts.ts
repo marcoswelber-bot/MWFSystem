@@ -185,9 +185,6 @@ export async function getFinanceiroAlerts(): Promise<ModuleAlert[]> {
     overdueQuery = overdueQuery.eq("clinic_id", clinicScope.clinicId);
   }
 
-  const { data: overdueRaw } = await overdueQuery;
-  const overdue = overdueRaw ?? [];
-
   let commissionQuery = supabase
     .from("financial_transactions")
     .select("id, description, due_date, amount")
@@ -201,7 +198,11 @@ export async function getFinanceiroAlerts(): Promise<ModuleAlert[]> {
     commissionQuery = commissionQuery.eq("clinic_id", clinicScope.clinicId);
   }
 
-  const { data: commissionRaw } = await commissionQuery;
+  const [{ data: overdueRaw }, { data: commissionRaw }] = await Promise.all([
+    overdueQuery,
+    commissionQuery
+  ]);
+  const overdue = overdueRaw ?? [];
   const commissions = commissionRaw ?? [];
 
   overdue.forEach((p) => {
@@ -246,9 +247,6 @@ export async function getFinanceiroActionableAlerts(): Promise<ActionableAlertDa
     overdueQuery = overdueQuery.eq("clinic_id", clinicScope.clinicId);
   }
 
-  const { data: overdueRaw } = await overdueQuery;
-  const overdue = overdueRaw ?? [];
-
   let commissionQuery = supabase
     .from("financial_transactions")
     .select("id, description, due_date, amount")
@@ -262,7 +260,11 @@ export async function getFinanceiroActionableAlerts(): Promise<ActionableAlertDa
     commissionQuery = commissionQuery.eq("clinic_id", clinicScope.clinicId);
   }
 
-  const { data: commissionRaw } = await commissionQuery;
+  const [{ data: overdueRaw }, { data: commissionRaw }] = await Promise.all([
+    overdueQuery,
+    commissionQuery
+  ]);
+  const overdue = overdueRaw ?? [];
   const commissions = commissionRaw ?? [];
 
   overdue.forEach((p) => {

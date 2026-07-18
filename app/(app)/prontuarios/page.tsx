@@ -18,12 +18,9 @@ type Clinic = Database["public"]["Tables"]["clinics"]["Row"];
 type ProntuariosPageProps = {
   searchParams: Promise<{
     q?: string;
+    page?: string;
   }>;
 };
-
-function includesSearch(value: string | null | undefined, search: string) {
-  return value?.toLowerCase().includes(search.toLowerCase()) ?? false;
-}
 
 function appendLoadError(currentError: string | undefined, nextError: unknown) {
   const message = getErrorMessage(nextError);
@@ -35,11 +32,14 @@ export default async function ProntuariosPage({
 }: ProntuariosPageProps) {
   const params = await searchParams;
   const search = params.q?.trim() ?? "";
+  const page = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
+  const pageSize = 50;
   let records: MedicalRecord[] = [];
   let patients: Patient[] = [];
   let employees: Employee[] = [];
   let clinics: Clinic[] = [];
   let loadError: string | undefined;
+  let recordCount = 0;
   const clinicScope = await getCurrentClinicScope();
   const permissions = await getCurrentPermissionMap();
 
@@ -52,23 +52,19 @@ export default async function ProntuariosPage({
     if (clinicScope.clinicId) clinicsQuery = clinicsQuery.eq("id",clinicScope.clinicId);
     let recordsQuery = supabase
       .from("medical_records")
-      .select("*")
+      .select("id,clinic_id,appointment_id,appointment_participant_id,patient_id,employee_id,title,status,created_at,updated_at")
       .order("created_at", { ascending: false });
 
     if (clinicScope.clinicId) {
       recordsQuery = recordsQuery.eq("clinic_id", clinicScope.clinicId);
     }
-
-    const [recordsResult,clinicsResult] = await Promise.all([recordsQuery,clinicsQuery]);
-    clinics=clinicsResult.data ?? [];
-    if(clinicsResult.error) loadError=appendLoadError(loadError,clinicsResult.error);
-
-    if (recordsResult.error) {
-      loadError = appendLoadError(loadError, recordsResult.error);
-    } else {
-      records = recordsResult.data ?? [];
+    if (search) {
+      const term = search.replaceAll("%", "\\%").replaceAll(",", " ");
+      recordsQuery = recordsQuery.or(`title.ilike.%${term}%,notes.ilike.%${term}%`);
     }
-
+    if (!search) recordsQuery = recordsQuery.range((page - 1) * pageSize, page * pageSize - 1);
+    let countQuery = supabase.from("medical_records").select("id", { count: "exact", head: true });
+    if (clinicScope.clinicId) countQuery = countQuery.eq("clinic_id", clinicScope.clinicId);
     let patientsQuery = supabase
       .from("patients")
       .select("*")
@@ -76,14 +72,6 @@ export default async function ProntuariosPage({
 
     if (clinicScope.clinicId) {
       patientsQuery = patientsQuery.eq("clinic_id", clinicScope.clinicId);
-    }
-
-    const patientsResult = await patientsQuery;
-
-    if (patientsResult.error) {
-      loadError = appendLoadError(loadError, patientsResult.error);
-    } else {
-      patients = patientsResult.data ?? [];
     }
 
     let employeesQuery = supabase
@@ -95,13 +83,23 @@ export default async function ProntuariosPage({
       employeesQuery = employeesQuery.eq("clinic_id", clinicScope.clinicId);
     }
 
-    const employeesResult = await employeesQuery;
+    const [recordsResult, clinicsResult, patientsResult, employeesResult, countResult] =
+      await Promise.all([recordsQuery, clinicsQuery, patientsQuery, employeesQuery, countQuery]);
+    clinics=clinicsResult.data ?? [];
+    records=(recordsResult.data ?? []).map((record) => ({
+      ...record,
+      complaint: null,
+      history: null,
+      conduct: null,
+      evolution: null,
+      notes: null
+    }));
+    patients=patientsResult.data ?? [];
+    employees=employeesResult.data ?? [];
+    recordCount=countResult.count ?? records.length;
 
-    if (employeesResult.error) {
-      loadError = appendLoadError(loadError, employeesResult.error);
-    } else {
-      employees = employeesResult.data ?? [];
-    }
+    [recordsResult.error, clinicsResult.error, patientsResult.error, employeesResult.error, countResult.error]
+      .forEach((error) => { if (error) loadError = appendLoadError(loadError, error); });
     } catch (error) {
       loadError = appendLoadError(loadError, error);
     }
@@ -125,18 +123,7 @@ export default async function ProntuariosPage({
         ? employeesById.get(record.employee_id) ?? "Funcionario nao encontrado"
         : "-",
       clinic_name: record.clinic_id ? clinicsById.get(record.clinic_id) ?? "Clínica não encontrada" : "-"
-    }))
-    .filter((record) => {
-      if (!search) {
-        return true;
-      }
-
-      return (
-        includesSearch(record.title, search) ||
-        includesSearch(record.patient_name, search) ||
-        includesSearch(record.notes, search)
-      );
-    });
+    }));
 
   const patientOptions: PatientOption[] = patients.map((patient) => ({
     id: patient.id,
@@ -160,6 +147,9 @@ export default async function ProntuariosPage({
         patients={patientOptions}
         employees={employeeOptions}
         initialSearch={search}
+        totalRecords={recordCount}
+        currentPage={page}
+        pageSize={pageSize}
         loadError={loadError}
         permissions={permissions.prontuarios}
       />

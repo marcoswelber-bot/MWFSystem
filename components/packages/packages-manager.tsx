@@ -37,6 +37,9 @@ type PackagesManagerProps = {
   patients: Patient[];
   services: Service[];
   employees: Employee[];
+  totalPackages: number;
+  currentPage: number;
+  pageSize: number;
   currentClinicId: string | null;
   isAdmMaster: boolean;
   loadError?: string;
@@ -173,6 +176,9 @@ export function PackagesManager({
   patients,
   services,
   employees,
+  totalPackages,
+  currentPage,
+  pageSize,
   currentClinicId,
   isAdmMaster,
   loadError,
@@ -415,6 +421,15 @@ export function PackagesManager({
           />
         </div>
       </Card>
+      {totalPackages > pageSize ? (
+        <nav aria-label="Paginacao de pacotes" className="flex items-center justify-between gap-3">
+          <span className="text-sm text-muted-foreground">Pagina {currentPage} de {Math.ceil(totalPackages / pageSize)} ({totalPackages} pacotes)</span>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" disabled={currentPage <= 1} onClick={() => router.push(`/pacotes?page=${currentPage - 1}`)}>Anterior</Button>
+            <Button type="button" variant="outline" disabled={currentPage * pageSize >= totalPackages} onClick={() => router.push(`/pacotes?page=${currentPage + 1}`)}>Proxima</Button>
+          </div>
+        </nav>
+      ) : null}
 
       {formOpen ? (
         <Card className="p-5">

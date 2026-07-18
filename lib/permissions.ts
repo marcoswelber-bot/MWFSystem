@@ -7,8 +7,9 @@ import {
   type PermissionModuleKey,
   type PermissionSet
 } from "@/lib/permission-modules";
-import { getAccessProfileByEmail } from "@/lib/access-control";
+import { getCurrentAccessProfile } from "@/lib/access-control";
 import type { Database } from "@/types/database";
+import { cache } from "react";
 
 type Employee = Database["public"]["Tables"]["employees"]["Row"];
 type UserPermission = Database["public"]["Tables"]["user_permissions"]["Row"];
@@ -28,7 +29,7 @@ function rowToPermissionSet(row: UserPermission): PermissionSet {
   };
 }
 
-export async function getCurrentEmployee() {
+export const getCurrentEmployee = cache(async function getCurrentEmployee() {
   const supabase = await createClient();
   const {
     data: { user }
@@ -38,20 +39,20 @@ export async function getCurrentEmployee() {
     return { user, employee: null as Employee | null };
   }
 
-  const profile = await getAccessProfileByEmail(user.email ?? "");
-  return { user, employee: profile.employee };
-}
+  const profile = await getCurrentAccessProfile();
+  return { user, employee: profile?.employee ?? null };
+});
 
-export async function isCurrentUserAdmMaster() {
+export const isCurrentUserAdmMaster = cache(async function isCurrentUserAdmMaster() {
   const { employee } = await getCurrentEmployee();
   return Boolean(
     employee?.status === "active" &&
       employee.system_access &&
       isAdmRole(employee.role)
   );
-}
+});
 
-export async function getCurrentPermissionMap() {
+export const getCurrentPermissionMap = cache(async function getCurrentPermissionMap() {
   if (await isCurrentUserAdmMaster()) {
     return getFullPermissionMap();
   }
@@ -63,9 +64,9 @@ export async function getCurrentPermissionMap() {
   }
 
   return getPermissionMapForEmployee(employee.id);
-}
+});
 
-export async function getPermissionMapForEmployee(employeeId: string) {
+export const getPermissionMapForEmployee = cache(async function getPermissionMapForEmployee(employeeId: string) {
   const supabase = await createClient();
   const { data } = await supabase
     .from("user_permissions")
@@ -81,7 +82,7 @@ export async function getPermissionMapForEmployee(employeeId: string) {
   }
 
   return permissions;
-}
+});
 
 export async function canCurrentUser(
   moduleKey: PermissionModuleKey,

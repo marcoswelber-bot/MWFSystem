@@ -58,8 +58,15 @@ async function readSupabaseList<T>(
   }
 }
 
-export default async function AgendaPage({ searchParams }: { searchParams: Promise<{ patientId?: string; appointmentId?: string; new?: string; type?: string }> }) {
+export default async function AgendaPage({ searchParams }: { searchParams: Promise<{ patientId?: string; appointmentId?: string; new?: string; type?: string; date?: string }> }) {
   const params = await searchParams;
+  const today = new Date().toISOString().slice(0, 10);
+  const selectedDate = /^\d{4}-\d{2}-\d{2}$/.test(params.date ?? "") ? params.date! : today;
+  const [year, month] = selectedDate.split("-").map(Number);
+  const rangeStartDate = new Date(Date.UTC(year, month - 1, -6));
+  const rangeEndDate = new Date(Date.UTC(year, month + 1, 7));
+  const rangeStart = rangeStartDate.toISOString().slice(0, 10);
+  const rangeEnd = rangeEndDate.toISOString().slice(0, 10);
   const permissions = await getCurrentPermissionMap();
   const clinicScope = await getCurrentClinicScope();
   let clinics: Clinic[] = [];
@@ -139,6 +146,8 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
             .from("appointments")
             .select("*")
             .eq("clinic_id", clinicScope.clinicId)
+            .gte("appointment_date", rangeStart)
+            .lte("appointment_date", rangeEnd)
             .order("appointment_date", { ascending: true })
             .order("start_time", { ascending: true })
         ),
@@ -149,6 +158,8 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
             .select("*")
             .eq("clinic_id", clinicScope.clinicId)
             .eq("status", "active")
+            .gte("block_date", rangeStart)
+            .lte("block_date", rangeEnd)
             .order("block_date", { ascending: true })
             .order("start_time", { ascending: true })
         )
@@ -283,6 +294,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
         initialAppointmentId={params.appointmentId ?? null}
         initialOpenNew={params.new === "1"}
         initialAppointmentType={params.type === "retorno" ? "retorno" : null}
+        initialSelectedDate={selectedDate}
         canReopen={canReopen}
       />
     </div>

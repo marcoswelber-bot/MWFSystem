@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isAdmRole } from "@/lib/permission-modules";
 import type { Database } from "@/types/database";
 import { cookies } from "next/headers";
+import { cache } from "react";
 
 export const ACTIVE_CLINIC_COOKIE = "mwf_active_clinic_id";
 
@@ -184,7 +185,7 @@ export async function getAccessProfileByEmail(
   };
 }
 
-export async function getCurrentAccessProfile() {
+export const getCurrentAccessProfile = cache(async function getCurrentAccessProfile() {
   const supabase = await createClient();
   const {
     data: { user }
@@ -195,9 +196,9 @@ export async function getCurrentAccessProfile() {
   }
 
   return getAccessProfileByEmail(user.email);
-}
+});
 
-export async function getCurrentClinicScope() {
+export const getCurrentClinicScope = cache(async function getCurrentClinicScope() {
   const profile = await getCurrentAccessProfile();
   const cookieStore = await cookies();
   const activeClinicId = cookieStore.get(ACTIVE_CLINIC_COOKIE)?.value ?? null;
@@ -225,9 +226,9 @@ export async function getCurrentClinicScope() {
     clinicId: linkedClinicId,
     profile
   };
-}
+});
 
-export async function getAvailableClinicsForProfile(profile: AccessProfile | null) {
+export const getAvailableClinicsForProfile = cache(async function getAvailableClinicsForProfile(profile: AccessProfile | null) {
   if (!profile || profile.kind === "blocked" || profile.kind === "unknown") {
     return [] as Clinic[];
   }
@@ -256,5 +257,5 @@ export async function getAvailableClinicsForProfile(profile: AccessProfile | nul
     .order("name", { ascending: true });
 
   return data ?? [];
-}
+});
 
