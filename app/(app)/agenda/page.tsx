@@ -1,6 +1,6 @@
 import { AgendaManager } from "@/components/agenda/agenda-manager";
 import { ActionableAlertsWrapper } from "@/components/actionable-alerts-wrapper";
-import { getCurrentClinicScope } from "@/lib/access-control";
+import { getAvailableClinicsForProfile, getCurrentClinicScope } from "@/lib/access-control";
 import { getAgendaActionableAlerts } from "@/lib/module-alerts";
 import { canReopenAppointments, getCurrentPermissionMap } from "@/lib/permissions";
 import { getErrorMessage } from "@/lib/supabase/env";
@@ -84,8 +84,10 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   } else {
     try {
       const supabase = await createClient();
+      clinics = (await getAvailableClinicsForProfile(clinicScope.profile)).filter(
+        (clinic) => clinic.id === clinicScope.clinicId
+      );
       const [
-        clinicsResult,
         patientsResult,
         employeesResult,
         servicesResult,
@@ -93,14 +95,6 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
         appointmentsResult,
         blocksResult
       ] = await Promise.all([
-        readSupabaseList<Clinic>(
-          "clinics",
-          supabase
-            .from("clinics")
-            .select("*")
-            .eq("id", clinicScope.clinicId)
-            .order("name", { ascending: true })
-        ),
         readSupabaseList<Patient>(
           "patients",
           supabase
@@ -162,7 +156,6 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
         )
       ]);
 
-      clinics = clinicsResult.data;
       patients = patientsResult.data;
       employees = employeesResult.data;
       services = servicesResult.data;
@@ -191,7 +184,6 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       }
 
       [
-        clinicsResult.error,
         patientsResult.error,
         employeesResult.error,
         servicesResult.error,
