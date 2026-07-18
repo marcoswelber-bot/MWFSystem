@@ -20,7 +20,7 @@ export function ActionableAlertsPanel({ alerts, onAction, onIgnore }: Actionable
           Pendencias ({alerts.length})
         </p>
       </div>
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {alerts.map((alert) => (
           <ActionableAlert
             key={alert.id}

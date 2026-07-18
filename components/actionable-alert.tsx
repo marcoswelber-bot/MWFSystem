@@ -144,7 +144,7 @@ export function ActionableAlert({ alert, onAction, onIgnore }: ActionableAlertPr
         type="button"
         onClick={() => setIsOpen(true)}
         className={cn(
-          "flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-all hover:shadow-md",
+          "flex min-w-0 w-full items-start gap-3 rounded-lg border p-3 text-left transition-all hover:shadow-md",
           getAlertColor(alert.type),
           getAlertTextColor(alert.type)
         )}
@@ -154,7 +154,7 @@ export function ActionableAlert({ alert, onAction, onIgnore }: ActionableAlertPr
           <p className="text-sm font-medium">{alert.title}</p>
           <p className="truncate text-xs opacity-80">{alert.description}</p>
         </div>
-        <span className="shrink-0 text-xs opacity-60">{alert.date}</span>
+        <span className="hidden shrink-0 text-xs opacity-60 sm:inline">{alert.date}</span>
       </button>
 
       {isOpen ? (
