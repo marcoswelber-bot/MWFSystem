@@ -52,6 +52,7 @@ import {
   type ScheduleBlockFormInput
 } from "@/app/(app)/agenda/actions";
 import { setActiveClinic } from "@/app/(app)/clinic-actions";
+import { useActiveClinic, type ActiveClinicOption } from "@/components/active-clinic-context";
 
 type Appointment = Database["public"]["Tables"]["appointments"]["Row"] & {
   patient_name: string;
@@ -756,6 +757,7 @@ export function AgendaManager({
   canReopen
 }: AgendaManagerProps) {
   const router = useRouter();
+  const activeClinic = useActiveClinic();
   const [isPending, startTransition] = React.useTransition();
   const [viewMode, setViewMode] = React.useState<ViewMode>("day");
   const [selectedDate, setSelectedDate] = React.useState(initialSelectedDate ?? today());
@@ -806,6 +808,11 @@ export function AgendaManager({
   const selectedService = services.find(
     (service) => service.id === appointmentForm.service_id
   );
+  const formClinics: ActiveClinicOption[] = clinics.length > 0
+    ? clinics.map((clinic) => ({ id: clinic.id, name: clinic.name }))
+    : activeClinic && activeClinic.id === currentClinicId
+      ? [activeClinic]
+      : [];
   const visibleDays = React.useMemo(
     () => getDaysForMode(viewMode, selectedDate),
     [selectedDate, viewMode]
@@ -1622,7 +1629,7 @@ export function AgendaManager({
           form={appointmentForm}
           setForm={setAppointmentForm}
           appointments={appointments}
-          clinics={clinics}
+          clinics={formClinics}
           patients={patients}
           employees={employees}
           services={visibleServices}
@@ -1668,7 +1675,7 @@ export function AgendaManager({
         <BlockFormModal
           form={blockForm}
           setForm={setBlockForm}
-          clinics={clinics}
+          clinics={formClinics}
           employees={employees}
           isAdmMaster={isAdmMaster}
           isPending={isPending}
@@ -2960,7 +2967,7 @@ function AppointmentFormModal({
   form: AppointmentFormInput;
   setForm: React.Dispatch<React.SetStateAction<AppointmentFormInput>>;
   appointments: Appointment[];
-  clinics: Clinic[];
+  clinics: ActiveClinicOption[];
   patients: Patient[];
   employees: Employee[];
   services: Service[];
@@ -3388,7 +3395,7 @@ function BlockFormModal({
 }: {
   form: ScheduleBlockFormInput;
   setForm: React.Dispatch<React.SetStateAction<ScheduleBlockFormInput>>;
-  clinics: Clinic[];
+  clinics: ActiveClinicOption[];
   employees: Employee[];
   isAdmMaster: boolean;
   isPending: boolean;

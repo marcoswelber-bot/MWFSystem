@@ -8,6 +8,7 @@ import { Activity, Bell, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Search } f
 import { setActiveClinic } from "@/app/(app)/clinic-actions";
 import { signOut } from "@/app/login/actions";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { ActiveClinicProvider } from "@/components/active-clinic-context";
 import { Button } from "@/components/ui/button";
 import { appNavigation } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
@@ -339,7 +340,11 @@ export function AppShell({
               <span className="rounded-md border bg-background px-4 py-2 text-sm font-medium shadow-sm">Atualizando dados da clinica...</span>
             </div>
           ) : null}
-          {children}
+          <ActiveClinicProvider
+            clinic={activeClinic ? { id: activeClinic.id, name: activeClinic.name } : null}
+          >
+            {children}
+          </ActiveClinicProvider>
         </main>
       </div>
     </div>
