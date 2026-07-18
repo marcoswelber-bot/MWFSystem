@@ -12,6 +12,7 @@ test("agenda uses a centralized visible range and bounded Supabase queries", asy
   assert.match(source, /\.gte\("appointment_date", rangeStart\)/);
   assert.match(source, /\.lte\("appointment_date", rangeEnd\)/);
   assert.match(source, /\.eq\("clinic_id", clinicScope\.clinicId\)/);
+  assert.match(source, /\.from\("clinics"\)[\s\S]*?\.eq\("id", clinicScope\.clinicId\)/);
 });
 
 test("saved appointments navigate to their actual date and refresh the current date", async () => {

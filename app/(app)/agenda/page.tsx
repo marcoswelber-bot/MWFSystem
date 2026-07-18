@@ -95,10 +95,11 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       ] = await Promise.all([
         readSupabaseList<Clinic>(
           "clinics",
-          (clinicScope.isAdmMaster
-            ? supabase.from("clinics").select("*")
-            : supabase.from("clinics").select("*").eq("id", clinicScope.clinicId)
-          ).order("name", { ascending: true })
+          supabase
+            .from("clinics")
+            .select("*")
+            .eq("id", clinicScope.clinicId)
+            .order("name", { ascending: true })
         ),
         readSupabaseList<Patient>(
           "patients",
