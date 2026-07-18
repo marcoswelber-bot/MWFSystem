@@ -767,7 +767,7 @@ export function AgendaManager({
   const [typeFilter, setTypeFilter] = React.useState("all");
   const [groupFilter, setGroupFilter] = React.useState("all");
   const [pendingFilter, setPendingFilter] = React.useState("all");
-  const [clinicFilter, setClinicFilter] = React.useState(currentClinicId ?? "all");
+  const [clinicFilter, setClinicFilter] = React.useState(currentClinicId ?? activeClinic?.id ?? "all");
   const [searchQuery, setSearchQuery] = React.useState("");
   const [moreFiltersOpen, setMoreFiltersOpen] = React.useState(false);
   const [appointmentFormOpen, setAppointmentFormOpen] = React.useState(false);
@@ -810,7 +810,7 @@ export function AgendaManager({
   );
   const formClinics: ActiveClinicOption[] = clinics.length > 0
     ? clinics.map((clinic) => ({ id: clinic.id, name: clinic.name }))
-    : activeClinic && activeClinic.id === currentClinicId
+    : activeClinic
       ? [activeClinic]
       : [];
   const visibleDays = React.useMemo(
@@ -943,7 +943,7 @@ export function AgendaManager({
     setEditingAppointment(null);
     setAppointmentForm({
       ...emptyAppointmentForm,
-      clinic_id: clinicFilter !== "all" ? clinicFilter : currentClinicId ?? "",
+      clinic_id: clinicFilter !== "all" ? clinicFilter : currentClinicId ?? activeClinic?.id ?? "",
       employee_id: employeeId,
       appointment_date: date,
       start_time: startTime
@@ -1021,7 +1021,7 @@ export function AgendaManager({
   function openBlockForm(date = selectedDate, employeeId = "") {
     setBlockForm({
       ...emptyBlockForm,
-      clinic_id: clinicFilter !== "all" ? clinicFilter : currentClinicId ?? "",
+      clinic_id: clinicFilter !== "all" ? clinicFilter : currentClinicId ?? activeClinic?.id ?? "",
       employee_id: employeeId,
       block_date: date
     });
