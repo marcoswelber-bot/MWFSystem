@@ -8,6 +8,7 @@ import { getErrorMessage } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/types/database";
+import { getAgendaToday } from "@/lib/agenda-date";
 
 type AppointmentInsert = Database["public"]["Tables"]["appointments"]["Insert"];
 type AppointmentUpdate = Database["public"]["Tables"]["appointments"]["Update"];
@@ -281,7 +282,7 @@ function getAppointmentPayload(input: AppointmentFormInput): AppointmentInsert {
   assertRequired(input.appointment_date, "Informe a data.");
   assertRequired(input.start_time, "Informe o horario.");
 
-  if (input.appointment_date < new Date().toISOString().slice(0, 10)) {
+  if (input.appointment_date < getAgendaToday()) {
     throw new Error("Nao e possivel agendar em datas passadas.");
   }
 

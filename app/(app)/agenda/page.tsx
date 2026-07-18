@@ -6,6 +6,7 @@ import { canReopenAppointments, getCurrentPermissionMap } from "@/lib/permission
 import { getErrorMessage } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database";
+import { getAgendaToday, getAgendaVisibleRange, isAgendaDateKey } from "@/lib/agenda-date";
 
 type Appointment = Database["public"]["Tables"]["appointments"]["Row"] & {
   patient_name: string;
@@ -60,13 +61,8 @@ async function readSupabaseList<T>(
 
 export default async function AgendaPage({ searchParams }: { searchParams: Promise<{ patientId?: string; appointmentId?: string; new?: string; type?: string; date?: string }> }) {
   const params = await searchParams;
-  const today = new Date().toISOString().slice(0, 10);
-  const selectedDate = /^\d{4}-\d{2}-\d{2}$/.test(params.date ?? "") ? params.date! : today;
-  const [year, month] = selectedDate.split("-").map(Number);
-  const rangeStartDate = new Date(Date.UTC(year, month - 1, -6));
-  const rangeEndDate = new Date(Date.UTC(year, month + 1, 7));
-  const rangeStart = rangeStartDate.toISOString().slice(0, 10);
-  const rangeEnd = rangeEndDate.toISOString().slice(0, 10);
+  const selectedDate = isAgendaDateKey(params.date) ? params.date : getAgendaToday();
+  const { start: rangeStart, end: rangeEnd } = getAgendaVisibleRange(selectedDate);
   const permissions = await getCurrentPermissionMap();
   const clinicScope = await getCurrentClinicScope();
   let clinics: Clinic[] = [];

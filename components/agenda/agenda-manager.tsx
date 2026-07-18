@@ -10,7 +10,6 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  Clock,
   ListChecks,
   LockKeyhole,
   MoreHorizontal,
@@ -29,6 +28,7 @@ import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { PermissionSet } from "@/lib/permission-modules";
 import type { Database } from "@/types/database";
+import { getAgendaToday } from "@/lib/agenda-date";
 import {
   createAppointment,
   createScheduleBlock,
@@ -51,6 +51,7 @@ import {
   type AppointmentType,
   type ScheduleBlockFormInput
 } from "@/app/(app)/agenda/actions";
+import { setActiveClinic } from "@/app/(app)/clinic-actions";
 
 type Appointment = Database["public"]["Tables"]["appointments"]["Row"] & {
   patient_name: string;
@@ -322,7 +323,7 @@ const emptyBlockForm: ScheduleBlockFormInput = {
 };
 
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return getAgendaToday();
 }
 
 function startOfWeek(date: Date) {
@@ -885,14 +886,12 @@ export function AgendaManager({
   const completedToday = dayAppointments.filter(
     (appointment) => normalizeStatus(appointment.status) === "realizado"
   ).length;
-  const inProgressToday = dayAppointments.filter((appointment) =>
-    isInProgress(appointment)
-  ).length;
   const nextAppointment = appointments
     .filter((appointment) => {
       const status = normalizeStatus(appointment.status);
       const appointmentDateTime = new Date(`${appointment.appointment_date}T${formatTime(appointment.start_time)}:00`);
       return (status === "agendado" || status === "confirmado")
+        && appointment.appointment_date === today()
         && appointmentDateTime >= new Date()
         && (clinicFilter === "all" || appointment.clinic_id === clinicFilter)
         && (employeeFilter === "all" || appointment.employee_id === employeeFilter)
@@ -901,20 +900,31 @@ export function AgendaManager({
     .sort((a, b) => `${a.appointment_date} ${a.start_time}`.localeCompare(`${b.appointment_date} ${b.start_time}`))[0];
 
   function selectAgendaDate(date: string) {
-    if (isPastDate(date) || isFullDayBlocked(date, scopedBlocks)) {
-      setMessage({ ok: false, message: "Data bloqueada para agendamento" });
-      return false;
-    }
-
     setSelectedDate(date);
     const params = new URLSearchParams(window.location.search);
+    const previousDate = params.get("date");
     params.set("date", date);
-    router.replace(`/agenda?${params.toString()}`);
+    if (previousDate === date) {
+      router.refresh();
+    } else {
+      router.replace(`/agenda?${params.toString()}`);
+    }
     return true;
   }
 
   function refresh() {
     router.refresh();
+  }
+
+  function changeClinicFilter(clinicId: string) {
+    if (!isAdmMaster || clinicId === clinicFilter) return;
+    startTransition(async () => {
+      await setActiveClinic(clinicId);
+      setClinicFilter(clinicId);
+      setEmployeeFilter("all");
+      setServiceFilter("all");
+      router.refresh();
+    });
   }
 
   function openCreateAppointment(date = selectedDate, employeeId = "", startTime = "") {
@@ -947,6 +957,19 @@ export function AgendaManager({
   React.useEffect(() => {
     if (initialSelectedDate) setSelectedDate(initialSelectedDate);
   }, [initialSelectedDate]);
+
+  React.useEffect(() => {
+    setClinicFilter(currentClinicId ?? "all");
+  }, [currentClinicId]);
+
+  React.useEffect(() => {
+    if (!selectedAppointment) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSelectedAppointment(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [selectedAppointment]);
 
   React.useEffect(() => {
     const selected = initialAppointmentId ? appointments.find((item) => item.id === initialAppointmentId) : null;
@@ -1074,7 +1097,7 @@ export function AgendaManager({
         };
         setSavedWhatsappConfirmations((current) => [...current, confirmation]);
         closeAppointmentForm();
-        refresh();
+        selectAgendaDate(appointmentPayload.appointment_date);
       } else {
         setAppointmentFormMessage({
           ok: false,
@@ -1255,8 +1278,43 @@ export function AgendaManager({
     });
   }
 
+  const appointmentDetails = selectedAppointment ? (
+    <AppointmentDetailsPanel
+      appointment={selectedAppointment}
+      patients={patients}
+      clinics={clinics}
+      patientPackages={patientPackages}
+      canEdit={canEdit}
+      isPending={isPending}
+      onClose={() => setSelectedAppointment(null)}
+      onEdit={() => { const appointment = selectedAppointment; setSelectedAppointment(null); openEditAppointment(appointment); }}
+      onReschedule={() => { const appointment = selectedAppointment; setSelectedAppointment(null); openRescheduleAppointment(appointment); }}
+      onStatus={(status) => changeStatus(selectedAppointment, status)}
+      onFinalize={() => { const appointment = selectedAppointment; setSelectedAppointment(null); openFinalizeAppointment(appointment); }}
+      canReopen={Boolean(canReopen || isAdmMaster)}
+      onReopen={() => openReopenAppointment(selectedAppointment)}
+      onUndoAbsence={() => openStatusCorrection(selectedAppointment, "faltou")}
+      onRestoreCancelled={() => openStatusCorrection(selectedAppointment, "cancelado")}
+      onCreateNew={() => { const appointment = selectedAppointment; setSelectedAppointment(null); openCreateAppointment(appointment.appointment_date); setAppointmentForm((current) => ({ ...current, patient_id: appointment.patient_id, patient_ids: appointment.patient_ids })); }}
+      onNavigate={(href) => router.push(href as never)}
+    />
+  ) : null;
+
   return (
     <div className="agenda-workspace grid gap-4 scroll-smooth">
+      <header className="flex flex-col gap-4 rounded-2xl border border-slate-200/70 bg-gradient-to-r from-white via-violet-50 to-blue-50 p-5 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:via-violet-950/30 dark:to-blue-950/30 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-violet-600 dark:text-violet-300">Operacao clinica</p>
+          <h1 className="mt-1 text-3xl font-bold tracking-tight">Agenda</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Gerencie agendamentos, faltas, reposicoes e atendimentos.</p>
+        </div>
+        {canCreate ? (
+          <Button type="button" size="lg" className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-500/20 hover:from-violet-700 hover:to-indigo-700" onClick={() => openCreateAppointment()}>
+            <CalendarPlus className="h-5 w-5" />
+            + Novo agendamento
+          </Button>
+        ) : null}
+      </header>
       {message ? (
         <SystemMessage message={message} onClose={() => setMessage(null)} />
       ) : null}
@@ -1284,10 +1342,6 @@ export function AgendaManager({
           <div className="flex flex-wrap items-center gap-2">
             {canCreate ? (
               <>
-                <Button type="button" onClick={() => openCreateAppointment()}>
-                  <CalendarPlus className="h-4 w-4" />
-                  Novo
-                </Button>
                 <Button
                   type="button"
                   variant="outline"
@@ -1338,7 +1392,6 @@ export function AgendaManager({
             <input
               type="date"
               value={selectedDate}
-              min={today()}
               onChange={(event) => selectAgendaDate(event.target.value)}
               className="agenda-input"
             />
@@ -1360,11 +1413,10 @@ export function AgendaManager({
           <FieldShell label="Clínica">
             <select
               value={clinicFilter}
-              onChange={(event) => setClinicFilter(event.target.value)}
+              onChange={(event) => changeClinicFilter(event.target.value)}
               disabled={!isAdmMaster}
               className="agenda-input disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {isAdmMaster ? <option value="all">Todas as clínicas</option> : null}
               {clinics.map((clinic) => (
                 <option key={clinic.id} value={clinic.id}>
                   {clinic.name}
@@ -1411,34 +1463,37 @@ export function AgendaManager({
         </div> : null}
       </Card>
 
-      <section className="hidden gap-3 lg:grid lg:grid-cols-4">
-        <MetricCard
-          icon={CalendarDays}
-          label="Atendimentos do dia"
-          value={dayAppointments.length}
-          detail={fullDate(selectedDate)}
-        />
-        <MetricCard
-          icon={Check}
-          label="Realizados"
-          value={completedToday}
-          detail="Status finalizado"
-        />
-        <MetricCard
-          icon={Clock}
-          label="Em andamento"
-          value={inProgressToday}
-          detail="Agora"
-        />
-        <MetricCard
-          icon={Ban}
-          label="Bloqueios"
-          value={dayBlocks.length}
-          detail="Dia selecionado"
-        />
+      <section className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
+        {[
+          ["Atendimentos", dayAppointments.length],
+          ["Confirmados", dayAppointments.filter((item) => normalizeStatus(item.status) === "confirmado").length],
+          ["Realizados", completedToday],
+          ["Pendentes", dayAppointments.filter((item) => ["agendado", "pendente"].includes(normalizeStatus(item.status))).length],
+          ["Faltas", dayAppointments.filter((item) => normalizeStatus(item.status) === "faltou").length],
+          ["Cancelados", dayAppointments.filter((item) => normalizeStatus(item.status) === "cancelado").length],
+          ["Bloqueios", dayBlocks.length],
+          ["Grupos", dayAppointments.filter((item) => item.service_is_group || getAppointmentType(item) === "grupo").length]
+        ].map(([label, value]) => (
+          <Card key={String(label)} className="rounded-xl border-slate-200/80 bg-white/90 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/90">
+            <strong className="text-2xl font-bold tabular-nums">{value}</strong>
+            <p className="truncate text-xs text-muted-foreground">{label}</p>
+          </Card>
+        ))}
       </section>
 
-      <div className="grid items-start gap-4 scroll-smooth xl:grid-cols-[minmax(0,7fr)_minmax(300px,3fr)]">
+      {viewMode !== "month" ? (
+        <div className="xl:hidden">
+          <MiniMonthCalendar
+            selectedDate={selectedDate}
+            appointments={visibleAppointments}
+            blocks={scopedBlocks}
+            onSelectDate={selectAgendaDate}
+          />
+        </div>
+      ) : null}
+
+      <div className="grid items-start gap-4 scroll-smooth xl:grid-cols-[minmax(0,1fr)_minmax(340px,390px)]">
+        <div className="grid min-w-0 gap-4">
         <Card className="min-w-0 overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.12)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_24px_70px_rgba(0,0,0,0.35)]">
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200/70 bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 p-5 text-white dark:border-slate-800">
             <div>
@@ -1456,18 +1511,32 @@ export function AgendaManager({
           </div>
 
           {viewMode === "month" ? (
-            <MonthGrid
-              selectedDate={selectedDate}
-              days={visibleDays}
-              appointments={visibleAppointments}
-              blocks={visibleBlocks}
-              onOpenAppointment={setSelectedAppointment}
-              onSelectDate={(date) => {
-                if (selectAgendaDate(date)) {
-                  setViewMode("day");
-                }
-              }}
-            />
+            <>
+              <div className="md:hidden">
+                <MiniMonthCalendar
+                  selectedDate={selectedDate}
+                  appointments={visibleAppointments}
+                  blocks={visibleBlocks}
+                  onSelectDate={(date) => {
+                    if (selectAgendaDate(date)) setViewMode("day");
+                  }}
+                />
+              </div>
+              <div className="hidden overflow-x-auto md:block">
+                <div className="min-w-[760px]">
+                  <MonthGrid
+                    selectedDate={selectedDate}
+                    days={visibleDays}
+                    appointments={visibleAppointments}
+                    blocks={visibleBlocks}
+                    onOpenAppointment={setSelectedAppointment}
+                    onSelectDate={(date) => {
+                      if (selectAgendaDate(date)) setViewMode("day");
+                    }}
+                  />
+                </div>
+              </div>
+            </>
           ) : (
             <div className="max-h-[calc(100vh-190px)] min-h-[720px] scroll-smooth overflow-auto bg-gradient-to-br from-slate-100/90 via-white to-blue-50/60 dark:from-slate-950 dark:via-slate-950 dark:to-blue-950/20">
               <div className="grid gap-5 p-4 sm:p-5">
@@ -1497,28 +1566,53 @@ export function AgendaManager({
               </div>
             </div>
           )}
+          <AgendaLegend />
         </Card>
+        <DailyAppointmentsList
+          selectedDate={selectedDate}
+          appointments={dayAppointments}
+          canEdit={canEdit}
+          canAdminCorrect={canAdminCorrect}
+          isPending={isPending}
+          onOpen={setSelectedAppointment}
+          onFinalize={openFinalizeAppointment}
+          onStatus={changeStatus}
+          onUndoAbsence={(appointment) => openStatusCorrection(appointment, "faltou")}
+          onRestoreCancelled={(appointment) => openStatusCorrection(appointment, "cancelado")}
+          onCreate={() => openCreateAppointment(selectedDate)}
+        />
+        </div>
 
-        <aside className="hidden gap-4 self-start xl:sticky xl:top-[72px] xl:grid">
-          <MiniMonthCalendar
-            selectedDate={selectedDate}
-            blocks={scopedBlocks}
-            onSelectDate={selectAgendaDate}
-          />
-          <SidePanel
-            selectedDate={selectedDate}
-            nextAppointment={nextAppointment}
-            dayAppointments={dayAppointments}
-            dayBlocks={dayBlocks}
-            canEdit={canEdit}
-            canAdminCorrect={canAdminCorrect}
-            isPending={isPending}
-            onOpen={setSelectedAppointment}
-            onFinalize={openFinalizeAppointment}
-            onStatus={changeStatus}
-            onUndoAbsence={(appointment) => openStatusCorrection(appointment, "faltou")}
-            onRestoreCancelled={(appointment) => openStatusCorrection(appointment, "cancelado")}
-          />
+        <aside className={cn(
+          "self-start xl:sticky xl:top-[72px]",
+          selectedAppointment
+            ? "fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-sm xl:relative xl:inset-auto xl:z-auto xl:bg-transparent xl:p-0 xl:backdrop-blur-none"
+            : "hidden xl:grid xl:gap-4"
+        )}>
+          {appointmentDetails ?? (
+            <>
+              <MiniMonthCalendar
+                selectedDate={selectedDate}
+                appointments={visibleAppointments}
+                blocks={scopedBlocks}
+                onSelectDate={selectAgendaDate}
+              />
+              <SidePanel
+                selectedDate={selectedDate}
+                nextAppointment={nextAppointment}
+                dayAppointments={dayAppointments}
+                dayBlocks={dayBlocks}
+                canEdit={canEdit}
+                canAdminCorrect={canAdminCorrect}
+                isPending={isPending}
+                onOpen={setSelectedAppointment}
+                onFinalize={openFinalizeAppointment}
+                onStatus={changeStatus}
+                onUndoAbsence={(appointment) => openStatusCorrection(appointment, "faltou")}
+                onRestoreCancelled={(appointment) => openStatusCorrection(appointment, "cancelado")}
+              />
+            </>
+          )}
         </aside>
       </div>
 
@@ -1540,28 +1634,6 @@ export function AgendaManager({
           isPending={isPending}
           onSubmit={submitAppointment}
           onClose={closeAppointmentForm}
-        />
-      ) : null}
-
-      {selectedAppointment ? (
-        <AppointmentDetailModal
-          appointment={selectedAppointment}
-          patients={patients}
-          clinics={clinics}
-          patientPackages={patientPackages}
-          canEdit={canEdit}
-          isPending={isPending}
-          onClose={() => setSelectedAppointment(null)}
-          onEdit={() => { setSelectedAppointment(null); openEditAppointment(selectedAppointment); }}
-          onReschedule={() => { setSelectedAppointment(null); openRescheduleAppointment(selectedAppointment); }}
-          onStatus={(status) => changeStatus(selectedAppointment, status)}
-          onFinalize={() => { setSelectedAppointment(null); openFinalizeAppointment(selectedAppointment); }}
-          canReopen={Boolean(canReopen || isAdmMaster)}
-          onReopen={() => openReopenAppointment(selectedAppointment)}
-          onUndoAbsence={() => openStatusCorrection(selectedAppointment, "faltou")}
-          onRestoreCancelled={() => openStatusCorrection(selectedAppointment, "cancelado")}
-          onCreateNew={() => { const appointment = selectedAppointment; setSelectedAppointment(null); openCreateAppointment(appointment.appointment_date); setAppointmentForm((current) => ({ ...current, patient_id: appointment.patient_id, patient_ids: appointment.patient_ids })); }}
-          onNavigate={(href) => router.push(href as never)}
         />
       ) : null}
 
@@ -1629,35 +1701,6 @@ function SystemMessage({
         <X className="h-4 w-4" />
       </button>
     </div>
-  );
-}
-
-function MetricCard({
-  icon: Icon,
-  label,
-  value,
-  detail
-}: {
-  icon: React.ElementType;
-  label: string;
-  value: number;
-  detail: string;
-}) {
-  return (
-    <Card className="rounded-2xl border border-slate-200/70 bg-white/90 p-4 shadow-[0_16px_45px_rgba(15,23,42,0.09)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/90 dark:shadow-[0_16px_45px_rgba(0,0,0,0.25)]">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">{label}</p>
-          <strong className="mt-2 block text-3xl font-semibold tracking-normal">
-            {value}
-          </strong>
-          <span className="mt-1 block text-xs text-muted-foreground">{detail}</span>
-        </div>
-        <span className="rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 p-2.5 text-white shadow-[0_8px_20px_rgba(37,99,235,0.3)]">
-          <Icon className="h-5 w-5" />
-        </span>
-      </div>
-    </Card>
   );
 }
 
@@ -1854,7 +1897,18 @@ function DayTimeline({
                     <TimelineAppointment
                       key={appointment.id}
                       appointment={appointment}
-                      position={(() => { const base = getCalendarPosition(appointment.start_time, appointment.end_time); const sameSlot = employeeAppointments.slice(0, appointmentIndex).filter((item) => item.start_time === appointment.start_time).length; return { ...base, top: base.top + sameSlot * (Math.min(base.height, 112) + 6), height: Math.min(base.height, 112) }; })()}
+                      position={(() => {
+                        const base = getCalendarPosition(appointment.start_time, appointment.end_time);
+                        const simultaneous = employeeAppointments.filter((item) => item.start_time === appointment.start_time);
+                        const lane = simultaneous.findIndex((item) => item.id === appointment.id);
+                        const laneCount = Math.max(simultaneous.length, 1);
+                        return {
+                          ...base,
+                          height: Math.max(Math.min(base.height, 112), 72),
+                          leftPercent: (lane / laneCount) * 100,
+                          widthPercent: 100 / laneCount
+                        };
+                      })()}
                       canEdit={canEdit}
                       canAdminCorrect={canAdminCorrect}
                       isPending={isPending}
@@ -1902,7 +1956,7 @@ function TimelineAppointment({
   onRestoreCancelled
 }: {
   appointment: Appointment;
-  position: { top: number; height: number };
+  position: { top: number; height: number; leftPercent: number; widthPercent: number };
   canEdit: boolean;
   canAdminCorrect: boolean;
   isPending: boolean;
@@ -1934,12 +1988,18 @@ function TimelineAppointment({
       onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onEdit(); }}
       data-dnd-ready="appointment"
       className={cn(
-        "absolute left-2 right-2 z-10 grid cursor-pointer gap-2 overflow-hidden rounded-xl border border-white/80 border-l-[6px] p-4 shadow-[0_12px_32px_rgba(15,23,42,0.16)] ring-1 ring-black/5 backdrop-blur-sm transition-all duration-200 hover:z-20 hover:-translate-y-1 hover:shadow-[0_20px_44px_rgba(15,23,42,0.22)] dark:border-white/10 dark:ring-white/5",
+        "absolute z-10 grid cursor-pointer gap-2 overflow-hidden rounded-xl border border-white/80 border-l-[6px] p-3 shadow-[0_12px_32px_rgba(15,23,42,0.16)] ring-1 ring-black/5 backdrop-blur-sm transition-all duration-200 hover:z-20 hover:-translate-y-1 hover:shadow-[0_20px_44px_rgba(15,23,42,0.22)] dark:border-white/10 dark:ring-white/5",
         style.border,
         style.surface,
         style.text
       )}
-      style={{ top: position.top, minHeight: position.height }}
+      style={{
+        top: position.top,
+        minHeight: position.height,
+        left: `calc(${position.leftPercent}% + 8px)`,
+        width: `calc(${position.widthPercent}% - 16px)`
+      }}
+      title={`${formatTime(appointment.start_time)} · ${appointment.patient_names.join(", ")} · ${appointment.service_name} · ${getStatusLabel(appointment)}`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
@@ -2057,7 +2117,7 @@ function MonthGrid({
   return (
     <div className="grid gap-px bg-slate-200/80 p-px dark:bg-slate-800">
       <div className="grid grid-cols-7 gap-px bg-slate-200/80 dark:bg-slate-800">
-        {["Seg", "Ter", "Qua", "Qui", "Sex", "Sab", "Dom"].map((day) => (
+        {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sab"].map((day) => (
           <div
             key={day}
             className="bg-slate-900 px-3 py-3 text-center text-[11px] font-bold uppercase tracking-widest text-slate-200 dark:bg-black"
@@ -2074,7 +2134,6 @@ function MonthGrid({
           const dayBlocks = blocks.filter((block) => block.block_date === day);
           const muted = day.slice(0, 7) !== selectedMonth;
           const hasBlock = dayBlocks.length > 0;
-          const blockedDay = isPastDate(day) || isFullDayBlocked(day, blocks);
 
           return (
             <div
@@ -2087,9 +2146,7 @@ function MonthGrid({
                 "min-h-[150px] bg-white p-3 text-left transition-all duration-200 hover:relative hover:z-10 hover:bg-blue-50/70 hover:shadow-inner dark:bg-slate-950 dark:hover:bg-blue-950/20",
                 muted && "bg-muted/30 text-muted-foreground",
                 hasBlock &&
-                  "bg-red-50/80 ring-1 ring-inset ring-red-900/15 dark:bg-red-950/20",
-                blockedDay &&
-                  "cursor-not-allowed text-muted-foreground hover:bg-red-50/80 dark:hover:bg-red-950/20"
+                  "bg-red-50/80 ring-1 ring-inset ring-red-900/15 dark:bg-red-950/20"
               )}
             >
               <div className="mb-2 flex items-center justify-between">
@@ -2145,10 +2202,12 @@ function MonthGrid({
 
 function MiniMonthCalendar({
   selectedDate,
+  appointments = [],
   blocks,
   onSelectDate
 }: {
   selectedDate: string;
+  appointments?: Appointment[];
   blocks: ScheduleBlock[];
   onSelectDate: (date: string) => void;
 }) {
@@ -2173,31 +2232,133 @@ function MiniMonthCalendar({
           </span>
         ))}
         {days.map((day) => {
+          const appointmentCount = appointments.filter(
+            (appointment) => appointment.appointment_date === day
+          ).length;
           const dayBlocks = blocks.filter((block) => block.block_date === day);
           const hasBlock = dayBlocks.length > 0;
-          const blockedDay = isPastDate(day) || isFullDayBlocked(day, blocks);
 
           return (
             <button
               key={day}
               type="button"
               onClick={() => onSelectDate(day)}
-              title={hasBlock ? "Data com bloqueio" : undefined}
+              title={`${appointmentCount} agendamento(s)${hasBlock ? "; data com bloqueio" : ""}`}
               className={cn(
                 "h-9 rounded-md text-sm font-medium transition-colors hover:bg-secondary",
                 day === selectedDate &&
                   "bg-primary text-primary-foreground hover:bg-primary",
                 day.slice(0, 7) !== selectedMonth && "text-muted-foreground/50",
                 hasBlock &&
-                  "bg-red-100 text-red-900 ring-1 ring-inset ring-red-900/20 hover:bg-red-100 dark:bg-red-950/50 dark:text-red-100",
-                blockedDay && "cursor-not-allowed opacity-70"
+                  "bg-red-100 text-red-900 ring-1 ring-inset ring-red-900/20 hover:bg-red-100 dark:bg-red-950/50 dark:text-red-100"
               )}
             >
               {toDate(day).getDate()}
+              {appointmentCount > 0 ? (
+                <span className="sr-only">, {appointmentCount} agendamento(s)</span>
+              ) : null}
+              {appointmentCount > 0 ? (
+                <span aria-hidden="true" className="mx-auto mt-0.5 block h-1 w-1 rounded-full bg-current" />
+              ) : null}
             </button>
           );
         })}
       </div>
+    </Card>
+  );
+}
+
+function AgendaLegend() {
+  const items = [
+    ["Agendado", "bg-slate-400"],
+    ["Confirmado", "bg-green-500"],
+    ["Realizado", "bg-emerald-500"],
+    ["Pendente financeiro", "bg-amber-500"],
+    ["Falta", "bg-red-500"],
+    ["Cancelado", "bg-zinc-400"],
+    ["Reposição", "bg-violet-500"],
+    ["Cortesia/experimental", "bg-purple-500"]
+  ] as const;
+
+  return (
+    <div className="flex flex-wrap gap-x-4 gap-y-2 border-t border-slate-200/70 bg-white px-4 py-3 text-xs text-muted-foreground dark:border-slate-800 dark:bg-slate-950" aria-label="Legenda de status da agenda">
+      {items.map(([label, color]) => (
+        <span key={label} className="inline-flex items-center gap-1.5">
+          <span aria-hidden="true" className={cn("h-2.5 w-2.5 rounded-full", color)} />
+          {label}
+        </span>
+      ))}
+      <span className="inline-flex items-center gap-1.5">
+        <span aria-hidden="true" className="h-3 w-3 rounded-sm bg-slate-400 [background-image:repeating-linear-gradient(135deg,transparent,transparent_2px,rgba(15,23,42,.35)_2px,rgba(15,23,42,.35)_4px)]" />
+        Bloqueio
+      </span>
+    </div>
+  );
+}
+
+function DailyAppointmentsList({
+  selectedDate,
+  appointments,
+  canEdit,
+  canAdminCorrect,
+  isPending,
+  onOpen,
+  onFinalize,
+  onStatus,
+  onUndoAbsence,
+  onRestoreCancelled,
+  onCreate
+}: {
+  selectedDate: string;
+  appointments: Appointment[];
+  canEdit: boolean;
+  canAdminCorrect: boolean;
+  isPending: boolean;
+  onOpen: (appointment: Appointment) => void;
+  onFinalize: (appointment: Appointment) => void;
+  onStatus: (appointment: Appointment, status: AppointmentStatus) => void;
+  onUndoAbsence: (appointment: Appointment) => void;
+  onRestoreCancelled: (appointment: Appointment) => void;
+  onCreate: () => void;
+}) {
+  return (
+    <Card className="overflow-hidden rounded-2xl border-slate-200/80 bg-white/95 shadow-sm dark:border-slate-800 dark:bg-slate-950/95">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+        <div>
+          <h2 className="font-semibold">Agendamentos do dia — {formatShortDate(selectedDate)}</h2>
+          <p className="text-xs text-muted-foreground">A lista usa os mesmos filtros e registros exibidos na grade.</p>
+        </div>
+        <span className="rounded-full bg-violet-100 px-3 py-1 text-xs font-bold text-violet-700 dark:bg-violet-950 dark:text-violet-200">{appointments.length} registro(s)</span>
+      </header>
+      {appointments.length > 0 ? (
+        <div className="divide-y">
+          {appointments.map((appointment) => (
+            <div key={appointment.id} className="p-3 transition-colors hover:bg-muted/40">
+              <AppointmentSummary
+                appointment={appointment}
+                compact
+                canEdit={canEdit}
+                canAdminCorrect={canAdminCorrect}
+                isPending={isPending}
+                onOpen={() => onOpen(appointment)}
+                onFinalize={() => onFinalize(appointment)}
+                onStatus={(status) => onStatus(appointment, status)}
+                onUndoAbsence={() => onUndoAbsence(appointment)}
+                onRestoreCancelled={() => onRestoreCancelled(appointment)}
+              />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid place-items-center gap-3 px-4 py-10 text-center">
+          <CalendarDays className="h-10 w-10 text-muted-foreground/50" />
+          <div>
+            <p className="font-medium">Nenhum agendamento encontrado para esta data e filtros.</p>
+            <p className="text-sm text-muted-foreground">A consulta foi concluida sem resultados.</p>
+          </div>
+          {canEdit ? <Button type="button" onClick={onCreate}><CalendarPlus className="h-4 w-4" />Novo agendamento</Button> : null}
+        </div>
+      )}
     </Card>
   );
 }
@@ -2541,7 +2702,7 @@ function GroupParticipantsPanel({ appointment, patients, packages, canEdit }: {
     <div className="grid gap-2">{participants.map((participant)=><GroupParticipantRow key={participant.id} participant={participant} patient={patients.find(item=>item.id===participant.patient_id)} packages={packages} canEdit={canEdit} onDone={finish}/>)}</div>
   </div>;
 }
-function AppointmentDetailModal({
+function AppointmentDetailsPanel({
   appointment, patients, clinics, patientPackages, canEdit, isPending,
   onClose, onEdit, onReschedule, onStatus, onFinalize, canReopen, onReopen, onUndoAbsence, onRestoreCancelled, onCreateNew, onNavigate
 }: {
@@ -2569,8 +2730,20 @@ function AppointmentDetailModal({
   };  const openWhatsapp = (message: string) => { if (whatsapp) window.open(whatsapp + "?text=" + encodeURIComponent(message), "_blank", "noopener,noreferrer"); };
 
   return (
-    <ModalShell title="Detalhe rapido do agendamento" icon={CalendarClock} onClose={onClose}>
-      <div className="grid gap-5 scroll-smooth">
+    <Card className="flex max-h-[calc(100vh-6rem)] min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-background shadow-2xl dark:border-slate-800">
+      <header className="flex items-center justify-between gap-3 border-b bg-gradient-to-r from-violet-600 to-indigo-700 px-5 py-4 text-white">
+        <div className="flex items-center gap-3">
+          <CalendarClock className="h-5 w-5" />
+          <div>
+            <h2 className="font-semibold">Detalhes do agendamento</h2>
+            <p className="text-xs text-violet-100">{formatShortDate(appointment.appointment_date)} · {formatTime(appointment.start_time)}</p>
+          </div>
+        </div>
+        <Button type="button" size="icon" variant="ghost" className="text-white hover:bg-white/15 hover:text-white" onClick={onClose} aria-label="Fechar detalhes">
+          <X className="h-4 w-4" />
+        </Button>
+      </header>
+      <div className="grid min-h-0 gap-5 overflow-y-auto p-4 scroll-smooth">
         <div className="grid gap-3 rounded-lg border bg-muted/20 p-4 sm:grid-cols-2">
           <PackageDetail label="Paciente" value={appointment.patient_names.join(", ")} />
           <PackageDetail label="Telefone" value={patient?.phone ?? "Não informado"} />
@@ -2609,7 +2782,7 @@ function AppointmentDetailModal({
           <Button type="button" variant="outline" disabled={!whatsapp} onClick={() => openWhatsapp(messages.reagendamento)}>WhatsApp: reagendamento</Button>
         </div>
       </div>
-    </ModalShell>
+    </Card>
   );
 }
 function StatusCorrectionModal({ appointment, kind, reason, setReason, message, isPending, onSubmit, onClose }: {

@@ -38,6 +38,9 @@ export function AppShell({
   const router = useRouter();
   const [isChangingClinic, startClinicTransition] = React.useTransition();
   const [collapsed, setCollapsed] = React.useState(false);
+  const [sidebarPreferenceLoaded, setSidebarPreferenceLoaded] = React.useState(false);
+  const [hoverExpanded, setHoverExpanded] = React.useState(false);
+  const hoverCloseTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [clinicPickerOpen, setClinicPickerOpen] = React.useState(false);
   const [clinicQuery, setClinicQuery] = React.useState("");
@@ -52,6 +55,27 @@ export function AppShell({
   React.useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
+
+  React.useEffect(() => {
+    const stored = window.localStorage.getItem("mwf-sidebar-collapsed");
+    if (stored === "true" || stored === "false") {
+      setCollapsed(stored === "true");
+    } else if (window.innerWidth < 1280) {
+      setCollapsed(true);
+    }
+    setSidebarPreferenceLoaded(true);
+  }, []);
+
+  React.useEffect(() => {
+    if (!sidebarPreferenceLoaded) return;
+    window.localStorage.setItem("mwf-sidebar-collapsed", String(collapsed));
+  }, [collapsed, sidebarPreferenceLoaded]);
+
+  React.useEffect(() => () => {
+    if (hoverCloseTimer.current) clearTimeout(hoverCloseTimer.current);
+  }, []);
+
+  const sidebarCollapsed = collapsed && !hoverExpanded;
 
   const activeClinic = clinics.find((clinic) => clinic.id === activeClinicId);
   const clinicLabel =
@@ -73,9 +97,18 @@ export function AppShell({
 
   const sidebar = (
     <aside
+      onMouseEnter={() => {
+        if (!collapsed || window.matchMedia("(hover: hover)").matches === false) return;
+        if (hoverCloseTimer.current) clearTimeout(hoverCloseTimer.current);
+        setHoverExpanded(true);
+      }}
+      onMouseLeave={() => {
+        if (!collapsed) return;
+        hoverCloseTimer.current = setTimeout(() => setHoverExpanded(false), 220);
+      }}
       className={cn(
-        "app-sidebar flex h-full flex-col bg-[hsl(var(--sidebar-bg))] text-[hsl(var(--sidebar-fg))] transition-[width] duration-200",
-        collapsed ? "w-[68px]" : "w-64"
+        "app-sidebar flex h-full flex-col bg-[hsl(var(--sidebar-bg))] text-[hsl(var(--sidebar-fg))] shadow-xl transition-[width] duration-200",
+        sidebarCollapsed ? "w-[68px]" : "w-64"
       )}
     >
       <div className="flex h-14 items-center justify-between border-b border-white/10 px-4">
@@ -83,7 +116,7 @@ export function AppShell({
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400 via-blue-500 to-violet-500 text-white shadow-lg shadow-blue-500/30">
             <Activity className="h-5 w-5" />
           </div>
-          {!collapsed ? (
+          {!sidebarCollapsed ? (
             <div className="min-w-0">
               <p className="truncate font-semibold text-white">MWFSystem</p>
               <p className="truncate text-xs text-white/60">
@@ -98,8 +131,8 @@ export function AppShell({
           size="icon"
           className="hidden text-white/70 hover:bg-white/10 hover:text-white lg:inline-flex"
           onClick={() => setCollapsed((value) => !value)}
-          aria-label={collapsed ? "Expandir sidebar" : "Recolher sidebar"}
-          title={collapsed ? "Expandir sidebar" : "Recolher sidebar"}
+          aria-label={collapsed ? "Fixar sidebar expandida" : "Recolher sidebar"}
+          title={collapsed ? "Fixar sidebar expandida" : "Recolher sidebar"}
         >
           {collapsed ? (
             <PanelLeftOpen className="h-4 w-4" />
@@ -113,13 +146,13 @@ export function AppShell({
         <div
           className={cn(
             "rounded-lg bg-white/5 p-2.5",
-            collapsed && "px-2 text-center"
+            sidebarCollapsed && "px-2 text-center"
           )}
         >
           <p className="text-xs font-medium uppercase text-white/50">
-            {collapsed ? "Clinica" : "Clinica atual"}
+            {sidebarCollapsed ? "Clinica" : "Clinica atual"}
           </p>
-          {!collapsed ? (
+          {!sidebarCollapsed ? (
             <>
               {hasClinicSelector ? (
                 <button
@@ -165,13 +198,13 @@ export function AppShell({
                 className={cn(
                   "flex h-9 items-center gap-3 rounded-md px-3 text-sm font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white",
                   active && "bg-[hsl(var(--sidebar-accent))]/15 text-[hsl(var(--sidebar-accent))] hover:bg-[hsl(var(--sidebar-accent))]/15 hover:text-[hsl(var(--sidebar-accent))]",
-                  collapsed && "justify-center px-0"
+                  sidebarCollapsed && "justify-center px-0"
                 )}
               >
                 <Icon className="h-4 w-4 shrink-0" />
-                {!collapsed ? <span className="truncate">{item.title}</span> : null}
+                {!sidebarCollapsed ? <span className="truncate">{item.title}</span> : null}
               </Link>
-              {!collapsed && visibleChildren?.length ? (
+              {!sidebarCollapsed && visibleChildren?.length ? (
                 <div className="ml-8 mt-1 space-y-1">
                   {visibleChildren.map((child) => {
                     const childActive = pathname === child.href;
@@ -202,11 +235,11 @@ export function AppShell({
           <Button
             type="submit"
             variant="ghost"
-            className={cn("w-full justify-start text-white/70 hover:bg-white/10 hover:text-white", collapsed && "justify-center px-0")}
+            className={cn("w-full justify-start text-white/70 hover:bg-white/10 hover:text-white", sidebarCollapsed && "justify-center px-0")}
             title="Sair"
           >
             <LogOut className="h-4 w-4" />
-            {!collapsed ? <span>Sair</span> : null}
+            {!sidebarCollapsed ? <span>Sair</span> : null}
           </Button>
         </form>
       </div>
@@ -215,7 +248,7 @@ export function AppShell({
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="app-sidebar hidden lg:fixed lg:inset-y-0 lg:left-0 lg:block">{sidebar}</div>
+      <div className="app-sidebar hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:block">{sidebar}</div>
 
       {mobileOpen ? (
         <div className="app-sidebar fixed inset-0 z-40 lg:hidden">
