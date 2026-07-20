@@ -25,6 +25,7 @@ export type EmployeeFormInput = {
   login_email?: string;
   auth_password?: string;
   role?: string;
+  role_id?: string;
   commission_type?: string;
   commission_value?: string;
   status?: string;
@@ -96,6 +97,7 @@ function getEmployeePayload(input: EmployeeFormInput): EmployeeInsert {
     system_access: Boolean(input.system_access),
     login_email: normalizeLoginEmail(input.login_email),
     role: cleanOptionalValue(input.role),
+    role_id: cleanOptionalValue(input.role_id),
     commission_type: cleanOptionalValue(input.commission_type),
     commission_value: cleanOptionalNumber(input.commission_value),
     status: input.status ?? "active"

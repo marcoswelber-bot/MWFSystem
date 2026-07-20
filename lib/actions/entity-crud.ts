@@ -6,7 +6,7 @@ import { getErrorMessage } from "@/lib/supabase/env";
 import { assertCan } from "@/lib/permissions";
 import type { PermissionModuleKey } from "@/lib/permission-modules";
 
-export type CrudTable = "clinics" | "employees" | "services" | "medical_records";
+export type CrudTable = "clinics" | "employees" | "employee_roles" | "services" | "medical_records";
 export type CrudValue = string | number | boolean | null;
 export type CrudPayload = Record<string, CrudValue>;
 
@@ -18,6 +18,7 @@ export type CrudActionResult = {
 const allowedTables = new Set<CrudTable>([
   "clinics",
   "employees",
+  "employee_roles",
   "services",
   "medical_records"
 ]);
@@ -25,6 +26,7 @@ const allowedTables = new Set<CrudTable>([
 const tableModules: Record<CrudTable, PermissionModuleKey> = {
   clinics: "clinicas",
   employees: "funcionarios",
+  employee_roles: "funcoes",
   services: "servicos",
   medical_records: "prontuarios"
 };
@@ -61,6 +63,7 @@ function successMessage(table: CrudTable, action: "create" | "update" | "status"
   const labels: Record<CrudTable, string> = {
     clinics: "Clinica",
     employees: "Funcionario",
+    employee_roles: "Funcao",
     services: "Servico",
     medical_records: "Prontuario"
   };
@@ -85,6 +88,15 @@ export async function createCrudRecord(
     await assertCan(tableModules[table], "create");
     const cleanData = cleanPayload(payload);
     validateRequiredFields(table, cleanData);
+
+    if (table === "employee_roles") {
+      const { getCurrentClinicScope } = await import("@/lib/access-control");
+      const scope = await getCurrentClinicScope();
+      const requestedClinic = typeof cleanData.clinic_id === "string" ? cleanData.clinic_id : null;
+      const clinicId = scope.isAdmMaster ? requestedClinic : scope.clinicId;
+      if (!clinicId) throw new Error("Selecione uma clinica para cadastrar a funcao.");
+      cleanData.clinic_id = clinicId;
+    }
 
     const supabase = await createClient();
     const { error } = await supabase.from(table).insert(cleanData);
@@ -111,6 +123,15 @@ export async function updateCrudRecord(
     await assertCan(tableModules[table], "edit");
     const cleanData = cleanPayload(payload);
     validateRequiredFields(table, cleanData);
+
+    if (table === "employee_roles") {
+      const { getCurrentClinicScope } = await import("@/lib/access-control");
+      const scope = await getCurrentClinicScope();
+      const requestedClinic = typeof cleanData.clinic_id === "string" ? cleanData.clinic_id : null;
+      const clinicId = scope.isAdmMaster ? requestedClinic : scope.clinicId;
+      if (!clinicId) throw new Error("Selecione uma clinica para cadastrar a funcao.");
+      cleanData.clinic_id = clinicId;
+    }
 
     const supabase = await createClient();
     const { error } = await supabase.from(table).update(cleanData).eq("id", id);
@@ -157,6 +178,7 @@ export async function deleteCrudRecord(
   try {
     assertAllowedTable(table);
     await assertCan(tableModules[table], "delete");
+    if (table === "employee_roles") throw new Error("Funcoes devem ser inativadas para preservar o historico.");
     const supabase = await createClient();
     const { error } = await supabase.from(table).delete().eq("id", id);
 

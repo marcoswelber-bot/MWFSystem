@@ -35,9 +35,11 @@ type CommissionHistory =
 type StatusFilter = "all" | "active" | "inactive";
 type ActiveTab = "employees" | "commissions";
 
+type EmployeeRole = Database["public"]["Tables"]["employee_roles"]["Row"];
 type EmployeesManagerProps = {
   employees: Employee[];
   clinics: Clinic[];
+  roles: EmployeeRole[];
   isAdmMaster: boolean;
   currentClinicId: string | null;
   services: Service[];
@@ -59,6 +61,7 @@ const emptyForm: EmployeeFormInput = {
   login_email: "",
   auth_password: "",
   role: "",
+  role_id: "",
   commission_type: "percentual",
   commission_value: "",
   status: "active"
@@ -89,6 +92,7 @@ function employeeToForm(employee: Employee): EmployeeFormInput {
     login_email: employee.login_email ?? "",
     auth_password: "",
     role: employee.role ?? "",
+    role_id: employee.role_id ?? "",
     commission_type: employee.commission_type ?? "percentual",
     commission_value:
       employee.commission_value === null ? "" : String(employee.commission_value),
@@ -146,6 +150,7 @@ function estimateCommission(basePrice?: string, type?: string, value?: string) {
 export function EmployeesManager({
   employees,
   clinics,
+  roles,
   isAdmMaster,
   currentClinicId,
   services,
@@ -670,11 +675,18 @@ export function EmployeesManager({
             </label>
             <label>
               Funcao
-              <input
-                value={form.role}
-                onChange={(event) => updateForm("role", event.target.value)}
+              <select
+                value={form.role_id ?? ""}
+                onChange={(event) => {
+                  const selected = roles.find((role) => role.id === event.target.value);
+                  updateForm("role_id", event.target.value);
+                  updateForm("role", selected?.name ?? "");
+                }}
                 style={inputStyle}
-              />
+              >
+                <option value="">Selecione</option>
+                {roles.filter((role) => role.status === "active" && (!form.clinic_id || role.clinic_id === form.clinic_id)).map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
+              </select>
             </label>
             <label>
               Tem acesso ao sistema?

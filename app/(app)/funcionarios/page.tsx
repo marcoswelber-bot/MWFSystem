@@ -64,6 +64,7 @@ export default async function FuncionariosPage({
   const clinicScope = await getCurrentClinicScope();
   let employees: Employee[] = [];
   let clinics: Clinic[] = [];
+  let roles: Database["public"]["Tables"]["employee_roles"]["Row"][] = [];
   let services: Service[] = [];
   let rawCommissionRules: Database["public"]["Tables"]["professional_service_commissions"]["Row"][] = [];
   let rawCommissionHistory: Database["public"]["Tables"]["professional_service_commission_history"]["Row"][] = [];
@@ -84,6 +85,9 @@ export default async function FuncionariosPage({
     const clinicsResult = await readSupabaseList<Clinic>("clinics", clinicsQuery);
     clinics = clinicsResult.data;
     loadError = appendLoadError(loadError, clinicsResult.error);
+    const rolesResult = await readSupabaseList<Database["public"]["Tables"]["employee_roles"]["Row"]>("employee_roles", (clinicScope.clinicId ? supabase.from("employee_roles").select("*").eq("clinic_id", clinicScope.clinicId) : supabase.from("employee_roles").select("*")).order("name"));
+    roles = rolesResult.data;
+    loadError = appendLoadError(loadError, rolesResult.error);
 
     let query = supabase
       .from("employees")
@@ -193,6 +197,7 @@ export default async function FuncionariosPage({
       <EmployeesManager
         employees={employees}
         clinics={clinics}
+        roles={roles}
         isAdmMaster={clinicScope.isAdmMaster}
         currentClinicId={clinicScope.clinicId}
         services={services}

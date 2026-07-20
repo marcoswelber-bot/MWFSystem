@@ -16,6 +16,8 @@ export const permissionModules = [
   { key: "clinicas", label: "Clinicas", href: "/clinicas" },
   { key: "agenda", label: "Agenda", href: "/agenda" },
   { key: "funcionarios", label: "Funcionarios", href: "/funcionarios" },
+  { key: "funcoes", label: "Funcoes", href: "/configuracoes/funcoes" },
+  { key: "mwf_ia", label: "MWF IA", href: "/mwf-ia" },
   { key: "financeiro", label: "Financeiro", href: "/financeiro" },
   { key: "servicos", label: "Servicos", href: "/servicos" },
   { key: "tipos_servico", label: "Tipos de Servico", href: "/servicos" },

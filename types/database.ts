@@ -22,6 +22,10 @@ export type Database = {
           email: string | null;
           cnpj: string | null;
           address: string | null;
+          pix_key_type: string | null;
+          pix_key: string | null;
+          pix_holder: string | null;
+          pix_bank: string | null;
           status: string;
           created_at: string;
           updated_at: string;
@@ -36,6 +40,10 @@ export type Database = {
           email?: string | null;
           cnpj?: string | null;
           address?: string | null;
+          pix_key_type?: string | null;
+          pix_key?: string | null;
+          pix_holder?: string | null;
+          pix_bank?: string | null;
           status?: string;
           created_at?: string;
           updated_at?: string;
@@ -50,13 +58,34 @@ export type Database = {
           email?: string | null;
           cnpj?: string | null;
           address?: string | null;
+          pix_key_type?: string | null;
+          pix_key?: string | null;
+          pix_holder?: string | null;
+          pix_bank?: string | null;
           status?: string;
           created_at?: string;
           updated_at?: string;
         };
         Relationships: [];
       };
-      financial_transactions: {
+      employee_roles: {
+        Row: { id: string; clinic_id: string; name: string; description: string | null; status: string; created_at: string; updated_at: string };
+        Insert: { id?: string; clinic_id: string; name: string; description?: string | null; status?: string; created_at?: string; updated_at?: string };
+        Update: { id?: string; clinic_id?: string; name?: string; description?: string | null; status?: string; created_at?: string; updated_at?: string };
+        Relationships: [];
+      };
+      clinic_opening_hours: {
+        Row: { id: string; clinic_id: string; weekday: number; is_open: boolean; opens_at: string | null; closes_at: string | null; break_starts_at: string | null; break_ends_at: string | null; created_at: string; updated_at: string };
+        Insert: { id?: string; clinic_id: string; weekday: number; is_open?: boolean; opens_at?: string | null; closes_at?: string | null; break_starts_at?: string | null; break_ends_at?: string | null; created_at?: string; updated_at?: string };
+        Update: { id?: string; clinic_id?: string; weekday?: number; is_open?: boolean; opens_at?: string | null; closes_at?: string | null; break_starts_at?: string | null; break_ends_at?: string | null; created_at?: string; updated_at?: string };
+        Relationships: [];
+      };
+      operational_audit_logs: {
+        Row: { id: string; clinic_id: string; user_id: string | null; action: string; entity_type: string | null; entity_id: string | null; metadata: Json; created_at: string };
+        Insert: { id?: string; clinic_id: string; user_id?: string | null; action: string; entity_type?: string | null; entity_id?: string | null; metadata?: Json; created_at?: string };
+        Update: { id?: string; clinic_id?: string; user_id?: string | null; action?: string; entity_type?: string | null; entity_id?: string | null; metadata?: Json; created_at?: string };
+        Relationships: [];
+      };      financial_transactions: {
         Row: {
           id: string;
           clinic_id: string;
@@ -253,6 +282,7 @@ export type Database = {
           whatsapp: string | null;
           email: string | null;
           role: string | null;
+          role_id: string | null;
           system_access: boolean;
           login_email: string | null;
           auth_user_id: string | null;
@@ -270,6 +300,7 @@ export type Database = {
           whatsapp?: string | null;
           email?: string | null;
           role?: string | null;
+          role_id?: string | null;
           system_access?: boolean;
           login_email?: string | null;
           auth_user_id?: string | null;
@@ -287,6 +318,7 @@ export type Database = {
           whatsapp?: string | null;
           email?: string | null;
           role?: string | null;
+          role_id?: string | null;
           system_access?: boolean;
           login_email?: string | null;
           auth_user_id?: string | null;

@@ -1,3 +1,4 @@
+import { ClinicSettingsManager } from "@/components/clinics/clinic-settings-manager";
 import { EntityCrudManager, type EntityRecord } from "@/components/entity-crud-manager";
 import { PageHeader } from "@/components/page-header";
 import { createClient } from "@/lib/supabase/server";
@@ -40,6 +41,7 @@ export default async function ClinicasPage({ searchParams }: ClinicasPageProps) 
   const permissions = await getCurrentPermissionMap();
   const clinicScope = await getCurrentClinicScope();
   let clinics: Clinic[] = [];
+  let openingHours: Database["public"]["Tables"]["clinic_opening_hours"]["Row"][] = [];
   let loadError: string | undefined;
 
   if (!clinicScope.isAdmMaster && !clinicScope.clinicId) {
@@ -69,6 +71,9 @@ export default async function ClinicasPage({ searchParams }: ClinicasPageProps) 
       loadError = getErrorMessage(error);
     } else {
       clinics = data ?? [];
+      const hoursQuery = supabase.from("clinic_opening_hours").select("*");
+      const { data: hours } = clinicScope.clinicId ? await hoursQuery.eq("clinic_id", clinicScope.clinicId) : await hoursQuery;
+      openingHours = hours ?? [];
     }
     } catch (error) {
       loadError = getErrorMessage(error);
@@ -110,6 +115,7 @@ export default async function ClinicasPage({ searchParams }: ClinicasPageProps) 
           { key: "status_label", label: "Status" }
         ]}
       />
+      <ClinicSettingsManager clinics={clinics} openingHours={openingHours} canEdit={permissions.clinicas.edit} />
     </div>
   );
 }

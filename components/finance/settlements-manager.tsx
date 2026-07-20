@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { auditFinancialAction } from "@/app/(app)/financeiro/document-actions";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -152,6 +153,7 @@ export function SettlementsManager({ transactions, clinics, patients, services, 
   const [paymentMethod, setPaymentMethod] = React.useState<PaymentMethod>("pix");
   const [paidAt, setPaidAt] = React.useState(today());
   const [notes, setNotes] = React.useState("");
+  const [receipt, setReceipt] = React.useState<{ html: string; phone: string; clinicId: string; ids: string[] } | null>(null);
   const [periodMode, setPeriodMode] = React.useState<"current" | "previous" | "custom">("current");
   const [periodMonth, setPeriodMonth] = React.useState(String(new Date().getMonth() + 1).padStart(2, "0"));
   const [periodYear, setPeriodYear] = React.useState(String(new Date().getFullYear()));
@@ -237,11 +239,28 @@ export function SettlementsManager({ transactions, clinics, patients, services, 
   }
 
   function toggleSelection(id: string) {
-    setSelectedIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+    const target = rows.find((row) => row.id === id);
+    setSelectedIds((current) => {
+      if (current.includes(id)) return current.filter((item) => item !== id);
+      if (tab === "patients" && current.length > 0) {
+        const first = rows.find((row) => row.id === current[0]);
+        if (first?.patient_id !== target?.patient_id) {
+          setMessage({ type: "error", text: "Selecione somente lancamentos do mesmo paciente." });
+          return current;
+        }
+      }
+      return [...current, id];
+    });
   }
 
   function toggleAll() {
-    setSelectedIds((current) => (current.length === rows.length ? [] : rows.map((row) => row.id)));
+    setSelectedIds((current) => {
+      if (current.length) return [];
+      if (tab !== "patients") return rows.map((row) => row.id);
+      const patientId = rows[0]?.patient_id;
+      return rows.filter((row) => row.patient_id === patientId).map((row) => row.id);
+    });
+    if (tab === "patients" && new Set(rows.map((row) => row.patient_id)).size > 1) setMessage({ type: "error", text: "Foram selecionados apenas os titulos do primeiro paciente. Nao e permitido misturar pacientes." });
   }
 
   function selectSingle(id: string) {
@@ -250,6 +269,29 @@ export function SettlementsManager({ transactions, clinics, patients, services, 
     setAmount("");
   }
 
+  function documentHtml(kind: "Cobranca" | "Recibo") {
+    const clinic = clinics.find((item) => item.id === selectedRows[0]?.clinic_id);
+    const dates = selectedRows.map((row) => row.due_date).join(", ");
+    const items = selectedRows.map((row) => `<tr><td>${row.description ?? row.service_name}</td><td>${row.due_date}</td><td>${formatCurrency(getOpenAmount(row))}</td></tr>`).join("");
+    return `<!doctype html><html><head><title>${kind}</title><style>body{font-family:Arial;padding:32px;color:#172033}h1{color:#6d28d9}table{width:100%;border-collapse:collapse;margin:24px 0}td,th{padding:10px;border-bottom:1px solid #ddd;text-align:left}.total{font-size:20px;font-weight:bold;text-align:right}.box{padding:16px;background:#f5f3ff;border-radius:8px}</style></head><body><h1>${clinic?.name ?? "Clinica"} - ${kind}</h1><p><b>Paciente:</b> ${selectedRows[0]?.patient_name ?? "-"}</p><p><b>Data:</b> ${new Date().toLocaleDateString("pt-BR")} &nbsp; <b>Vencimentos:</b> ${dates}</p><table><thead><tr><th>Descricao</th><th>Data</th><th>Valor</th></tr></thead><tbody>${items}</tbody></table><p class="total">Valor total: ${formatCurrency(selectedOpenAmount)}</p><div class="box"><b>Forma de pagamento:</b> ${paymentMethod}<br><b>PIX:</b> ${clinic?.pix_key ?? "Nao informado"}<br><b>Titular:</b> ${clinic?.pix_holder ?? "-"}<br><b>Banco:</b> ${clinic?.pix_bank ?? "-"}</div></body></html>`;
+  }
+
+  async function generateDocument(kind: "Cobranca" | "Recibo") {
+    if (!selectedRows.length || tab !== "patients") { setMessage({ type: "error", text: "Selecione titulos de um paciente." }); return; }
+    const popup = window.open("", "_blank", "noopener,noreferrer"); if (!popup) { setMessage({ type: "error", text: "Permita pop-ups para gerar o PDF." }); return; }
+    popup.document.write(documentHtml(kind)); popup.document.close(); popup.focus(); popup.print();
+    await auditFinancialAction({ action: kind === "Cobranca" ? "pdf_generated" : "pdf_generated", clinic_id: selectedRows[0].clinic_id, transaction_ids: selectedIds });
+  }
+
+  async function sendCharge() {
+    if (!selectedRows.length || tab !== "patients") { setMessage({ type: "error", text: "Selecione titulos de um paciente." }); return; }
+    const patient = patients.find((item) => item.id === selectedRows[0].patient_id); const phone = (patient?.phone ?? "").replace(/\D/g, "");
+    if (!phone) { setMessage({ type: "error", text: "Paciente sem WhatsApp cadastrado." }); return; }
+    const clinic = clinics.find((item) => item.id === selectedRows[0].clinic_id); const details = selectedRows.map((row) => `${row.description ?? row.service_name} - ${formatCurrency(getOpenAmount(row))} - venc. ${row.due_date}`).join("\n");
+    const text = `Ola, ${selectedRows[0].patient_name}. Seguem os titulos pendentes da ${clinic?.name ?? "clinica"}:\n\n${details}\n\nTotal: ${formatCurrency(selectedOpenAmount)}\nPIX: ${clinic?.pix_key ?? "consulte a clinica"}\nTitular: ${clinic?.pix_holder ?? "-"}`;
+    if (!window.confirm(`Confirmar abertura da cobranca no WhatsApp para ${selectedRows[0].patient_name}?`)) return;
+    await auditFinancialAction({ action: "charge_sent", clinic_id: selectedRows[0].clinic_id, transaction_ids: selectedIds }); window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+  }
   function submitSettlement() {
     setMessage(null);
     if (selectedIds.length === 0) {
@@ -269,6 +311,7 @@ export function SettlementsManager({ transactions, clinics, patients, services, 
     }
 
     const actionLabel = tab === "patients" ? "receber" : "pagar";
+    const receiptSnapshot = tab === "patients" && selectedRows[0] ? { html: documentHtml("Recibo"), phone: (patients.find((item) => item.id === selectedRows[0].patient_id)?.phone ?? "").replace(/\D/g, ""), clinicId: selectedRows[0].clinic_id, ids: [...selectedIds] } : null;
     if (!window.confirm(`Confirmar ${actionLabel} ${formatCurrency(informedAmount)} para ${selectedIds.length} lançamento(s)?`)) return;
     startTransition(async () => {
       const result = await settleFinancialTransactions({
@@ -283,6 +326,7 @@ export function SettlementsManager({ transactions, clinics, patients, services, 
 
       setMessage({ type: result.ok ? "success" : "error", text: result.message });
       if (result.ok) {
+        setReceipt(receiptSnapshot);
         setSelectedIds([]);
         setAmount("");
         setNotes("");
@@ -339,8 +383,14 @@ export function SettlementsManager({ transactions, clinics, patients, services, 
           <Button type="button" onClick={submitSettlement} disabled={isPending || selectedIds.length === 0}>{isPending ? "Processando..." : "Confirmar"}</Button>
           <Button type="button" variant={mode === "partial" ? "default" : "outline"} onClick={() => { setMode("partial"); setAmount(""); }}>Baixa parcial</Button>
           <Button type="button" variant="outline" onClick={() => { setSelectedIds([]); setMode("total"); setAmount(""); }}>Cancelar seleção</Button>
+          {tab === "patients" ? <>
+            <Button type="button" variant="outline" disabled={!selectedIds.length} onClick={() => { void auditFinancialAction({ action: "charge_generated", clinic_id: selectedRows[0].clinic_id, transaction_ids: selectedIds }); setMessage({ type: "success", text: `Cobranca preparada: ${selectedIds.length} titulo(s), total ${formatCurrency(selectedOpenAmount)}.` }); }}>Gerar Cobranca</Button>
+            <Button type="button" variant="outline" disabled={!selectedIds.length} onClick={() => void sendCharge()}>Enviar Cobranca</Button>
+            <Button type="button" variant="outline" disabled={!selectedIds.length} onClick={() => void generateDocument("Cobranca")}>Gerar PDF</Button>
+          </> : null}
         </div>
         {message ? <Alert type={message.type} text={message.text} /> : null}
+        {receipt ? <div className="flex flex-wrap gap-2 rounded-md border p-3"><span className="w-full text-sm font-medium">Baixa confirmada. Escolha como receber o recibo:</span><Button type="button" variant="outline" onClick={() => { const popup = window.open("", "_blank", "noopener,noreferrer"); if (popup) { popup.document.write(receipt.html); popup.document.close(); popup.print(); void auditFinancialAction({ action: "pdf_generated", clinic_id: receipt.clinicId, transaction_ids: receipt.ids }); } }}>Baixar recibo em PDF</Button><Button type="button" variant="outline" disabled={!receipt.phone} onClick={() => { if (!window.confirm("Confirmar envio do recibo pelo WhatsApp?")) return; void auditFinancialAction({ action: "receipt_sent", clinic_id: receipt.clinicId, transaction_ids: receipt.ids }); window.open(`https://wa.me/${receipt.phone}?text=${encodeURIComponent("Ola! Seu pagamento foi confirmado. Segue o recibo emitido pela clinica. Obrigado!")}`, "_blank", "noopener,noreferrer"); }}>Enviar recibo pelo WhatsApp</Button></div> : null}
       </Card>
       <Card className="overflow-hidden">
         <div className="hidden xl:block">
