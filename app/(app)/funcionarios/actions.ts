@@ -55,6 +55,15 @@ function cleanOptionalValue(value?: string) {
   return cleanValue ? cleanValue : null;
 }
 
+function normalizeLoginEmail(value?: string | null) {
+  const email = value?.trim().toLowerCase() ?? "";
+  if (!email) return null;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error("Informe um e-mail de acesso valido.");
+  }
+  return email;
+}
+
 function cleanOptionalNumber(value?: string) {
   const cleanValue = value?.trim();
 
@@ -85,7 +94,7 @@ function getEmployeePayload(input: EmployeeFormInput): EmployeeInsert {
     whatsapp: cleanOptionalValue(input.whatsapp),
     email: cleanOptionalValue(input.email),
     system_access: Boolean(input.system_access),
-    login_email: cleanOptionalValue(input.login_email),
+    login_email: normalizeLoginEmail(input.login_email),
     role: cleanOptionalValue(input.role),
     commission_type: cleanOptionalValue(input.commission_type),
     commission_value: cleanOptionalNumber(input.commission_value),
@@ -146,7 +155,7 @@ async function syncEmployeeAuthUser(
     return null;
   }
 
-  const loginEmail = cleanOptionalValue(payload.login_email ?? undefined);
+  const loginEmail = normalizeLoginEmail(payload.login_email);
 
   if (!loginEmail) {
     throw new Error("Informe o email de login para liberar acesso ao sistema.");
@@ -159,6 +168,10 @@ async function syncEmployeeAuthUser(
   const existingUser =
     (await findAuthUserByEmail(loginEmail)) ||
     (previousLoginEmail ? await findAuthUserByEmail(previousLoginEmail) : null);
+
+  if (existingUser && previousLoginEmail === undefined) {
+    throw new Error("Ja existe uma conta no Supabase Auth com este e-mail de acesso.");
+  }
 
   const userMetadata = {
     name: payload.name ?? "",
@@ -203,6 +216,34 @@ async function syncEmployeeAuthUser(
   }
 
   return data.user.id;
+}
+
+async function assertLoginEmailAvailable(email: string, employeeId?: string) {
+  const supabaseAdmin = createAdminClient();
+  const [{ data: employee }, { data: patient }] = await Promise.all([
+    supabaseAdmin.from("employees").select("id").eq("login_email", email).neq("id", employeeId ?? "00000000-0000-0000-0000-000000000000").maybeSingle(),
+    supabaseAdmin.from("patients").select("id").eq("login_email", email).maybeSingle()
+  ]);
+  if (employee || patient) throw new Error("Este e-mail de acesso ja esta em uso.");
+}
+
+export async function sendEmployeePasswordRecovery(id: string): Promise<EmployeeActionResult> {
+  try {
+    const scope = await getCurrentClinicScope();
+    if (!scope.isAdmMaster) throw new Error("Apenas o ADM Master pode enviar recuperacao de senha.");
+    const supabaseAdmin = createAdminClient();
+    const { data: employee, error } = await supabaseAdmin.from("employees").select("login_email,system_access").eq("id", id).maybeSingle();
+    if (error) throw error;
+    const email = normalizeLoginEmail(employee?.login_email);
+    if (!employee?.system_access || !email) {
+      throw new Error("Cadastre um e-mail de acesso antes de enviar a recuperacao de senha.");
+    }
+    const { error: resetError } = await supabaseAdmin.auth.resetPasswordForEmail(email, { redirectTo: "https://mwf-system.vercel.app/redefinir-senha" });
+    if (resetError) throw resetError;
+    return { ok: true, message: "Link de recuperacao enviado com sucesso." };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
 }
 
 function getCommissionPayload(
@@ -289,11 +330,19 @@ export async function createEmployee(
     if (isAdmRole(payload.role)) {
       throw new Error("Use Permissoes de Usuarios para definir ADM Master.");
     }
+    if (payload.system_access && payload.login_email) await assertLoginEmailAvailable(payload.login_email);
     const supabaseAdmin = createAdminClient();
-    const { error } = await supabaseAdmin.from("employees").insert(payload);
+    const { data: created, error } = await supabaseAdmin.from("employees").insert(payload).select("id").single();
 
     if (error) {
       return { ok: false, message: getErrorMessage(error) };
+    }
+
+    try {
+      await syncEmployeeAuthUser(payload, input.auth_password);
+    } catch (error) {
+      await supabaseAdmin.from("employees").delete().eq("id", created.id);
+      throw error;
     }
 
     revalidatePath("/funcionarios");
@@ -318,12 +367,9 @@ export async function updateEmployee(
     if (!clinicScope.isAdmMaster && clinicScope.clinicId) {
       payload.clinic_id = clinicScope.clinicId;
     }
-    if (isAdmRole(payload.role)) {
-      throw new Error("Use Permissoes de Usuarios para definir ADM Master.");
-    }
     const { data: currentEmployee, error: loadError } = await supabase
       .from("employees")
-      .select("login_email")
+      .select("login_email,role")
       .eq("id", id)
       .maybeSingle();
 
@@ -333,6 +379,11 @@ export async function updateEmployee(
     if (!currentEmployee) {
       throw new Error("Funcionario nao encontrado na clinica autorizada.");
     }
+    if (isAdmRole(payload.role) && !isAdmRole(currentEmployee.role)) {
+      throw new Error("Use Permissoes de Usuarios para definir ADM Master.");
+    }
+    if (payload.system_access && payload.login_email) await assertLoginEmailAvailable(payload.login_email, id);
+    await syncEmployeeAuthUser(payload, input.auth_password, currentEmployee.login_email);
     const supabaseAdmin = createAdminClient();
     const { error } = await supabaseAdmin
       .from("employees")

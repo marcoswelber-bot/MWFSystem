@@ -14,6 +14,7 @@ import {
   type EmployeeFormInput,
   type ProfessionalCommissionFormInput,
   saveProfessionalCommission,
+  sendEmployeePasswordRecovery,
   setProfessionalCommissionStatus,
   updateEmployee
 } from "@/app/(app)/funcionarios/actions";
@@ -370,6 +371,14 @@ export function EmployeesManager({
     });
   }
 
+  function recoverPassword(employee: Employee) {
+    setMessage(null);
+    startTransition(async () => {
+      const result = await sendEmployeePasswordRecovery(employee.id);
+      setMessage(result);
+    });
+  }
+
   function handleSubmitCommission(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage(null);
@@ -681,9 +690,11 @@ export function EmployeesManager({
               </select>
             </label>
             <label>
-              Email de login
+              E-mail de acesso {form.system_access ? "*" : "(opcional)"}
               <input
                 type="email"
+                required={form.system_access}
+                disabled={!form.system_access}
                 value={form.login_email}
                 onChange={(event) => updateForm("login_email", event.target.value)}
                 style={inputStyle}
@@ -800,7 +811,9 @@ export function EmployeesManager({
                         {employee.phone ?? "-"}
                       </td>
                       <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
-                        {employee.email ?? "-"}
+                        {employee.system_access
+                          ? employee.login_email || "E-mail de acesso nao cadastrado"
+                          : employee.email ?? "-"}
                       </td>
                       <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
                         {employee.status === "active" ? "Ativo" : "Inativo"}
@@ -820,6 +833,20 @@ export function EmployeesManager({
                               style={buttonStyle}
                             >
                               Editar
+                            </button>
+                          ) : null}
+                          {isAdmMaster && employee.system_access && !employee.login_email && canEdit ? (
+                            <button type="button" onClick={() => openEditForm(employee)} style={buttonStyle}>Cadastrar e-mail de acesso</button>
+                          ) : null}
+                          {isAdmMaster && employee.system_access ? (
+                            <button
+                              type="button"
+                              disabled={isPending || !employee.login_email}
+                              title={!employee.login_email ? "Cadastre um e-mail de acesso antes de enviar a recuperacao de senha." : undefined}
+                              onClick={() => recoverPassword(employee)}
+                              style={buttonStyle}
+                            >
+                              Enviar recuperacao de senha
                             </button>
                           ) : null}
                           {canToggle ? (

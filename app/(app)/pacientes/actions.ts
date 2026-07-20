@@ -36,6 +36,15 @@ function cleanOptionalValue(value?: string) {
   return cleanValue ? cleanValue : null;
 }
 
+function normalizeLoginEmail(value?: string | null) {
+  const email = value?.trim().toLowerCase() ?? "";
+  if (!email) return null;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error("Informe um e-mail de acesso valido.");
+  }
+  return email;
+}
+
 function getPatientPayload(input: PatientFormInput): PatientInsert {
   const fullName = input.full_name.trim();
 
@@ -51,7 +60,7 @@ function getPatientPayload(input: PatientFormInput): PatientInsert {
     phone: cleanOptionalValue(input.phone),
     email: cleanOptionalValue(input.email),
     portal_access: Boolean(input.portal_access),
-    login_email: cleanOptionalValue(input.login_email),
+    login_email: normalizeLoginEmail(input.login_email),
     address: cleanOptionalValue(input.address),
     notes: cleanOptionalValue(input.notes),
     status: input.status ?? "active"
@@ -99,7 +108,7 @@ async function syncPatientAuthUser(
     return null;
   }
 
-  const loginEmail = cleanOptionalValue(payload.login_email ?? undefined);
+  const loginEmail = normalizeLoginEmail(payload.login_email);
 
   if (!loginEmail) {
     throw new Error("Informe o email de login para liberar acesso ao portal.");
@@ -112,6 +121,10 @@ async function syncPatientAuthUser(
   const existingUser =
     (await findAuthUserByEmail(loginEmail)) ||
     (previousLoginEmail ? await findAuthUserByEmail(previousLoginEmail) : null);
+
+  if (existingUser && previousLoginEmail === undefined) {
+    throw new Error("Ja existe uma conta no Supabase Auth com este e-mail de acesso.");
+  }
 
   const userMetadata = {
     name: payload.full_name ?? "",
@@ -158,6 +171,34 @@ async function syncPatientAuthUser(
   return data.user.id;
 }
 
+async function assertLoginEmailAvailable(email: string, patientId?: string) {
+  const supabaseAdmin = createAdminClient();
+  const [{ data: patient }, { data: employee }] = await Promise.all([
+    supabaseAdmin.from("patients").select("id").eq("login_email", email).neq("id", patientId ?? "00000000-0000-0000-0000-000000000000").maybeSingle(),
+    supabaseAdmin.from("employees").select("id").eq("login_email", email).maybeSingle()
+  ]);
+  if (patient || employee) throw new Error("Este e-mail de acesso ja esta em uso.");
+}
+
+export async function sendPatientPasswordRecovery(id: string): Promise<PatientActionResult> {
+  try {
+    const scope = await getCurrentClinicScope();
+    if (!scope.isAdmMaster) throw new Error("Apenas o ADM Master pode enviar recuperacao de senha.");
+    const supabaseAdmin = createAdminClient();
+    const { data: patient, error } = await supabaseAdmin.from("patients").select("login_email,portal_access").eq("id", id).maybeSingle();
+    if (error) throw error;
+    const email = normalizeLoginEmail(patient?.login_email);
+    if (!patient?.portal_access || !email) {
+      throw new Error("Cadastre um e-mail de acesso antes de enviar a recuperacao de senha.");
+    }
+    const { error: resetError } = await supabaseAdmin.auth.resetPasswordForEmail(email, { redirectTo: "https://mwf-system.vercel.app/redefinir-senha" });
+    if (resetError) throw resetError;
+    return { ok: true, message: "Link de recuperacao enviado com sucesso." };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
+}
+
 export async function createPatient(
   input: PatientFormInput
 ): Promise<PatientActionResult> {
@@ -171,11 +212,19 @@ export async function createPatient(
     if (!clinicScope.isAdmMaster && clinicScope.clinicId) {
       payload.clinic_id = clinicScope.clinicId;
     }
+    if (payload.portal_access && payload.login_email) await assertLoginEmailAvailable(payload.login_email);
     const supabaseAdmin = createAdminClient();
-    const { error } = await supabaseAdmin.from("patients").insert(payload);
+    const { data: created, error } = await supabaseAdmin.from("patients").insert(payload).select("id").single();
 
     if (error) {
       return { ok: false, message: getErrorMessage(error) };
+    }
+
+    try {
+      await syncPatientAuthUser(payload, input.auth_password);
+    } catch (error) {
+      await supabaseAdmin.from("patients").delete().eq("id", created.id);
+      throw error;
     }
 
     revalidatePath("/pacientes");
@@ -213,6 +262,8 @@ export async function updatePatient(
       throw new Error("Paciente nao encontrado na clinica autorizada.");
     }
     const supabaseAdmin = createAdminClient();
+    if (payload.portal_access && payload.login_email) await assertLoginEmailAvailable(payload.login_email, id);
+    await syncPatientAuthUser(payload, input.auth_password, currentPatient.login_email);
     const { error } = await supabaseAdmin
       .from("patients")
       .update(payload)

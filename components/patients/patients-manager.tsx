@@ -11,6 +11,7 @@ import {
   createPatient,
   deactivatePatient,
   deletePatient,
+  sendPatientPasswordRecovery,
   type PatientActionResult,
   type PatientFormInput,
   updatePatient
@@ -205,6 +206,14 @@ export function PatientsManager({
         closeForm();
         refreshPatients();
       }
+    });
+  }
+
+  function recoverPassword(patient: Patient) {
+    setMessage(null);
+    startTransition(async () => {
+      const result = await sendPatientPasswordRecovery(patient.id);
+      setMessage(result);
     });
   }
 
@@ -486,9 +495,11 @@ export function PatientsManager({
               </select>
             </label>
             <label>
-              Email de login
+              E-mail de acesso {form.portal_access ? "*" : "(opcional)"}
               <input
                 type="email"
+                required={form.portal_access}
+                disabled={!form.portal_access}
                 value={form.login_email}
                 onChange={(event) => updateForm("login_email", event.target.value)}
                 style={inputStyle}
@@ -583,7 +594,9 @@ export function PatientsManager({
                     {patient.phone ?? "-"}
                   </td>
                   <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
-                    {patient.email ?? "-"}
+                    {patient.portal_access
+                      ? patient.login_email || "E-mail de acesso nao cadastrado"
+                      : patient.email ?? "-"}
                   </td>
                   <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
                     {patient.status === "active" ? "Ativo" : "Inativo"}
@@ -615,6 +628,20 @@ export function PatientsManager({
                           style={buttonStyle}
                         >
                           Editar
+                        </button>
+                      ) : null}
+                      {isAdmMaster && patient.portal_access && !patient.login_email && canEdit ? (
+                        <button type="button" onClick={() => openEditForm(patient)} style={buttonStyle}>Cadastrar e-mail de acesso</button>
+                      ) : null}
+                      {isAdmMaster && patient.portal_access ? (
+                        <button
+                          type="button"
+                          disabled={isPending || !patient.login_email}
+                          title={!patient.login_email ? "Cadastre um e-mail de acesso antes de enviar a recuperacao de senha." : undefined}
+                          onClick={() => recoverPassword(patient)}
+                          style={buttonStyle}
+                        >
+                          Enviar recuperacao de senha
                         </button>
                       ) : null}
                       {canToggle ? (

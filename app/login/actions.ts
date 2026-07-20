@@ -75,3 +75,19 @@ export async function signOut() {
   await supabase.auth.signOut();
   redirect("/login");
 }
+
+export async function requestPasswordRecovery(formData: FormData) {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const message = "Se o e-mail estiver cadastrado, voce recebera um link para redefinir sua senha.";
+  try {
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      const supabase = await createClient();
+      await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: "https://mwf-system.vercel.app/redefinir-senha"
+      });
+    }
+  } catch {
+    // Resposta neutra para nao revelar quais contas existem.
+  }
+  redirect(`/login?recovery=sent&message=${encodeURIComponent(message)}` as Route);
+}

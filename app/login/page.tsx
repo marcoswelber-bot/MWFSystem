@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { Activity, Building2, Shield } from "lucide-react";
-import { signInWithPassword } from "@/app/login/actions";
+import { requestPasswordRecovery, signInWithPassword } from "@/app/login/actions";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,6 +17,8 @@ type LoginPageProps = {
   searchParams: Promise<{
     error?: string;
     redirectedFrom?: string;
+    recovery?: string;
+    message?: string;
   }>;
 };
 
@@ -77,6 +79,20 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
+                  {params.recovery === "form" ? (
+                    <form action={requestPasswordRecovery} className="space-y-5">
+                      <div className="space-y-1">
+                        <h2 className="text-xl font-semibold">Recuperar senha</h2>
+                        <p className="text-sm text-muted-foreground">Informe seu e-mail de acesso.</p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="recovery-email">E-mail de acesso</Label>
+                        <Input id="recovery-email" name="email" type="email" autoComplete="email" required />
+                      </div>
+                      <Button className="h-11 w-full" type="submit">Enviar link de recuperacao</Button>
+                      <a className="block text-center text-sm text-primary hover:underline" href="/login">Voltar ao login</a>
+                    </form>
+                  ) : (
                   <form action={signInWithPassword} className="space-y-5">
                     <input
                       type="hidden"
@@ -111,10 +127,15 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                         {params.error}
                       </p>
                     ) : null}
+                    {params.message ? (
+                      <p className="rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 text-sm">{params.message}</p>
+                    ) : null}
                     <Button className="h-11 w-full text-base font-semibold" type="submit">
                       Entrar
                     </Button>
+                    <a className="block text-center text-sm text-primary hover:underline" href="/login?recovery=form">Esqueci minha senha</a>
                   </form>
+                  )}
                 </CardContent>
               </Card>
             </Suspense>
