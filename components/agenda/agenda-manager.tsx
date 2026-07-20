@@ -890,9 +890,6 @@ export function AgendaManager({
     (appointment) => appointment.appointment_date === selectedDate
   );
   const dayBlocks = visibleBlocks.filter((block) => block.block_date === selectedDate);
-  const completedToday = dayAppointments.filter(
-    (appointment) => normalizeStatus(appointment.status) === "realizado"
-  ).length;
 
   function selectAgendaDate(date: string) {
     setSelectedDate(date);
@@ -1296,292 +1293,24 @@ export function AgendaManager({
   ) : null;
 
   return (
-    <div className="agenda-workspace grid gap-4 scroll-smooth">
-      <header className="flex flex-col gap-4 rounded-2xl border border-slate-200/70 bg-gradient-to-r from-white via-violet-50 to-blue-50 p-5 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:via-violet-950/30 dark:to-blue-950/30 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-violet-600 dark:text-violet-300">Operacao clinica</p>
-          <h1 className="mt-1 text-3xl font-bold tracking-tight">Agenda</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Gerencie agendamentos, faltas, reposicoes e atendimentos.</p>
+    <div className="agenda-workspace grid gap-3 overflow-x-hidden pb-4">
+      <header className="rounded-xl border bg-background p-4 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div><p className="text-[11px] font-semibold uppercase tracking-[.16em] text-primary">Operacao clinica</p><h1 className="text-2xl font-bold">Agenda</h1><p className="text-xs text-muted-foreground">Atendimentos, bloqueios e operacao diaria.</p></div><div className="flex gap-2">{canCreate ? <Button size="sm" className="h-10" onClick={() => openCreateAppointment()}><CalendarPlus className="h-4 w-4" />Novo agendamento</Button> : null}{canCreate ? <Button size="sm" variant="outline" className="h-10" onClick={() => openBlockForm()}><LockKeyhole className="h-4 w-4" />Bloquear</Button> : null}</div></div>
+        <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-[40px_145px_40px_64px_minmax(140px,1fr)_minmax(140px,1fr)_130px_130px_auto] xl:items-end">
+          <Button variant="outline" size="icon" className="h-10 w-10" aria-label="Dia anterior" title="Dia anterior" onClick={() => selectAgendaDate(shiftSelectedDate(selectedDate, viewMode, -1))}><ChevronLeft className="h-4 w-4" /></Button><FieldShell label="Data"><input type="date" value={selectedDate} onChange={(e) => selectAgendaDate(e.target.value)} className="agenda-input h-10" /></FieldShell><Button variant="outline" size="icon" className="h-10 w-10" aria-label="Proximo dia" title="Proximo dia" onClick={() => selectAgendaDate(shiftSelectedDate(selectedDate, viewMode, 1))}><ChevronRight className="h-4 w-4" /></Button><Button variant="secondary" size="sm" className="h-10" onClick={() => selectAgendaDate(today())}>Hoje</Button>
+          <FieldShell label="Servico"><select value={serviceFilter} onChange={(e) => setServiceFilter(e.target.value)} className="agenda-input h-10"><option value="all">Todos</option>{visibleServices.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></FieldShell><FieldShell label="Profissional"><select value={employeeFilter} onChange={(e) => setEmployeeFilter(e.target.value)} className="agenda-input h-10"><option value="all">Todos</option>{employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}</select></FieldShell><FieldShell label="Formato"><select value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)} className="agenda-input h-10"><option value="all">Todos</option><option value="individual">Individual</option><option value="group">Coletivo</option></select></FieldShell><FieldShell label="Status"><select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="agenda-input h-10"><option value="all">Todos</option>{statusOptions.map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></FieldShell><Button variant="outline" size="sm" className="h-10" onClick={() => setMoreFiltersOpen((v) => !v)}><SlidersHorizontal className="h-4 w-4" />Mais filtros</Button>
         </div>
-        {canCreate ? (
-          <Button type="button" size="lg" className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-500/20 hover:from-violet-700 hover:to-indigo-700" onClick={() => openCreateAppointment()}>
-            <CalendarPlus className="h-5 w-5" />
-            + Novo agendamento
-          </Button>
-        ) : null}
+        {moreFiltersOpen ? <div className="mt-3 grid gap-2 rounded-lg border bg-muted/20 p-3 sm:grid-cols-2 lg:grid-cols-5"><FieldShell label="Clinica"><select value={clinicFilter} onChange={(e) => changeClinicFilter(e.target.value)} disabled={!isAdmMaster} className="agenda-input h-10">{clinics.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></FieldShell><FieldShell label="Tipo"><select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="agenda-input h-10"><option value="all">Todos</option>{appointmentTypeOptions.map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></FieldShell><FieldShell label="Pendencia"><select value={pendingFilter} onChange={(e) => setPendingFilter(e.target.value)} className="agenda-input h-10"><option value="all">Todas</option><option value="pending">Com pendencia</option><option value="unsettled">Sem baixa</option></select></FieldShell><FieldShell label="Busca"><input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="agenda-input h-10" placeholder="Paciente, telefone ou CPF" /></FieldShell><FieldShell label="Visualizacao"><select value={viewMode} onChange={(e) => setViewMode(e.target.value as ViewMode)} className="agenda-input h-10"><option value="day">Dia</option><option value="week">Semana</option><option value="month">Mes</option></select></FieldShell></div> : null}
       </header>
-      {message ? (
-        <SystemMessage message={message} onClose={() => setMessage(null)} />
-      ) : null}
-      {savedWhatsappConfirmations.length > 0 ? (
-        <div className="grid gap-2">
-          {savedWhatsappConfirmations.map((confirmation) => (
-            <Card key={confirmation.id} className="flex flex-col gap-3 border-emerald-200 bg-emerald-50 p-3 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-100 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0 text-sm">
-                <p className="font-semibold">Agendamento salvo. Deseja enviar a confirmação?</p>
-                <p className="mt-1"><strong>Paciente:</strong> {confirmation.patientName}</p>
-                <p>{confirmation.date} as {confirmation.time}</p>
-                <p className="truncate"><strong>Profissional:</strong> {confirmation.employeeName} <span className="mx-1 text-emerald-600/60">|</span> <strong>Serviço:</strong> {confirmation.serviceName}</p>
-              </div>
-              <div className="flex shrink-0 flex-wrap gap-2">
-                <Button type="button" size="sm" disabled={!confirmation.href} onClick={() => window.open(confirmation.href + "?text=" + encodeURIComponent(confirmation.message), "_blank", "noopener,noreferrer")}><MessageCircle className="h-4 w-4" />Enviar WhatsApp</Button>
-                <Button type="button" size="sm" variant="ghost" onClick={() => setSavedWhatsappConfirmations((current) => current.filter((item) => item.id !== confirmation.id))}>Fechar</Button>
-              </div>
-            </Card>
-          ))}
-        </div>
-      ) : null}
-
-      <Card className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white/90 shadow-[0_20px_60px_rgba(15,23,42,0.09)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/85 dark:shadow-[0_20px_60px_rgba(0,0,0,0.28)]">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/70 bg-gradient-to-r from-slate-50 via-white to-blue-50/70 p-4 dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-blue-950/30">
-          <div className="flex flex-wrap items-center gap-2">
-            {canCreate ? (
-              <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => openBlockForm()}
-                >
-                  <LockKeyhole className="h-4 w-4" />
-                  Bloquear
-                </Button>
-              </>
-            ) : null}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              title="Periodo anterior"
-              onClick={() =>
-                selectAgendaDate(shiftSelectedDate(selectedDate, viewMode, -1))
-              }
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              title="Próximo período"
-              onClick={() =>
-                selectAgendaDate(shiftSelectedDate(selectedDate, viewMode, 1))
-              }
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => selectAgendaDate(today())}
-            >
-              Hoje
-            </Button>
-          </div>
-        </div>
-
-        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-[minmax(150px,.7fr)_minmax(180px,1fr)_minmax(180px,1fr)_minmax(230px,1.3fr)_auto] xl:items-end">
-          <FieldShell label="Data">
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(event) => selectAgendaDate(event.target.value)}
-              className="agenda-input"
-            />
-          </FieldShell>
-          <FieldShell label="Profissional">
-            <select
-              value={employeeFilter}
-              onChange={(event) => setEmployeeFilter(event.target.value)}
-              className="agenda-input"
-            >
-              <option value="all">Todos os profissionais</option>
-              {employees.map((employee) => (
-                <option key={employee.id} value={employee.id}>
-                  {employee.name}
-                </option>
-              ))}
-            </select>
-          </FieldShell>
-          <FieldShell label="Clínica">
-            <select
-              value={clinicFilter}
-              onChange={(event) => changeClinicFilter(event.target.value)}
-              disabled={!isAdmMaster}
-              className="agenda-input disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              {clinics.map((clinic) => (
-                <option key={clinic.id} value={clinic.id}>
-                  {clinic.name}
-                </option>
-              ))}
-            </select>
-          </FieldShell>
-          <FieldShell label="Pesquisa">
-            <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className="agenda-input pl-9" placeholder="Paciente, telefone, CPF ou Serviço" />
-            </div>
-          </FieldShell>
-          <div className="grid grid-cols-3 gap-1 rounded-xl border border-slate-200 bg-slate-100/80 p-1.5 shadow-inner dark:border-slate-800 dark:bg-slate-900/80">
-            {[
-              ["day", "Dia"],
-              ["week", "Semana"],
-              ["month", "Mês"]
-            ].map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setViewMode(value as ViewMode)}
-                className={cn(
-                  "h-10 rounded-lg px-3 text-sm font-semibold transition-all duration-200",
-                  viewMode === value
-                    ? "bg-primary text-primary-foreground shadow-[0_6px_18px_rgba(37,99,235,0.28)]"
-                    : "text-muted-foreground hover:bg-white hover:text-foreground hover:shadow-sm dark:hover:bg-slate-800"
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="grid gap-3 border-t border-slate-200/70 bg-slate-50/50 p-4 sm:grid-cols-[minmax(180px,280px)_auto] sm:items-end dark:border-slate-800 dark:bg-slate-900/30">
-          <FieldShell label="Status"><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="agenda-input"><option value="all">Todos os status</option>{statusOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></FieldShell>
-          <Button type="button" variant="ghost" size="sm" onClick={() => setMoreFiltersOpen((open) => !open)} aria-expanded={moreFiltersOpen}><SlidersHorizontal className="h-4 w-4" />Mais filtros</Button>
-        </div>
-        {moreFiltersOpen ? <div className="grid gap-3 border-t bg-muted/20 p-3 sm:grid-cols-2 lg:grid-cols-4">
-          <FieldShell label="Serviço"><select value={serviceFilter} onChange={(event) => setServiceFilter(event.target.value)} className="agenda-input"><option value="all">Todos</option>{visibleServices.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}</select></FieldShell>
-          <FieldShell label="Tipo"><select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} className="agenda-input"><option value="all">Todos</option>{appointmentTypeOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></FieldShell>
-          <FieldShell label="Formato"><select value={groupFilter} onChange={(event) => setGroupFilter(event.target.value)} className="agenda-input"><option value="all">Todos</option><option value="individual">Individual</option><option value="group">Coletivo</option></select></FieldShell>
-          <FieldShell label="Pendencia"><select value={pendingFilter} onChange={(event) => setPendingFilter(event.target.value)} className="agenda-input"><option value="all">Todas</option><option value="pending">Com pendencia</option><option value="unsettled">Sem baixa</option></select></FieldShell>
-        </div> : null}
-      </Card>
-
-      <section className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
-        {[
-          ["Atendimentos", dayAppointments.length],
-          ["Confirmados", dayAppointments.filter((item) => normalizeStatus(item.status) === "confirmado").length],
-          ["Realizados", completedToday],
-          ["Pendentes", dayAppointments.filter((item) => ["agendado", "pendente"].includes(normalizeStatus(item.status))).length],
-          ["Faltas", dayAppointments.filter((item) => normalizeStatus(item.status) === "faltou").length],
-          ["Cancelados", dayAppointments.filter((item) => normalizeStatus(item.status) === "cancelado").length],
-          ["Bloqueios", dayBlocks.length],
-          ["Grupos", dayAppointments.filter((item) => item.service_is_group || getAppointmentType(item) === "grupo").length]
-        ].map(([label, value]) => (
-          <Card key={String(label)} className="rounded-xl border-slate-200/80 bg-white/90 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/90">
-            <strong className="text-2xl font-bold tabular-nums">{value}</strong>
-            <p className="truncate text-xs text-muted-foreground">{label}</p>
-          </Card>
-        ))}
-      </section>
-
-      {viewMode !== "month" ? (
-        <div className="w-full max-w-[260px]">
-          <MiniMonthCalendar
-            selectedDate={selectedDate}
-            appointments={visibleAppointments}
-            blocks={scopedBlocks}
-            onSelectDate={selectAgendaDate}
-          />
-        </div>
-      ) : null}
-
-      <div className="grid items-start gap-4 scroll-smooth">
-        <div className="grid min-w-0 gap-4">
-        <Card className="min-w-0 overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.12)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_24px_70px_rgba(0,0,0,0.35)]">
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200/70 bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 p-5 text-white dark:border-slate-800">
-            <div>
-              <h2 className="text-xl font-semibold tracking-tight text-white">
-                {getPeriodLabel(viewMode, selectedDate)}
-              </h2>
-              <p className="text-sm text-slate-300">
-                Grade operacional por horários e profissionais
-              </p>
-            </div>
-            <div className="flex items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-slate-200 shadow-inner backdrop-blur">
-              <MoreHorizontal className="h-4 w-4" />
-              Pronto para arrastar e soltar
-            </div>
-          </div>
-
-          {viewMode === "month" ? (
-            <>
-              <div className="md:hidden">
-                <MiniMonthCalendar
-                  selectedDate={selectedDate}
-                  appointments={visibleAppointments}
-                  blocks={visibleBlocks}
-                  onSelectDate={(date) => {
-                    if (selectAgendaDate(date)) setViewMode("day");
-                  }}
-                />
-              </div>
-              <div className="hidden overflow-x-auto md:block">
-                <div className="min-w-[760px]">
-                  <MonthGrid
-                    selectedDate={selectedDate}
-                    days={visibleDays}
-                    appointments={visibleAppointments}
-                    blocks={visibleBlocks}
-                    onOpenAppointment={setSelectedAppointment}
-                    onSelectDate={(date) => {
-                      if (selectAgendaDate(date)) setViewMode("day");
-                    }}
-                  />
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="max-h-[calc(100vh-190px)] min-h-[720px] scroll-smooth overflow-auto bg-gradient-to-br from-slate-100/90 via-white to-blue-50/60 dark:from-slate-950 dark:via-slate-950 dark:to-blue-950/20">
-              <div className="grid gap-5 p-4 sm:p-5">
-                {visibleDays.map((day) => (
-                  <DayTimeline
-                    key={day}
-                    day={day}
-                    employees={calendarEmployees}
-                    appointments={visibleAppointments.filter(
-                      (appointment) => appointment.appointment_date === day
-                    )}
-                    blocks={visibleBlocks.filter((block) => block.block_date === day)}
-                    canEdit={canEdit}
-                    canDelete={canDelete}
-                    canAdminCorrect={canAdminCorrect}
-                    isPending={isPending}
-                    onCreateAppointment={openCreateAppointment}
-                    onCreateBlock={openBlockForm}
-                    onStatus={changeStatus}
-                    onFinalize={openFinalizeAppointment}
-                    onEdit={setSelectedAppointment}
-                    onDeleteBlock={removeBlock}
-                    onUndoAbsence={(appointment) => openStatusCorrection(appointment, "faltou")}
-                    onRestoreCancelled={(appointment) => openStatusCorrection(appointment, "cancelado")}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-          <AgendaLegend />
-        </Card>
-        <section className="grid gap-3 xl:grid-cols-3"><Card className="rounded-2xl bg-background/85 p-4 backdrop-blur"><h3 className="mb-3 font-semibold">Acoes rapidas</h3><div className="flex flex-wrap gap-2"><Button size="sm" onClick={() => openCreateAppointment(selectedDate)}><Plus className="h-4 w-4" />Novo agendamento</Button><Button size="sm" variant="outline" onClick={() => openBlockForm(selectedDate)}><LockKeyhole className="h-4 w-4" />Bloquear horario</Button><Button size="sm" variant="outline" onClick={() => { openCreateAppointment(selectedDate); setAppointmentForm((value) => ({ ...value, appointment_type: "avulso", appointment_origin: "avulso" })); }}>Aula avulsa</Button><Button size="sm" variant="outline" onClick={() => { openCreateAppointment(selectedDate); setAppointmentForm((value) => ({ ...value, appointment_type: "reposicao", appointment_origin: "reposicao" })); }}><RotateCw className="h-4 w-4" />Reposicao</Button><Button size="sm" variant="outline" onClick={() => router.push("/relatorios" as never)}>Relatorios</Button></div></Card><Card className="rounded-2xl bg-background/85 p-4 backdrop-blur"><h3 className="mb-3 font-semibold">Resumo do dia</h3><div className="grid grid-cols-2 gap-2 text-xs">{[["Agendados", dayAppointments.filter((item) => normalizeStatus(item.status) === "agendado").length], ["Confirmados", dayAppointments.filter((item) => normalizeStatus(item.status) === "confirmado").length], ["Realizados", completedToday], ["Pendentes", dayAppointments.filter((item) => item.is_billable && item.finance_integration_status !== "completed").length], ["Faltas", dayAppointments.filter((item) => normalizeStatus(item.status) === "faltou").length], ["Cancelados", dayAppointments.filter((item) => normalizeStatus(item.status) === "cancelado").length], ["Reposicoes", dayAppointments.filter(isReplacementAppointment).length], ["Profissionais ativos", new Set(dayAppointments.map((item) => item.employee_id)).size]].map(([label, value]) => <div key={String(label)} className="rounded-lg bg-muted/60 p-2"><strong className="mr-1">{value}</strong>{label}</div>)}</div></Card><Card className="rounded-2xl bg-background/85 p-4 backdrop-blur"><div className="mb-3 flex items-center justify-between"><h3 className="font-semibold">Proximos atendimentos</h3><span className="text-xs text-muted-foreground">Ver todos abaixo</span></div><div className="grid gap-2">{dayAppointments.filter((item) => ["agendado", "confirmado"].includes(normalizeStatus(item.status))).slice(0, 4).map((item) => <button key={item.id} type="button" onClick={() => setSelectedAppointment(item)} className="grid grid-cols-[48px_minmax(0,1fr)_auto] items-center gap-2 rounded-lg border p-2 text-left text-xs hover:bg-muted/50"><strong>{formatTime(item.start_time)}</strong><span className="truncate">{item.patient_name} - {item.service_name}</span><span className={cn("rounded-full px-2 py-0.5 text-[9px] font-semibold", getAppointmentStyle(item).chip)}>{getStatusLabel(item)}</span></button>)}</div></Card></section>
-        <DailyAppointmentsList
-          selectedDate={selectedDate}
-          appointments={dayAppointments}
-          canEdit={canEdit}
-          canAdminCorrect={canAdminCorrect}
-          isPending={isPending}
-          onOpen={setSelectedAppointment}
-          onFinalize={openFinalizeAppointment}
-          onStatus={changeStatus}
-          onUndoAbsence={(appointment) => openStatusCorrection(appointment, "faltou")}
-          onRestoreCancelled={(appointment) => openStatusCorrection(appointment, "cancelado")}
-          onCreate={() => openCreateAppointment(selectedDate)}
-        />
-        </div>
-
+      {message ? <SystemMessage message={message} onClose={() => setMessage(null)} /> : null}
+      {savedWhatsappConfirmations.map((x) => <Card key={x.id} className="flex items-center justify-between gap-2 p-3 text-sm"><span><strong>{x.patientName}</strong> - enviar confirmacao?</span><div className="flex gap-2"><Button size="sm" disabled={!x.href} onClick={() => window.open(x.href + "?text=" + encodeURIComponent(x.message), "_blank", "noopener,noreferrer")}><MessageCircle className="h-4 w-4" />WhatsApp</Button><Button size="sm" variant="ghost" onClick={() => setSavedWhatsappConfirmations((v) => v.filter((i) => i.id !== x.id))}>Fechar</Button></div></Card>)}
+      <div className="grid items-start gap-3 lg:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[240px_minmax(0,1fr)_300px]">
+        <aside className="grid min-w-0 gap-3 xl:sticky xl:top-[68px]"><MiniMonthCalendar selectedDate={selectedDate} appointments={visibleAppointments} blocks={scopedBlocks} onSelectDate={selectAgendaDate} /><AgendaDaySummary appointments={dayAppointments} blocks={dayBlocks} employees={calendarEmployees} /><AgendaQuickActions canCreate={canCreate} onCreate={() => openCreateAppointment(selectedDate)} onBlock={() => openBlockForm(selectedDate)} onClass={() => { openCreateAppointment(selectedDate); setAppointmentForm((v) => ({...v, appointment_type:"avulso", appointment_origin:"avulso"})); }} onReplacement={() => { openCreateAppointment(selectedDate); setAppointmentForm((v) => ({...v, appointment_type:"reposicao", appointment_origin:"reposicao"})); }} onReports={() => router.push("/relatorios" as never)} /></aside>
+        <main className="min-w-0"><Card className="min-w-0 overflow-hidden rounded-xl"><div className="flex items-center justify-between border-b px-4 py-3"><div><h2 className="text-sm font-semibold">{getPeriodLabel(viewMode, selectedDate)}</h2><p className="text-xs text-muted-foreground">Grade por horarios e profissionais</p></div><span className="text-xs text-muted-foreground">{dayAppointments.length} atendimentos</span></div>{viewMode === "month" ? <div className="overflow-x-auto"><div className="min-w-[720px]"><MonthGrid selectedDate={selectedDate} days={visibleDays} appointments={visibleAppointments} blocks={visibleBlocks} onOpenAppointment={setSelectedAppointment} onSelectDate={(date) => { if (selectAgendaDate(date)) setViewMode("day"); }} /></div></div> : <div className="max-h-[calc(100vh-190px)] min-h-[620px] overflow-auto bg-muted/10 p-2">{visibleDays.map((day) => <DayTimeline key={day} day={day} employees={calendarEmployees} appointments={visibleAppointments.filter((a) => a.appointment_date === day)} blocks={visibleBlocks.filter((b) => b.block_date === day)} canEdit={canEdit} canDelete={canDelete} canAdminCorrect={canAdminCorrect} isPending={isPending} onCreateAppointment={openCreateAppointment} onCreateBlock={openBlockForm} onStatus={changeStatus} onFinalize={openFinalizeAppointment} onEdit={setSelectedAppointment} onDeleteBlock={removeBlock} onUndoAbsence={(a) => openStatusCorrection(a,"faltou")} onRestoreCancelled={(a) => openStatusCorrection(a,"cancelado")} />)}</div>}<AgendaLegend /></Card></main>
+        <aside className="grid min-w-0 gap-3 lg:col-span-2 xl:col-span-1 xl:sticky xl:top-[68px]"><AgendaRightRail appointments={dayAppointments} blocks={dayBlocks} employees={calendarEmployees} onOpen={setSelectedAppointment} /></aside>
       </div>
-      {appointmentDetails ? <div className="fixed inset-0 z-50 grid place-items-end bg-slate-950/60 p-3 backdrop-blur-sm"><div className="h-full w-full max-w-xl">{appointmentDetails}</div></div> : null}
-
+      <DailyAppointmentsList selectedDate={selectedDate} appointments={dayAppointments} patients={patients} canEdit={canEdit} canAdminCorrect={canAdminCorrect} isPending={isPending} onOpen={setSelectedAppointment} onFinalize={openFinalizeAppointment} onStatus={changeStatus} onUndoAbsence={(a) => openStatusCorrection(a,"faltou")} onRestoreCancelled={(a) => openStatusCorrection(a,"cancelado")} onCreate={() => openCreateAppointment(selectedDate)} />
+      {appointmentDetails ? <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/65 p-2 backdrop-blur-sm sm:p-4"><div className="h-full w-full max-w-xl">{appointmentDetails}</div></div> : null}
       {appointmentFormOpen ? (
         <AppointmentFormModal
           editingAppointment={editingAppointment}
@@ -1711,6 +1440,8 @@ function DayTimeline({
   );
   const gridHeight = (calendarEndHour - calendarStartHour) * hourHeight;
   const showNow = day === today();
+  const [currentTime, setCurrentTime] = React.useState(nowTimeValue());
+  React.useEffect(() => { const timer = window.setInterval(() => setCurrentTime(nowTimeValue()), 60000); return () => window.clearInterval(timer); }, []);
   const nowTop = currentTimeTop();
 
   return (
@@ -1756,7 +1487,7 @@ function DayTimeline({
         <div
           className="grid w-full"
           style={{
-            gridTemplateColumns: `72px repeat(${Math.max(employees.length, 1)}, minmax(0, 1fr))`
+            gridTemplateColumns: `60px repeat(${Math.max(employees.length, 1)}, minmax(0, 1fr))`
           }}
         >
           <div className="border-r border-slate-200/80 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-900/70">
@@ -1809,7 +1540,7 @@ function DayTimeline({
         <div
           className="grid w-full"
           style={{
-            gridTemplateColumns: `72px repeat(${Math.max(employees.length, 1)}, minmax(0, 1fr))`,
+            gridTemplateColumns: `60px repeat(${Math.max(employees.length, 1)}, minmax(0, 1fr))`,
             minHeight: gridHeight
           }}
         >
@@ -1897,10 +1628,10 @@ function DayTimeline({
 
           {showNow && nowTop >= 0 && nowTop <= gridHeight ? (
             <div
-              className="pointer-events-none absolute left-[72px] right-0 z-30 h-px bg-gradient-to-r from-rose-500 via-red-500 to-transparent shadow-[0_0_10px_rgba(239,68,68,0.8)]"
+              className="pointer-events-none absolute left-[60px] right-0 z-30 h-px bg-gradient-to-r from-rose-500 via-red-500 to-transparent shadow-[0_0_10px_rgba(239,68,68,0.8)]"
               style={{ top: nowTop }}
             >
-              <span className="absolute -left-2 -top-2 h-4 w-4 rounded-full border-2 border-white bg-red-500 shadow-[0_0_14px_rgba(239,68,68,0.9)] dark:border-slate-950" />
+              <span className="absolute -left-2 -top-2 h-4 w-4 rounded-full border-2 border-white bg-red-500 shadow-[0_0_14px_rgba(239,68,68,0.9)] dark:border-slate-950" /><span className="absolute left-1 top-1 rounded bg-red-500 px-1 text-[9px] font-bold text-white">{currentTime}</span>
             </div>
           ) : null}
         </div>
@@ -1909,123 +1640,16 @@ function DayTimeline({
   );
 }
 
-function TimelineAppointment({
-  appointment,
-  position,
-  canEdit,
-  canAdminCorrect,
-  isPending,
-  onStatus,
-  onFinalize,
-  onEdit,
-  onUndoAbsence,
-  onRestoreCancelled
-}: {
-  appointment: Appointment;
-  position: { top: number; height: number; leftPercent: number; widthPercent: number };
-  canEdit: boolean;
-  canAdminCorrect: boolean;
-  isPending: boolean;
-  onStatus: (status: AppointmentStatus) => void;
-  onFinalize: () => void;
-  onEdit: () => void;
-  onUndoAbsence: () => void;
-  onRestoreCancelled: () => void;
-}) {
-  const availableActions = getAppointmentAvailableActions(appointment, { canEdit, canAdminCorrect });
-  const primaryAction = getPrimaryAppointmentAction(availableActions);
-  const style = getAppointmentStyle(appointment);
-  const sessionsContracted = appointment.sessions_contracted ?? 1;
-  const sessionsCompleted = appointment.sessions_completed ?? 0;
-  const sessionsRemaining = Math.max(sessionsContracted - sessionsCompleted, 0);
-  const appointmentType = getAppointmentType(appointment);
-  const appointmentOrigin = getAppointmentOrigin(appointment);
-  const isReplacement = isReplacementAppointment(appointment);
-
-  return (
-    <article
-      draggable={false}
-      role="button"
-      tabIndex={0}
-      onClick={(event) => {
-        if ((event.target as HTMLElement).closest("button, a, input, select, textarea")) return;
-        onEdit();
-      }}
-      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onEdit(); }}
-      data-dnd-ready="appointment"
-      className={cn(
-        "group absolute z-10 grid cursor-pointer gap-1 overflow-visible rounded-lg border border-white/80 border-l-4 p-2 shadow-[0_8px_24px_rgba(15,23,42,0.14)] ring-1 ring-black/5 backdrop-blur-sm transition-all duration-200 hover:z-30 hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(15,23,42,0.2)] dark:border-white/10 dark:ring-white/5",
-        style.border,
-        style.surface,
-        style.text
-      )}
-      style={{
-        top: position.top,
-        minHeight: position.height,
-        left: `calc(${position.leftPercent}% + 4px)`,
-        width: `calc(${position.widthPercent}% - 8px)`
-      }}
-      title={`${formatTime(appointment.start_time)} · ${appointment.patient_names.join(", ")} · ${appointment.service_name} · ${getStatusLabel(appointment)}`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-sm font-bold tabular-nums">
-            {formatTime(appointment.start_time)}
-            {appointment.end_time ? ` - ${formatTime(appointment.end_time)}` : ""}
-          </p>
-          <h3 className="truncate text-sm font-bold tracking-tight">
-            {appointment.patient_names.join(", ")}
-          </h3>
-        </div>
-        <span className={cn("rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide shadow-sm", style.chip)}>
-          {getStatusLabel(appointment)}
-        </span>
-      </div>
-
-      <div className="grid gap-1 text-sm">
-        <p className="truncate font-medium">{appointment.service_name}</p>
-        <p className="truncate text-muted-foreground">{appointment.employee_name}</p>
-        <p className="truncate text-xs font-semibold text-muted-foreground">{appointment.is_billable ? (appointment.finance_integration_status === "completed" ? "Pago" : "Pagamento pendente") : "Cortesia"}{appointment.patient_package_id ? ` - ${sessionsCompleted} / ${sessionsContracted} sessoes` : ""}</p>
-        <div className="flex flex-wrap gap-1">
-          <span
-            className={cn(
-              "rounded-md px-2 py-1 text-[11px] font-semibold",
-              isReplacement
-                ? "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-200"
-                : "bg-background/80 text-muted-foreground"
-            )}
-          >
-            {appointmentTypeLabels[appointmentType]}
-          </span>
-          <span className="rounded-md bg-background/80 px-2 py-1 text-[11px] font-semibold text-muted-foreground">
-            Origem: {appointmentOriginLabels[appointmentOrigin]}
-          </span>
-        </div>
-        {appointment.service_is_group || appointmentType === "grupo" ? (
-          <GroupStatusSummary appointment={appointment} />
-        ) : null}
-        {appointment.original_appointment_label ? (
-          <p className="truncate text-[11px] text-muted-foreground">
-            Original: {appointment.original_appointment_label}
-          </p>
-        ) : null}
-      </div>
-
-      <div className="hidden grid-cols-3 gap-1 text-center text-[11px] 2xl:grid">
-        <MiniStat label="Contr." value={sessionsContracted} />
-        <MiniStat label="Real." value={sessionsCompleted} />
-        <MiniStat label="Rest." value={sessionsRemaining} />
-      </div>
-
-      <div className="flex flex-wrap gap-1.5 border-t border-black/5 pt-2 dark:border-white/10">
-        <AppointmentPrimaryAction action={primaryAction} isPending={isPending} onConfirm={() => onStatus("confirmado")} onFinalize={onFinalize} onUndoAbsence={onUndoAbsence} onRestoreCancelled={onRestoreCancelled} onOpen={onEdit} />
-        <IconAction label="Ver detalhes" onClick={onEdit} icon={MoreHorizontal} />
-      </div>
-      <div className="pointer-events-none absolute left-1/2 top-full z-50 mt-2 hidden w-64 -translate-x-1/2 rounded-xl border bg-background/95 p-3 text-xs text-foreground shadow-2xl backdrop-blur-xl group-hover:grid"><strong>{appointment.patient_names.join(", ")}</strong><span>Observacoes: {appointment.notes || "Sem observacoes"}</span><span>Sessoes restantes: {sessionsRemaining}</span><span>Pagamento: {appointment.is_billable ? (appointment.finance_integration_status === "completed" ? "Pago" : "Pendente") : "Cortesia"}</span><span className="mt-1 font-semibold text-primary">Abrir prontuario nos detalhes</span></div>
-    </article>
-  );
+function TimelineAppointment({ appointment, position, canEdit, canAdminCorrect, isPending, onStatus, onFinalize, onEdit, onUndoAbsence, onRestoreCancelled }: { appointment: Appointment; position: { top: number; height: number; leftPercent: number; widthPercent: number }; canEdit: boolean; canAdminCorrect: boolean; isPending: boolean; onStatus: (status: AppointmentStatus) => void; onFinalize: () => void; onEdit: () => void; onUndoAbsence: () => void; onRestoreCancelled: () => void }) {
+  const actions=getAppointmentAvailableActions(appointment,{canEdit,canAdminCorrect});
+  const style=getAppointmentStyle(appointment);
+  const sessionsContracted=appointment.sessions_contracted??1;
+  const sessionsCompleted=appointment.sessions_completed??0;
+  return <article role="button" tabIndex={0} onClick={(event)=>{if(!(event.target as HTMLElement).closest("button,a"))onEdit();}} onKeyDown={(event)=>{if(event.key==="Enter"||event.key===" ")onEdit();}} className={cn("absolute z-10 grid cursor-pointer gap-0.5 overflow-visible rounded-lg border border-l-4 p-2 shadow-sm transition hover:z-30 hover:shadow-lg",style.border,style.surface,style.text)} style={{top:position.top,minHeight:position.height,left:`calc(${position.leftPercent}% + 3px)`,width:`calc(${position.widthPercent}% - 6px)`}}>
+    <div className="flex items-start justify-between gap-1"><span className="truncate text-[10px] font-bold tabular-nums">{formatTime(appointment.start_time)}-{formatTime(appointment.end_time)}</span><span className={cn("rounded-full px-1.5 py-0.5 text-[8px] font-bold",style.chip)}>{getStatusLabel(appointment)}</span><AppointmentActionsMenu actions={actions} isPending={isPending} onOpen={onEdit} onConfirm={()=>onStatus("confirmado")} onFinalize={onFinalize} onAbsence={()=>onStatus("faltou")} onUndoAbsence={onUndoAbsence} onRestoreCancelled={onRestoreCancelled} /></div>
+    <strong className="truncate text-xs">{appointment.patient_names.join(", ")}</strong><span className="truncate text-[10px] text-muted-foreground">{appointment.service_name}</span>{position.height>=68?<span className="truncate text-[9px] text-muted-foreground">{appointment.is_billable?(appointment.finance_integration_status==="completed"?"Pago":"Pagamento pendente"):"Cortesia"}{appointment.patient_package_id?` - ${sessionsCompleted}/${sessionsContracted} sessoes`:""}</span>:null}
+  </article>;
 }
-
 function TimelineBlock({
   block,
   position,
@@ -2167,6 +1791,34 @@ function MonthGrid({
   );
 }
 
+function AgendaDaySummary({ appointments, blocks, employees }: { appointments: Appointment[]; blocks: ScheduleBlock[]; employees: Employee[] }) {
+  const metrics: Array<[string, number, string]> = [
+    ["Atendimentos", appointments.length, "text-blue-400"],
+    ["Confirmados", appointments.filter((item) => normalizeStatus(item.status) === "confirmado").length, "text-emerald-400"],
+    ["Pendentes", appointments.filter((item) => item.is_billable && item.finance_integration_status !== "completed").length, "text-amber-400"],
+    ["Realizados", appointments.filter((item) => normalizeStatus(item.status) === "realizado").length, "text-teal-400"],
+    ["Faltas", appointments.filter((item) => normalizeStatus(item.status) === "faltou").length, "text-red-400"],
+    ["Cancelados", appointments.filter((item) => normalizeStatus(item.status) === "cancelado").length, "text-zinc-400"],
+    ["Reposicoes", appointments.filter(isReplacementAppointment).length, "text-sky-400"],
+    ["Grupos", appointments.filter((item) => item.service_is_group || getAppointmentType(item) === "grupo").length, "text-violet-400"],
+    ["Profissionais ativos", new Set(appointments.map((item) => item.employee_id)).size || employees.length, "text-indigo-400"],
+    ["Bloqueios", blocks.length, "text-purple-400"]
+  ];
+  return <Card className="rounded-xl p-3"><h3 className="mb-2 text-sm font-semibold">Resumo do dia</h3><div className="grid gap-0.5">{metrics.map(([label,value,color]) => <div key={label} className="flex h-8 items-center justify-between rounded-md px-2 text-xs hover:bg-muted/50"><span className="flex items-center gap-2"><span className={cn("h-1.5 w-1.5 rounded-full bg-current",color)} />{label}</span><strong className="tabular-nums">{value}</strong></div>)}</div></Card>;
+}
+
+function AgendaQuickActions({ canCreate, onCreate, onBlock, onClass, onReplacement, onReports }: { canCreate: boolean; onCreate: () => void; onBlock: () => void; onClass: () => void; onReplacement: () => void; onReports: () => void }) {
+  if (!canCreate) return null;
+  return <Card className="rounded-xl p-3"><h3 className="mb-2 text-sm font-semibold">Acoes rapidas</h3><div className="grid gap-1.5"><Button size="sm" className="justify-start" onClick={onCreate}><CalendarPlus className="h-4 w-4" />Novo agendamento</Button><Button size="sm" variant="ghost" className="justify-start" onClick={onBlock}><LockKeyhole className="h-4 w-4" />Bloquear horario</Button><Button size="sm" variant="ghost" className="justify-start" onClick={onClass}>Aula avulsa</Button><Button size="sm" variant="ghost" className="justify-start" onClick={onReplacement}><RotateCw className="h-4 w-4" />Reposicao</Button><Button size="sm" variant="ghost" className="justify-start" onClick={onReports}><ListChecks className="h-4 w-4" />Relatorios</Button></div></Card>;
+}
+
+function AgendaRightRail({ appointments, blocks, employees, onOpen }: { appointments: Appointment[]; blocks: ScheduleBlock[]; employees: Employee[]; onOpen: (appointment: Appointment) => void }) {
+  const upcoming = appointments.filter((item) => ["agendado","confirmado"].includes(normalizeStatus(item.status))).slice(0,6);
+  const busyEmployees = new Set(appointments.filter((item) => !["cancelado","faltou"].includes(normalizeStatus(item.status))).map((item) => item.employee_id));
+  const occupiedMinutes = appointments.reduce((total,item) => total + Math.max((parseMinutes(item.end_time) ?? ((parseMinutes(item.start_time) ?? 0)+45)) - (parseMinutes(item.start_time) ?? 0),0),0);
+  const availableMinutes = employees.length * (calendarEndHour-calendarStartHour) * 60;
+  return <><Card className="rounded-xl p-3"><div className="mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold">Proximos atendimentos</h3><span className="text-[10px] text-muted-foreground">{upcoming.length} de {appointments.length}</span></div><div className="grid gap-1">{upcoming.map((item) => <button key={item.id} type="button" onClick={() => onOpen(item)} className="grid min-h-12 grid-cols-[42px_minmax(0,1fr)] gap-2 rounded-lg border p-2 text-left hover:bg-muted/50"><strong className="text-xs tabular-nums">{formatTime(item.start_time)}</strong><span className="min-w-0"><span className="block truncate text-xs font-medium">{item.patient_name}</span><span className="block truncate text-[10px] text-muted-foreground">{item.service_name} - {item.employee_name}</span><span className={cn("mt-1 inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-semibold",getAppointmentStyle(item).chip)}>{getStatusLabel(item)}</span></span></button>)}{upcoming.length === 0 ? <p className="py-4 text-center text-xs text-muted-foreground">Nenhum proximo atendimento.</p> : null}</div></Card><Card className="rounded-xl p-3"><h3 className="mb-2 text-sm font-semibold">Disponibilidade profissional</h3><div className="grid gap-1">{employees.slice(0,6).map((employee) => <div key={employee.id} className="flex h-9 items-center justify-between rounded-md px-2 text-xs hover:bg-muted/50"><span className="truncate">{employee.name}</span><span className={cn("rounded-full px-2 py-0.5 text-[9px] font-semibold",busyEmployees.has(employee.id)?"bg-amber-500/15 text-amber-400":"bg-emerald-500/15 text-emerald-400")}>{busyEmployees.has(employee.id)?"Com agenda":"Livre"}</span></div>)}</div></Card><Card className="rounded-xl p-3"><h3 className="mb-2 text-sm font-semibold">Informacoes rapidas</h3><div className="grid gap-1 text-xs"><SideStat label="Profissionais" value={employees.length} /><SideStat label="Bloqueios" value={blocks.length} /><SideStat label="Horarios livres" value={Math.max(employees.length * (calendarEndHour-calendarStartHour) - appointments.length,0)} />{availableMinutes > 0 ? <SideStat label="Ocupacao (%)" value={Math.min(Math.round((occupiedMinutes/availableMinutes)*100),100)} /> : null}</div></Card></>;
+}
 function MiniMonthCalendar({
   selectedDate,
   appointments = [],
@@ -2183,15 +1835,7 @@ function MiniMonthCalendar({
 
   return (
     <Card className="rounded-2xl border border-slate-200/70 bg-white/90 p-4 shadow-[0_16px_45px_rgba(15,23,42,0.09)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/90 dark:shadow-[0_16px_45px_rgba(0,0,0,0.25)]">
-      <div className="mb-4 flex items-center justify-between border-b border-slate-200/70 pb-3 dark:border-slate-800">
-        <div>
-          <p className="text-sm font-semibold">Mini calendário</p>
-          <p className="text-xs capitalize text-muted-foreground">
-            {monthTitle(selectedDate)}
-          </p>
-        </div>
-        <CalendarClock className="h-5 w-5 text-primary" />
-      </div>
+      <div className="mb-3 flex items-center justify-between border-b pb-2"><Button type="button" size="icon" variant="ghost" className="h-7 w-7" aria-label="Mes anterior" onClick={() => onSelectDate(shiftSelectedDate(selectedDate, "month", -1))}><ChevronLeft className="h-4 w-4" /></Button><div className="text-center"><p className="text-sm font-semibold">Calendario</p><p className="text-[10px] capitalize text-muted-foreground">{monthTitle(selectedDate)}</p></div><Button type="button" size="icon" variant="ghost" className="h-7 w-7" aria-label="Proximo mes" onClick={() => onSelectDate(shiftSelectedDate(selectedDate, "month", 1))}><ChevronRight className="h-4 w-4" /></Button></div>
       <div className="grid grid-cols-7 gap-1 text-center text-xs">
         {["S", "T", "Q", "Q", "S", "S", "D"].map((day, index) => (
           <span key={`${day}-${index}`} className="py-1 text-muted-foreground">
@@ -2212,7 +1856,7 @@ function MiniMonthCalendar({
               onClick={() => onSelectDate(day)}
               title={`${appointmentCount} agendamento(s)${hasBlock ? "; data com bloqueio" : ""}`}
               className={cn(
-                "h-9 rounded-md text-sm font-medium transition-colors hover:bg-secondary",
+                "aspect-square min-w-0 whitespace-nowrap rounded-md text-xs font-medium leading-none transition-colors hover:bg-secondary",
                 day === selectedDate &&
                   "bg-primary text-primary-foreground hover:bg-primary",
                 day.slice(0, 7) !== selectedMonth && "text-muted-foreground/50",
@@ -2263,73 +1907,9 @@ function AgendaLegend() {
   );
 }
 
-function DailyAppointmentsList({
-  selectedDate,
-  appointments,
-  canEdit,
-  canAdminCorrect,
-  isPending,
-  onOpen,
-  onFinalize,
-  onStatus,
-  onUndoAbsence,
-  onRestoreCancelled,
-  onCreate
-}: {
-  selectedDate: string;
-  appointments: Appointment[];
-  canEdit: boolean;
-  canAdminCorrect: boolean;
-  isPending: boolean;
-  onOpen: (appointment: Appointment) => void;
-  onFinalize: (appointment: Appointment) => void;
-  onStatus: (appointment: Appointment, status: AppointmentStatus) => void;
-  onUndoAbsence: (appointment: Appointment) => void;
-  onRestoreCancelled: (appointment: Appointment) => void;
-  onCreate: () => void;
-}) {
-  return (
-    <Card className="overflow-hidden rounded-2xl border-slate-200/80 bg-white/95 shadow-sm dark:border-slate-800 dark:bg-slate-950/95">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-        <div>
-          <h2 className="font-semibold">Agendamentos do dia — {formatShortDate(selectedDate)}</h2>
-          <p className="text-xs text-muted-foreground">A lista usa os mesmos filtros e registros exibidos na grade.</p>
-        </div>
-        <span className="rounded-full bg-violet-100 px-3 py-1 text-xs font-bold text-violet-700 dark:bg-violet-950 dark:text-violet-200">{appointments.length} registro(s)</span>
-      </header>
-      {appointments.length > 0 ? (
-        <div className="divide-y">
-          {appointments.map((appointment) => (
-            <div key={appointment.id} className="p-3 transition-colors hover:bg-muted/40">
-              <AppointmentSummary
-                appointment={appointment}
-                compact
-                canEdit={canEdit}
-                canAdminCorrect={canAdminCorrect}
-                isPending={isPending}
-                onOpen={() => onOpen(appointment)}
-                onFinalize={() => onFinalize(appointment)}
-                onStatus={(status) => onStatus(appointment, status)}
-                onUndoAbsence={() => onUndoAbsence(appointment)}
-                onRestoreCancelled={() => onRestoreCancelled(appointment)}
-              />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="grid place-items-center gap-3 px-4 py-10 text-center">
-          <CalendarDays className="h-10 w-10 text-muted-foreground/50" />
-          <div>
-            <p className="font-medium">Nenhum agendamento encontrado para esta data e filtros.</p>
-            <p className="text-sm text-muted-foreground">A consulta foi concluida sem resultados.</p>
-          </div>
-          {canEdit ? <Button type="button" onClick={onCreate}><CalendarPlus className="h-4 w-4" />Novo agendamento</Button> : null}
-        </div>
-      )}
-    </Card>
-  );
+function DailyAppointmentsList({ selectedDate, appointments, patients, canEdit, canAdminCorrect, isPending, onOpen, onFinalize, onStatus, onUndoAbsence, onRestoreCancelled, onCreate }: { selectedDate: string; appointments: Appointment[]; patients: Patient[]; canEdit: boolean; canAdminCorrect: boolean; isPending: boolean; onOpen: (appointment: Appointment) => void; onFinalize: (appointment: Appointment) => void; onStatus: (appointment: Appointment, status: AppointmentStatus) => void; onUndoAbsence: (appointment: Appointment) => void; onRestoreCancelled: (appointment: Appointment) => void; onCreate: () => void }) {
+  return <Card className="overflow-hidden rounded-xl"><header className="flex items-center justify-between border-b px-4 py-3"><div><h2 className="text-sm font-semibold">Agendamentos do dia - {formatShortDate(selectedDate)}</h2><p className="text-xs text-muted-foreground">Mesmos filtros e registros da grade.</p></div><span className="rounded-full bg-muted px-2 py-1 text-xs font-semibold">{appointments.length}</span></header>{appointments.length ? <div className="overflow-x-auto"><table className="w-full min-w-[980px] text-left text-xs"><thead className="bg-muted/40 text-[10px] uppercase tracking-wide text-muted-foreground"><tr><th className="px-3 py-2">Horario</th><th className="px-3 py-2">Paciente</th><th className="px-3 py-2">Servico</th><th className="px-3 py-2">Profissional</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Forma</th><th className="px-3 py-2">Pagamento</th><th className="w-12 px-3 py-2"><span className="sr-only">Acoes</span></th></tr></thead><tbody className="divide-y">{appointments.map((item) => { const patient=patients.find((p)=>p.id===item.patient_id); const actions=getAppointmentAvailableActions(item,{canEdit,canAdminCorrect}); return <tr key={item.id} className="h-16 hover:bg-muted/30"><td className="whitespace-nowrap px-3 py-2 font-semibold tabular-nums">{formatTime(item.start_time)}-{formatTime(item.end_time)}</td><td className="max-w-48 px-3 py-2"><button type="button" onClick={()=>onOpen(item)} className="block max-w-full text-left"><span className="block truncate font-medium">{item.patient_names.join(", ")}</span>{patient?.phone ? <span className="block text-[10px] text-muted-foreground">{patient.phone}</span> : null}</button></td><td className="max-w-44 px-3 py-2"><span className="block truncate">{item.service_name}</span><span className="text-[10px] text-muted-foreground">{appointmentTypeLabels[getAppointmentType(item)]}</span></td><td className="max-w-40 px-3 py-2"><span className="flex items-center gap-2"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary/15 text-[10px] font-bold text-primary">{item.employee_name.split(" ").map((v)=>v[0]).slice(0,2).join("")}</span><span className="truncate">{item.employee_name}</span></span></td><td className="px-3 py-2"><span className={cn("rounded-full px-2 py-1 text-[10px] font-semibold",getAppointmentStyle(item).chip)}>{getStatusLabel(item)}</span></td><td className="px-3 py-2">{appointmentOriginLabels[getAppointmentOrigin(item)]}</td><td className="px-3 py-2"><span className={cn("rounded-full px-2 py-1 text-[10px] font-semibold",item.finance_integration_status==="completed"?"bg-emerald-500/15 text-emerald-400":"bg-amber-500/15 text-amber-400")}>{item.is_billable?(item.finance_integration_status==="completed"?"Pago":"Pendente"):"Cortesia"}</span></td><td className="px-3 py-2"><AppointmentActionsMenu actions={actions} isPending={isPending} onOpen={()=>onOpen(item)} onConfirm={()=>onStatus(item,"confirmado")} onFinalize={()=>onFinalize(item)} onAbsence={()=>onStatus(item,"faltou")} onUndoAbsence={()=>onUndoAbsence(item)} onRestoreCancelled={()=>onRestoreCancelled(item)} /></td></tr>; })}</tbody></table></div> : <div className="grid place-items-center gap-2 py-10 text-center"><CalendarDays className="h-8 w-8 text-muted-foreground/50" /><p className="text-sm">Nenhum agendamento para esta data e filtros.</p>{canEdit?<Button size="sm" onClick={onCreate}><CalendarPlus className="h-4 w-4" />Novo agendamento</Button>:null}</div>}</Card>;
 }
-
 function SidePanel({
   selectedDate,
   nextAppointment,
@@ -2507,32 +2087,13 @@ function SideStat({ label, value }: { label: string; value: number }) {
   );
 }
 
-function MiniStat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-md bg-background/70 px-2 py-1">
-      <strong>{value}</strong>
-      <span className="block text-muted-foreground">{label}</span>
-    </div>
-  );
+function AppointmentActionsMenu({ actions, isPending, onOpen, onConfirm, onFinalize, onAbsence, onUndoAbsence, onRestoreCancelled }: { actions: Set<AppointmentActionKey>; isPending: boolean; onOpen: () => void; onConfirm: () => void; onFinalize: () => void; onAbsence: () => void; onUndoAbsence: () => void; onRestoreCancelled: () => void }) {
+  const [open,setOpen]=React.useState(false); const root=React.useRef<HTMLDivElement>(null);
+  React.useEffect(()=>{if(!open)return; const close=(event:MouseEvent)=>{if(!root.current?.contains(event.target as Node))setOpen(false);}; const escape=(event:KeyboardEvent)=>{if(event.key==="Escape")setOpen(false);}; document.addEventListener("mousedown",close); document.addEventListener("keydown",escape); return()=>{document.removeEventListener("mousedown",close);document.removeEventListener("keydown",escape);};},[open]);
+  const run=(action:()=>void)=>{setOpen(false);action();};
+  return <div ref={root} className="relative ml-auto"><button type="button" aria-label="Abrir acoes do agendamento" aria-haspopup="menu" aria-expanded={open} title="Acoes" onClick={(event)=>{event.stopPropagation();setOpen((value)=>!value);}} className="grid h-6 w-6 place-items-center rounded-md text-muted-foreground hover:bg-background/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><MoreHorizontal className="h-3.5 w-3.5" /></button>{open?<div role="menu" className="absolute right-0 top-7 z-[80] grid w-44 rounded-lg border bg-popover p-1 text-popover-foreground shadow-xl" onClick={(event)=>event.stopPropagation()}><ActionMenuItem label="Ver detalhes" onClick={()=>run(onOpen)} />{actions.has("edit")?<ActionMenuItem label="Editar" onClick={()=>run(onOpen)} />:null}{actions.has("confirm")?<ActionMenuItem label="Confirmar" disabled={isPending} onClick={()=>run(onConfirm)} />:null}{actions.has("finalize")?<ActionMenuItem label="Dar baixa" disabled={isPending} onClick={()=>run(onFinalize)} />:null}{actions.has("absence")?<ActionMenuItem label="Marcar falta" disabled={isPending} onClick={()=>run(onAbsence)} />:null}{actions.has("reschedule")?<ActionMenuItem label="Remarcar" onClick={()=>run(onOpen)} />:null}{actions.has("receive")?<ActionMenuItem label="Ver financeiro" onClick={()=>run(onOpen)} />:null}{actions.has("record")?<ActionMenuItem label="Abrir prontuario" onClick={()=>run(onOpen)} />:null}{actions.has("undo_absence")?<ActionMenuItem label="Desfazer falta" disabled={isPending} onClick={()=>run(onUndoAbsence)} />:null}{actions.has("restore_cancelled")?<ActionMenuItem label="Restaurar" disabled={isPending} onClick={()=>run(onRestoreCancelled)} />:null}{actions.has("cancel")?<ActionMenuItem label="Cancelar" onClick={()=>run(onOpen)} danger />:null}</div>:null}</div>;
 }
-
-function GroupStatusSummary({ appointment }: { appointment: Appointment }) {
-  const participants = appointment.participant_details;
-  const count = (status: string) => participants.filter((participant) => participant.status === status).length;
-  const total = participants.length;
-  const capacity = appointment.participant_limit ?? total;
-  return (
-    <div className="flex flex-wrap gap-1 text-[10px] font-semibold" aria-label="Resumo dos participantes do grupo">
-      <span className="rounded bg-cyan-100 px-1.5 py-0.5 text-cyan-900 dark:bg-cyan-950 dark:text-cyan-100">Grupo {total}/{capacity}</span>
-      <span className="rounded bg-green-100 px-1.5 py-0.5 text-green-900 dark:bg-green-950 dark:text-green-100">Conf. {count("confirmado")}</span>
-      <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">Real. {count("realizado")}</span>
-      <span className="rounded bg-red-100 px-1.5 py-0.5 text-red-900 dark:bg-red-950 dark:text-red-100">Faltas {count("faltou")}</span>
-      <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100">Canc. {count("cancelado")}</span>
-      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-900 dark:bg-slate-800 dark:text-slate-100">Vagas {Math.max(capacity - total, 0)}</span>
-    </div>
-  );
-}
-
+function ActionMenuItem({label,onClick,disabled=false,danger=false}:{label:string;onClick:()=>void;disabled?:boolean;danger?:boolean}){return <button type="button" role="menuitem" disabled={disabled} onClick={onClick} className={cn("rounded-md px-2.5 py-2 text-left text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",danger&&"text-red-500")}>{label}</button>;}
 function IconAction({
   label,
   icon: Icon,

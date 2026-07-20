@@ -35,3 +35,33 @@ test("grid, daily list and detail panel share the loaded appointment collection"
   assert.match(source, /<AppointmentDetailsPanel/);
   assert.match(source, /appointments=\{visibleAppointments\.filter/);
 });
+
+test("premium agenda layout remains connected to real loaded data", async () => {
+  const source = await readFile(managerPath, "utf8");
+
+  assert.match(source, /xl:grid-cols-\[240px_minmax\(0,1fr\)_300px\]/);
+  assert.match(source, /<MiniMonthCalendar[\s\S]*appointments=\{visibleAppointments\}/);
+  assert.match(source, /<AgendaDaySummary appointments=\{dayAppointments\}/);
+  assert.match(source, /<AgendaRightRail appointments=\{dayAppointments\}/);
+  assert.match(source, /<DailyAppointmentsList[\s\S]*appointments=\{dayAppointments\}/);
+  assert.match(source, /<table className="w-full min-w-\[980px\]/);
+});
+
+test("compact cards and contextual actions preserve operational callbacks", async () => {
+  const source = await readFile(managerPath, "utf8");
+
+  assert.match(source, /height: Math\.max\(Math\.min\(base\.height, 90\), 58\)/);
+  assert.match(source, /function AppointmentActionsMenu/);
+  assert.match(source, /actions\.has\("confirm"\)/);
+  assert.match(source, /actions\.has\("finalize"\)/);
+  assert.match(source, /actions\.has\("absence"\)/);
+  assert.match(source, /document\.addEventListener\("mousedown",close\)/);
+});
+
+test("calendar and responsive agenda prevent broken day numbers and page overflow", async () => {
+  const source = await readFile(managerPath, "utf8");
+
+  assert.match(source, /aspect-square min-w-0 whitespace-nowrap/);
+  assert.match(source, /overflow-x-hidden/);
+  assert.match(source, /lg:grid-cols-\[220px_minmax\(0,1fr\)\]/);
+});
