@@ -16,6 +16,7 @@ const protectedRoutes = [
   "/prontuarios",
   "/relatorios",
   "/configuracoes",
+  "/sem-acesso",
   "/portal"
 ] as const;
 
@@ -47,7 +48,7 @@ async function getEmployeeLandingRoute(): Promise<Route> {
     ["servicos", "/servicos"]
   ] as const;
   const destination = destinations.find(([moduleKey]) => permissions[moduleKey].view);
-  return (destination?.[1] ?? "/login") as Route;
+  return (destination?.[1] ?? "/sem-acesso") as Route;
 }
 
 export async function signInWithPassword(formData: FormData) {

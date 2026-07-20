@@ -67,5 +67,6 @@ test("login preserva destinos de ADM e paciente e evita dashboard sem permissao"
   assert.match(actions, /getEmployeeLandingRoute/);
   assert.match(actions, /permissions\[moduleKey\]\.view/);
   assert.match(actions, /\["dashboard", "\/dashboard"\]/);
+  assert.match(actions, /destination\?\.\[1\] \?\? "\/sem-acesso"/);
   assert.doesNotMatch(actions, /profile\.kind === "adm_master"[^]*getEmployeeLandingRoute/);
 });

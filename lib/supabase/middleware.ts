@@ -12,6 +12,7 @@ const protectedRoutes = [
   "/prontuarios",
   "/relatorios",
   "/configuracoes",
+  "/sem-acesso",
   "/portal"
 ];
 
