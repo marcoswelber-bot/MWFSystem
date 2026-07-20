@@ -21,6 +21,22 @@ export default function RedefinirSenhaPage() {
     const supabase = createClient();
     let mounted = true;
     const checkSession = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const tokenHash = params.get("token_hash");
+      const type = params.get("type");
+
+      if (tokenHash && type === "recovery") {
+        const { error } = await supabase.auth.verifyOtp({
+          token_hash: tokenHash,
+          type: "recovery"
+        });
+        if (!mounted) return;
+        window.history.replaceState({}, "", "/redefinir-senha");
+        setReady(!error);
+        setInvalid(Boolean(error));
+        return;
+      }
+
       const { data } = await supabase.auth.getSession();
       if (!mounted) return;
       setReady(Boolean(data.session));

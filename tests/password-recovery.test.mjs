@@ -16,6 +16,8 @@ test("login oferece recuperacao com resposta neutra e redirect publicado", async
 test("redefinicao valida senha e usa sessao de recuperacao", async () => {
   const page = await read("app/redefinir-senha/page.tsx");
   assert.match(page, /PASSWORD_RECOVERY/);
+  assert.match(page, /token_hash: tokenHash/);
+  assert.match(page, /type: "recovery"/);
   assert.match(page, /password\.length < 8/);
   assert.match(page, /password !== confirmation/);
   assert.match(page, /updateUser\(\{ password \}\)/);
