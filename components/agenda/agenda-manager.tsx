@@ -117,7 +117,7 @@ type AgendaManagerProps = {
 
 const calendarStartHour = 7;
 const calendarEndHour = 21;
-const hourHeight = 116;
+const hourHeight = 92;
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -893,18 +893,6 @@ export function AgendaManager({
   const completedToday = dayAppointments.filter(
     (appointment) => normalizeStatus(appointment.status) === "realizado"
   ).length;
-  const nextAppointment = appointments
-    .filter((appointment) => {
-      const status = normalizeStatus(appointment.status);
-      const appointmentDateTime = new Date(`${appointment.appointment_date}T${formatTime(appointment.start_time)}:00`);
-      return (status === "agendado" || status === "confirmado")
-        && appointment.appointment_date === today()
-        && appointmentDateTime >= new Date()
-        && (clinicFilter === "all" || appointment.clinic_id === clinicFilter)
-        && (employeeFilter === "all" || appointment.employee_id === employeeFilter)
-        && (serviceFilter === "all" || appointment.service_id === serviceFilter);
-    })
-    .sort((a, b) => `${a.appointment_date} ${a.start_time}`.localeCompare(`${b.appointment_date} ${b.start_time}`))[0];
 
   function selectAgendaDate(date: string) {
     setSelectedDate(date);
@@ -1489,7 +1477,7 @@ export function AgendaManager({
       </section>
 
       {viewMode !== "month" ? (
-        <div className="xl:hidden">
+        <div className="w-full max-w-[260px]">
           <MiniMonthCalendar
             selectedDate={selectedDate}
             appointments={visibleAppointments}
@@ -1499,7 +1487,7 @@ export function AgendaManager({
         </div>
       ) : null}
 
-      <div className="grid items-start gap-4 scroll-smooth xl:grid-cols-[minmax(0,1fr)_minmax(340px,390px)]">
+      <div className="grid items-start gap-4 scroll-smooth">
         <div className="grid min-w-0 gap-4">
         <Card className="min-w-0 overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.12)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_24px_70px_rgba(0,0,0,0.35)]">
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200/70 bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 p-5 text-white dark:border-slate-800">
@@ -1575,6 +1563,7 @@ export function AgendaManager({
           )}
           <AgendaLegend />
         </Card>
+        <section className="grid gap-3 xl:grid-cols-3"><Card className="rounded-2xl bg-background/85 p-4 backdrop-blur"><h3 className="mb-3 font-semibold">Acoes rapidas</h3><div className="flex flex-wrap gap-2"><Button size="sm" onClick={() => openCreateAppointment(selectedDate)}><Plus className="h-4 w-4" />Novo agendamento</Button><Button size="sm" variant="outline" onClick={() => openBlockForm(selectedDate)}><LockKeyhole className="h-4 w-4" />Bloquear horario</Button><Button size="sm" variant="outline" onClick={() => { openCreateAppointment(selectedDate); setAppointmentForm((value) => ({ ...value, appointment_type: "avulso", appointment_origin: "avulso" })); }}>Aula avulsa</Button><Button size="sm" variant="outline" onClick={() => { openCreateAppointment(selectedDate); setAppointmentForm((value) => ({ ...value, appointment_type: "reposicao", appointment_origin: "reposicao" })); }}><RotateCw className="h-4 w-4" />Reposicao</Button><Button size="sm" variant="outline" onClick={() => router.push("/relatorios" as never)}>Relatorios</Button></div></Card><Card className="rounded-2xl bg-background/85 p-4 backdrop-blur"><h3 className="mb-3 font-semibold">Resumo do dia</h3><div className="grid grid-cols-2 gap-2 text-xs">{[["Agendados", dayAppointments.filter((item) => normalizeStatus(item.status) === "agendado").length], ["Confirmados", dayAppointments.filter((item) => normalizeStatus(item.status) === "confirmado").length], ["Realizados", completedToday], ["Pendentes", dayAppointments.filter((item) => item.is_billable && item.finance_integration_status !== "completed").length], ["Faltas", dayAppointments.filter((item) => normalizeStatus(item.status) === "faltou").length], ["Cancelados", dayAppointments.filter((item) => normalizeStatus(item.status) === "cancelado").length], ["Reposicoes", dayAppointments.filter(isReplacementAppointment).length], ["Profissionais ativos", new Set(dayAppointments.map((item) => item.employee_id)).size]].map(([label, value]) => <div key={String(label)} className="rounded-lg bg-muted/60 p-2"><strong className="mr-1">{value}</strong>{label}</div>)}</div></Card><Card className="rounded-2xl bg-background/85 p-4 backdrop-blur"><div className="mb-3 flex items-center justify-between"><h3 className="font-semibold">Proximos atendimentos</h3><span className="text-xs text-muted-foreground">Ver todos abaixo</span></div><div className="grid gap-2">{dayAppointments.filter((item) => ["agendado", "confirmado"].includes(normalizeStatus(item.status))).slice(0, 4).map((item) => <button key={item.id} type="button" onClick={() => setSelectedAppointment(item)} className="grid grid-cols-[48px_minmax(0,1fr)_auto] items-center gap-2 rounded-lg border p-2 text-left text-xs hover:bg-muted/50"><strong>{formatTime(item.start_time)}</strong><span className="truncate">{item.patient_name} - {item.service_name}</span><span className={cn("rounded-full px-2 py-0.5 text-[9px] font-semibold", getAppointmentStyle(item).chip)}>{getStatusLabel(item)}</span></button>)}</div></Card></section>
         <DailyAppointmentsList
           selectedDate={selectedDate}
           appointments={dayAppointments}
@@ -1590,38 +1579,8 @@ export function AgendaManager({
         />
         </div>
 
-        <aside className={cn(
-          "self-start xl:sticky xl:top-[72px]",
-          selectedAppointment
-            ? "fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-sm xl:relative xl:inset-auto xl:z-auto xl:bg-transparent xl:p-0 xl:backdrop-blur-none"
-            : "hidden xl:grid xl:gap-4"
-        )}>
-          {appointmentDetails ?? (
-            <>
-              <MiniMonthCalendar
-                selectedDate={selectedDate}
-                appointments={visibleAppointments}
-                blocks={scopedBlocks}
-                onSelectDate={selectAgendaDate}
-              />
-              <SidePanel
-                selectedDate={selectedDate}
-                nextAppointment={nextAppointment}
-                dayAppointments={dayAppointments}
-                dayBlocks={dayBlocks}
-                canEdit={canEdit}
-                canAdminCorrect={canAdminCorrect}
-                isPending={isPending}
-                onOpen={setSelectedAppointment}
-                onFinalize={openFinalizeAppointment}
-                onStatus={changeStatus}
-                onUndoAbsence={(appointment) => openStatusCorrection(appointment, "faltou")}
-                onRestoreCancelled={(appointment) => openStatusCorrection(appointment, "cancelado")}
-              />
-            </>
-          )}
-        </aside>
       </div>
+      {appointmentDetails ? <div className="fixed inset-0 z-50 grid place-items-end bg-slate-950/60 p-3 backdrop-blur-sm"><div className="h-full w-full max-w-xl">{appointmentDetails}</div></div> : null}
 
       {appointmentFormOpen ? (
         <AppointmentFormModal
@@ -1795,9 +1754,9 @@ function DayTimeline({
       </div>
       <div className="sticky top-0 z-20 hidden border-b border-slate-200/80 bg-white/90 shadow-sm backdrop-blur-xl md:grid dark:border-slate-800 dark:bg-slate-950/90">
         <div
-          className="grid min-w-[860px]"
+          className="grid w-full"
           style={{
-            gridTemplateColumns: `88px repeat(${Math.max(employees.length, 1)}, minmax(320px, 1fr))`
+            gridTemplateColumns: `72px repeat(${Math.max(employees.length, 1)}, minmax(0, 1fr))`
           }}
         >
           <div className="border-r border-slate-200/80 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-900/70">
@@ -1848,9 +1807,9 @@ function DayTimeline({
 
       <div className="relative hidden overflow-x-auto md:block">
         <div
-          className="grid min-w-[860px]"
+          className="grid w-full"
           style={{
-            gridTemplateColumns: `88px repeat(${Math.max(employees.length, 1)}, minmax(320px, 1fr))`,
+            gridTemplateColumns: `72px repeat(${Math.max(employees.length, 1)}, minmax(0, 1fr))`,
             minHeight: gridHeight
           }}
         >
@@ -1911,7 +1870,7 @@ function DayTimeline({
                         const laneCount = Math.max(simultaneous.length, 1);
                         return {
                           ...base,
-                          height: Math.max(Math.min(base.height, 112), 72),
+                          height: Math.max(Math.min(base.height, 90), 58),
                           leftPercent: (lane / laneCount) * 100,
                           widthPercent: 100 / laneCount
                         };
@@ -1938,7 +1897,7 @@ function DayTimeline({
 
           {showNow && nowTop >= 0 && nowTop <= gridHeight ? (
             <div
-              className="pointer-events-none absolute left-[88px] right-0 z-30 h-px bg-gradient-to-r from-rose-500 via-red-500 to-transparent shadow-[0_0_10px_rgba(239,68,68,0.8)]"
+              className="pointer-events-none absolute left-[72px] right-0 z-30 h-px bg-gradient-to-r from-rose-500 via-red-500 to-transparent shadow-[0_0_10px_rgba(239,68,68,0.8)]"
               style={{ top: nowTop }}
             >
               <span className="absolute -left-2 -top-2 h-4 w-4 rounded-full border-2 border-white bg-red-500 shadow-[0_0_14px_rgba(239,68,68,0.9)] dark:border-slate-950" />
@@ -1995,7 +1954,7 @@ function TimelineAppointment({
       onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onEdit(); }}
       data-dnd-ready="appointment"
       className={cn(
-        "absolute z-10 grid cursor-pointer gap-2 overflow-hidden rounded-xl border border-white/80 border-l-[6px] p-3 shadow-[0_12px_32px_rgba(15,23,42,0.16)] ring-1 ring-black/5 backdrop-blur-sm transition-all duration-200 hover:z-20 hover:-translate-y-1 hover:shadow-[0_20px_44px_rgba(15,23,42,0.22)] dark:border-white/10 dark:ring-white/5",
+        "group absolute z-10 grid cursor-pointer gap-1 overflow-visible rounded-lg border border-white/80 border-l-4 p-2 shadow-[0_8px_24px_rgba(15,23,42,0.14)] ring-1 ring-black/5 backdrop-blur-sm transition-all duration-200 hover:z-30 hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(15,23,42,0.2)] dark:border-white/10 dark:ring-white/5",
         style.border,
         style.surface,
         style.text
@@ -2003,8 +1962,8 @@ function TimelineAppointment({
       style={{
         top: position.top,
         minHeight: position.height,
-        left: `calc(${position.leftPercent}% + 8px)`,
-        width: `calc(${position.widthPercent}% - 16px)`
+        left: `calc(${position.leftPercent}% + 4px)`,
+        width: `calc(${position.widthPercent}% - 8px)`
       }}
       title={`${formatTime(appointment.start_time)} · ${appointment.patient_names.join(", ")} · ${appointment.service_name} · ${getStatusLabel(appointment)}`}
     >
@@ -2014,11 +1973,11 @@ function TimelineAppointment({
             {formatTime(appointment.start_time)}
             {appointment.end_time ? ` - ${formatTime(appointment.end_time)}` : ""}
           </p>
-          <h3 className="truncate text-base font-bold tracking-tight">
+          <h3 className="truncate text-sm font-bold tracking-tight">
             {appointment.patient_names.join(", ")}
           </h3>
         </div>
-        <span className={cn("rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide shadow-sm", style.chip)}>
+        <span className={cn("rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide shadow-sm", style.chip)}>
           {getStatusLabel(appointment)}
         </span>
       </div>
@@ -2026,7 +1985,7 @@ function TimelineAppointment({
       <div className="grid gap-1 text-sm">
         <p className="truncate font-medium">{appointment.service_name}</p>
         <p className="truncate text-muted-foreground">{appointment.employee_name}</p>
-        <p className="truncate text-muted-foreground">{appointment.is_billable ? (appointment.finance_integration_status === "completed" ? "Pagamento recebido" : "Pagamento pendente") : "Cortesia"}</p>
+        <p className="truncate text-xs font-semibold text-muted-foreground">{appointment.is_billable ? (appointment.finance_integration_status === "completed" ? "Pago" : "Pagamento pendente") : "Cortesia"}{appointment.patient_package_id ? ` - ${sessionsCompleted} / ${sessionsContracted} sessoes` : ""}</p>
         <div className="flex flex-wrap gap-1">
           <span
             className={cn(
@@ -2062,6 +2021,7 @@ function TimelineAppointment({
         <AppointmentPrimaryAction action={primaryAction} isPending={isPending} onConfirm={() => onStatus("confirmado")} onFinalize={onFinalize} onUndoAbsence={onUndoAbsence} onRestoreCancelled={onRestoreCancelled} onOpen={onEdit} />
         <IconAction label="Ver detalhes" onClick={onEdit} icon={MoreHorizontal} />
       </div>
+      <div className="pointer-events-none absolute left-1/2 top-full z-50 mt-2 hidden w-64 -translate-x-1/2 rounded-xl border bg-background/95 p-3 text-xs text-foreground shadow-2xl backdrop-blur-xl group-hover:grid"><strong>{appointment.patient_names.join(", ")}</strong><span>Observacoes: {appointment.notes || "Sem observacoes"}</span><span>Sessoes restantes: {sessionsRemaining}</span><span>Pagamento: {appointment.is_billable ? (appointment.finance_integration_status === "completed" ? "Pago" : "Pendente") : "Cortesia"}</span><span className="mt-1 font-semibold text-primary">Abrir prontuario nos detalhes</span></div>
     </article>
   );
 }
@@ -2460,6 +2420,7 @@ function SidePanel({
   );
 }
 
+void SidePanel;
 function AppointmentSummary({
   appointment,
   compact = false,
@@ -2594,12 +2555,12 @@ function IconAction({
       onMouseDown={(event) => event.stopPropagation()}
       onClick={(event) => { event.stopPropagation(); onClick(); }}
       className={cn(
-        "inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white/90 px-2.5 text-[11px] font-semibold shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-800 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900/90 dark:hover:border-blue-700 dark:hover:bg-blue-950/40 dark:hover:text-blue-200",
+        "inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white/90 p-0 text-[11px] font-semibold shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-800 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900/90 dark:hover:border-blue-700 dark:hover:bg-blue-950/40 dark:hover:text-blue-200",
         danger && "text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950"
       )}
     >
       <Icon className="h-3.5 w-3.5" />
-      {label}
+      <span className="sr-only">{label}</span>
     </button>
   );
 }

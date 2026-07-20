@@ -40,6 +40,7 @@ export function AppShell({
   const [isChangingClinic, startClinicTransition] = React.useTransition();
   const [collapsed, setCollapsed] = React.useState(false);
   const [sidebarPreferenceLoaded, setSidebarPreferenceLoaded] = React.useState(false);
+  const [agendaDesktopFocus, setAgendaDesktopFocus] = React.useState(false);
   const [hoverExpanded, setHoverExpanded] = React.useState(false);
   const hoverCloseTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [mobileOpen, setMobileOpen] = React.useState(false);
@@ -76,7 +77,15 @@ export function AppShell({
     if (hoverCloseTimer.current) clearTimeout(hoverCloseTimer.current);
   }, []);
 
-  const sidebarCollapsed = collapsed && !hoverExpanded;
+  const sidebarCollapsed = (collapsed || agendaDesktopFocus) && !hoverExpanded;
+  React.useEffect(() => {
+    const media = window.matchMedia("(min-width: 1024px)");
+    const sync = () => setAgendaDesktopFocus(media.matches && pathname.startsWith("/agenda"));
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, [pathname]);
+
 
   const activeClinic = clinics.find((clinic) => clinic.id === activeClinicId);
   const clinicLabel =
@@ -99,12 +108,12 @@ export function AppShell({
   const sidebar = (
     <aside
       onMouseEnter={() => {
-        if (!collapsed || window.matchMedia("(hover: hover)").matches === false) return;
+        if ((!collapsed && !agendaDesktopFocus) || window.matchMedia("(hover: hover)").matches === false) return;
         if (hoverCloseTimer.current) clearTimeout(hoverCloseTimer.current);
         setHoverExpanded(true);
       }}
       onMouseLeave={() => {
-        if (!collapsed) return;
+        if (!collapsed && !agendaDesktopFocus) return;
         hoverCloseTimer.current = setTimeout(() => setHoverExpanded(false), 220);
       }}
       className={cn(
@@ -286,7 +295,7 @@ export function AppShell({
       <div
         className={cn(
           "min-h-screen transition-[padding] duration-200 lg:pl-72",
-          collapsed && "lg:pl-[68px]"
+          (collapsed || agendaDesktopFocus) && "lg:pl-[68px]"
         )}
       >
         <header className="app-topbar sticky top-0 z-30 flex h-14 items-center justify-between border-b border-slate-200/70 bg-background/80 px-4 backdrop-blur-xl dark:border-white/10 md:px-6">
@@ -334,7 +343,7 @@ export function AppShell({
           </div>
         </header>
 
-        <main className="app-main relative mx-auto w-full max-w-7xl p-4 md:p-6" aria-busy={isChangingClinic}>
+        <main className={cn("app-main relative mx-auto w-full p-4 md:p-6", pathname.startsWith("/agenda") ? "max-w-none" : "max-w-7xl")} aria-busy={isChangingClinic}>
           {isChangingClinic ? (
             <div className="absolute inset-0 z-20 flex min-h-40 items-start justify-center bg-background/70 pt-12 backdrop-blur-sm" role="status">
               <span className="rounded-md border bg-background px-4 py-2 text-sm font-medium shadow-sm">Atualizando dados da clinica...</span>
