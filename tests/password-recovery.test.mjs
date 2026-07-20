@@ -58,3 +58,14 @@ test("service role permanece restrita ao servidor", async () => {
   const clientFiles = await Promise.all([read("app/login/page.tsx"), read("app/redefinir-senha/page.tsx"), read("components/employees/employees-manager.tsx"), read("components/patients/patients-manager.tsx")]);
   clientFiles.forEach((source) => assert.doesNotMatch(source, /SUPABASE_SERVICE_ROLE_KEY|createAdminClient/));
 });
+
+test("login preserva destinos de ADM e paciente e evita dashboard sem permissao", async () => {
+  const actions = await read("app/login/actions.ts");
+  assert.match(actions, /profile\.kind === "patient"/);
+  assert.match(actions, /targetRoute = "\/portal"/);
+  assert.match(actions, /profile\.kind === "employee"/);
+  assert.match(actions, /getEmployeeLandingRoute/);
+  assert.match(actions, /permissions\[moduleKey\]\.view/);
+  assert.match(actions, /\["dashboard", "\/dashboard"\]/);
+  assert.doesNotMatch(actions, /profile\.kind === "adm_master"[^]*getEmployeeLandingRoute/);
+});

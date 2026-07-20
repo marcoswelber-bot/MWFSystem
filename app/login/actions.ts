@@ -4,6 +4,7 @@ import type { Route } from "next";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getAccessProfileByEmail } from "@/lib/access-control";
+import { getCurrentPermissionMap } from "@/lib/permissions";
 
 const protectedRoutes = [
   "/dashboard",
@@ -32,6 +33,23 @@ function normalizeRedirectRoute(value: FormDataEntryValue | null): Route {
   return "/dashboard" as Route;
 }
 
+async function getEmployeeLandingRoute(): Promise<Route> {
+  const permissions = await getCurrentPermissionMap();
+  const destinations = [
+    ["dashboard", "/dashboard"],
+    ["agenda", "/agenda"],
+    ["pacientes", "/pacientes"],
+    ["funcionarios", "/funcionarios"],
+    ["financeiro", "/financeiro"],
+    ["pacotes", "/pacotes"],
+    ["prontuarios", "/prontuarios"],
+    ["relatorios", "/relatorios"],
+    ["servicos", "/servicos"]
+  ] as const;
+  const destination = destinations.find(([moduleKey]) => permissions[moduleKey].view);
+  return (destination?.[1] ?? "/login") as Route;
+}
+
 export async function signInWithPassword(formData: FormData) {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
@@ -57,6 +75,10 @@ export async function signInWithPassword(formData: FormData) {
         errorMessage = "Seu acesso está bloqueado. Entre em contato com a administração.";
       } else if (profile.kind === "patient") {
         targetRoute = "/portal" as Route;
+      } else if (
+        profile.kind === "employee" && targetRoute === "/dashboard"
+      ) {
+        targetRoute = await getEmployeeLandingRoute();
       }
     }
   } catch {
