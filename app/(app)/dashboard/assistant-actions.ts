@@ -1,0 +1,309 @@
+"use server";
+
+import type { Route } from "next";
+import { getCurrentClinicScope } from "@/lib/access-control";
+import { interpretAssistantQuery, normalizeAssistantText, similarity, type AssistantContext } from "@/lib/assistant/interpreter";
+import { getCurrentPermissionMap } from "@/lib/permissions";
+import { createClient } from "@/lib/supabase/server";
+
+export type AssistantCard = { title: string; lines: string[]; tone?: "default" | "warning" | "success" };
+export type AssistantAction = { label: string; href?: Route; prompt?: string };
+export type AssistantReply = { title: string; message: string; cards: AssistantCard[]; actions: AssistantAction[]; context: AssistantContext };
+
+const money = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+const dateLabel = (value: string) => new Intl.DateTimeFormat("pt-BR").format(new Date(value + "T12:00:00"));
+const isoDate = (date: Date) => date.toISOString().slice(0, 10);
+const minutes = (value?: string | null) => { const [hour, minute] = (value ?? "00:00").slice(0, 5).split(":").map(Number); return hour * 60 + minute; };
+const time = (value: number) => `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
+const overlap = (start: number, end: number, otherStart: string | null, otherEnd: string | null) => start < minutes(otherEnd ?? otherStart) && end > minutes(otherStart);
+function addDays(date: Date, days: number) { const result = new Date(date); result.setDate(result.getDate() + days); return result; }
+
+function action(label: string, href: string): AssistantAction { return { label, href: href as Route }; }
+function catalogMatch<T extends { name: string }>(text: string, rows: T[]) {
+  const normalized = normalizeAssistantText(text);
+  return rows.map((row) => ({ row, score: normalized.includes(normalizeAssistantText(row.name)) ? 2 : Math.max(...normalizeAssistantText(row.name).split(" ").map((part) => Math.max(...normalized.split(" ").map((token) => similarity(token, part))))) })).sort((a, b) => b.score - a.score)[0];
+}
+
+function patientMatches<T extends { id: string; full_name: string }>(term: string, patients: T[]) {
+  const normalized = normalizeAssistantText(term);
+  return patients.map((patient) => {
+    const name = normalizeAssistantText(patient.full_name);
+    const first = name.split(" ")[0];
+    const score = name === normalized ? 3 : name.includes(normalized) ? 2 + normalized.length / name.length : Math.max(similarity(normalized, name), similarity(normalized, first));
+    return { patient, score };
+  }).filter((item) => item.score >= 0.62).sort((a, b) => b.score - a.score).slice(0, 5);
+}
+
+function unavailable(message: string, context: AssistantContext): AssistantReply {
+  return { title: "Não foi possível consultar agora", message, cards: [], actions: [], context };
+}
+
+export async function askMwfAssistant(input: string, previousContext: AssistantContext = {}): Promise<AssistantReply> {
+  const permissions = await getCurrentPermissionMap();
+  const scope = await getCurrentClinicScope();
+  const supabase = await createClient();
+  const context = previousContext.updatedAt && Date.now() - previousContext.updatedAt < 30 * 60_000 ? previousContext : {};
+  const parsed = interpretAssistantQuery(input, context);
+  if (!input.trim()) return { title: "Como posso ajudar?", message: "Digite uma pergunta ou escolha um comando rápido.", cards: [], actions: [], context: parsed };
+
+  let patientsQuery = supabase.from("patients").select("id,full_name,clinic_id,status").eq("status", "active").order("full_name").limit(300);
+  let employeesQuery = supabase.from("employees").select("id,name,clinic_id,status").eq("status", "active").order("name").limit(200);
+  let servicesQuery = supabase.from("services").select("id,name,clinic_id,status,duration_minutes,default_duration_minutes").eq("status", "active").order("name").limit(200);
+  if (scope.clinicId) {
+    patientsQuery = patientsQuery.eq("clinic_id", scope.clinicId);
+    employeesQuery = employeesQuery.eq("clinic_id", scope.clinicId);
+    servicesQuery = servicesQuery.eq("clinic_id", scope.clinicId);
+  }
+  const [patientsResult, employeesResult, servicesResult] = await Promise.all([patientsQuery, employeesQuery, servicesQuery]);
+  if (patientsResult.error || employeesResult.error || servicesResult.error) return unavailable("Tente novamente ou abra o módulo correspondente.", parsed);
+  const patients = patientsResult.data ?? [];
+  const employees = employeesResult.data ?? [];
+  const services = servicesResult.data ?? [];
+  const employeeMatch = catalogMatch(parsed.normalizedText, employees);
+  const serviceMatch = catalogMatch(parsed.normalizedText, services);
+  if (employeeMatch?.score >= 0.78) parsed.professionalName = employeeMatch.row.name;
+  if (serviceMatch?.score >= 0.78) parsed.serviceName = serviceMatch.row.name;
+
+  if (parsed.intent === "check_alerts") {
+    if (!scope.clinicId) return { title: "Selecione uma clínica", message: "Escolha uma clínica para ver alertas operacionais isolados.", cards: [], actions: [], context: parsed };
+    const today = isoDate(new Date());
+    const in30 = isoDate(addDays(new Date(), 30));
+    if (/pacotes?.*venc/.test(parsed.normalizedText)) {
+      if (!permissions.pacotes.view) return { title: "Acesso restrito", message: "Seu perfil não possui acesso a Pacotes.", cards: [], actions: [], context: parsed };
+      const result = await supabase.from("patient_packages").select("patient_id,expiration_date,remaining_sessions").eq("clinic_id", scope.clinicId).eq("status", "active").gte("expiration_date", today).lte("expiration_date", in30).order("expiration_date").limit(10);
+      const names = new Map(patients.map((row) => [row.id, row.full_name]));
+      return { title: "Pacotes vencendo", message: result.data?.length ? result.data.length + " pacote(s) vencem nos próximos 30 dias." : "Nenhum pacote próximo do vencimento.", cards: result.data?.length ? [{ title: "Prioridades", lines: result.data.map((row) => (names.get(row.patient_id) ?? "Paciente") + " — " + dateLabel(row.expiration_date ?? today) + " — " + row.remaining_sessions + " sessão(ões)") }] : [], actions: [action("Abrir Pacotes", "/pacotes")], context: parsed };
+    }
+    if (!permissions.pacientes.view || !permissions.agenda.view) return { title: "Acesso restrito", message: "Seu perfil não possui acesso aos dados necessários.", cards: [], actions: [], context: parsed };
+    const future = await supabase.from("appointments").select("patient_id").eq("clinic_id", scope.clinicId).gte("appointment_date", today).not("status", "eq", "cancelado");
+    const scheduled = new Set((future.data ?? []).map((row) => row.patient_id));
+    const rows = patients.filter((row) => !scheduled.has(row.id)).slice(0, 10);
+    return { title: "Pacientes sem retorno", message: rows.length ? "Pacientes ativos sem próximo atendimento encontrado." : "Nenhum paciente sem retorno encontrado.", cards: rows.length ? [{ title: "Primeiros resultados", lines: rows.map((row) => row.full_name) }] : [], actions: [action("Ver pacientes", "/pacientes"), action("Abrir agenda", "/agenda")], context: parsed };
+  }
+
+  let patient: (typeof patients)[number] | null = null;
+  if (parsed.patientName) {
+    const matches = patientMatches(parsed.patientName, patients);
+    if (matches.length > 1 && matches[0].score - matches[1].score < 0.35) {
+      return {
+        title: "Você quis dizer?",
+        message: "Encontrei nomes parecidos nesta clínica. Escolha o paciente correto.",
+        cards: [{ title: "Pacientes encontrados", lines: matches.map((item) => item.patient.full_name) }],
+        actions: matches.map((item) => ({ label: item.patient.full_name, prompt: "Buscar " + item.patient.full_name })),
+        context: { ...parsed, patientName: null }
+      };
+    }
+    patient = matches[0]?.patient ?? null;
+    if (!patient && parsed.intent !== "check_availability") {
+      return {
+        title: "Paciente não encontrado",
+        message: "Não encontrei um paciente com esse nome nesta clínica.",
+        cards: [],
+        actions: permissions.pacientes.view ? [action("Ver pacientes", "/pacientes")] : [],
+        context: { ...parsed, patientName: null }
+      };
+    }
+    if (patient) parsed.patientName = patient.full_name;
+  }
+
+  if (parsed.intent === "search" && !patient) {
+    const service = serviceMatch?.score >= 0.78 ? serviceMatch.row : null;
+    const employee = employeeMatch?.score >= 0.78 ? employeeMatch.row : null;
+    if (service) return { title: "Serviço encontrado", message: service.name, cards: [], actions: permissions.servicos.view ? [action("Abrir serviços", "/servicos")] : [], context: { ...parsed, serviceName: service.name } };
+    if (employee) return { title: "Profissional encontrado", message: employee.name, cards: [], actions: permissions.agenda.view ? [action("Ver agenda", "/agenda")] : [], context: { ...parsed, professionalName: employee.name } };
+    return { title: "Busca universal", message: "Informe o nome de um paciente, profissional ou serviço.", cards: [], actions: [], context: parsed };
+  }
+
+  if (["check_patient_financial_status", "check_last_payment", "check_session_payment"].includes(parsed.intent) && !patient) {
+    return { title: "Qual paciente?", message: "Informe o nome do paciente para consultar o Financeiro.", cards: [], actions: [], context: { ...parsed, pendingIntent: parsed.intent } };
+  }
+
+  if (parsed.intent === "schedule_patient" && !patient) {
+    return { title: "Qual paciente?", message: "Informe o nome do paciente que deseja agendar.", cards: [], actions: permissions.pacientes.view ? [action("Buscar paciente", "/pacientes")] : [], context: { ...parsed, pendingIntent: parsed.intent } };
+  }
+
+  if (parsed.intent === "check_availability" || parsed.intent === "schedule_patient") {
+    if (!permissions.agenda.view) return { title: "Acesso restrito", message: "Seu perfil não possui acesso à Agenda.", cards: [], actions: [], context: parsed };
+    if (!scope.clinicId) return { title: "Selecione uma clínica", message: "Escolha uma clínica no menu antes de consultar horários.", cards: [], actions: [], context: parsed };
+    if (!parsed.date) {
+      return {
+        title: patient ? "Agendar retorno" : "Para quando?",
+        message: patient ? "Encontrei " + patient.full_name + ". Informe o dia para consultar horários reais." : "Informe o período desejado.",
+        cards: [],
+        actions: [{ label: "Hoje", prompt: input + " hoje" }, { label: "Amanhã", prompt: input + " amanhã" }, { label: "Esta semana", prompt: input + " esta semana" }],
+        context: { ...parsed, pendingIntent: parsed.intent }
+      };
+    }
+    const rangeEnd = parsed.dateRangeEnd ?? parsed.date;
+    const appointmentQuery = supabase.from("appointments").select("appointment_date,start_time,end_time,employee_id,patient_id,status").eq("clinic_id", scope.clinicId).gte("appointment_date", parsed.date).lte("appointment_date", rangeEnd).in("status", ["agendado", "confirmado", "realizado"]);
+    const blockQuery = supabase.from("schedule_blocks").select("block_date,start_time,end_time,employee_id,block_type,status").eq("clinic_id", scope.clinicId).gte("block_date", parsed.date).lte("block_date", rangeEnd).eq("status", "active");
+    const hoursQuery = supabase.from("clinic_opening_hours").select("weekday,is_open,opens_at,closes_at,break_starts_at,break_ends_at").eq("clinic_id", scope.clinicId);
+    const [appointmentResult, blockResult, hoursResult] = await Promise.all([appointmentQuery, blockQuery, hoursQuery]);
+    if (appointmentResult.error || blockResult.error) return unavailable("Não foi possível consultar a Agenda agora.", parsed);
+    const selectedEmployees = parsed.professionalName ? employees.filter((employee) => employee.name === parsed.professionalName) : employees;
+    const duration = serviceMatch?.score >= 0.78 ? Number(serviceMatch.row.duration_minutes ?? serviceMatch.row.default_duration_minutes ?? 30) : 30;
+    const results: string[] = [];
+    for (let cursor = new Date(parsed.date + "T12:00:00"); isoDate(cursor) <= rangeEnd && results.length < 18; cursor = addDays(cursor, 1)) {
+      const day = isoDate(cursor);
+      const configured = (hoursResult.data ?? []).find((row) => row.weekday === cursor.getDay());
+      if (configured && !configured.is_open) continue;
+      const opens = minutes(configured?.opens_at ?? "07:00");
+      const closes = minutes(configured?.closes_at ?? "21:00");
+      for (const employee of selectedEmployees) {
+        for (let start = opens; start + duration <= closes && results.length < 18; start += 30) {
+          const end = start + duration;
+          if (parsed.period === "morning" && start >= 12 * 60) continue;
+          if (parsed.period === "afternoon" && (start < 12 * 60 || start >= 18 * 60)) continue;
+          if (parsed.period === "evening" && start < 18 * 60) continue;
+          if (day === isoDate(new Date()) && start <= new Date().getHours() * 60 + new Date().getMinutes()) continue;
+          if (configured?.break_starts_at && overlap(start, end, configured.break_starts_at, configured.break_ends_at)) continue;
+          const occupied = (appointmentResult.data ?? []).some((row) => row.appointment_date === day && (row.employee_id === employee.id || (patient && row.patient_id === patient.id)) && overlap(start, end, row.start_time, row.end_time ?? row.start_time));
+          const blocked = (blockResult.data ?? []).some((row) => row.block_date === day && (!row.employee_id || row.employee_id === employee.id) && (row.block_type === "dia_inteiro" || overlap(start, end, row.start_time, row.end_time ?? row.start_time)));
+          if (!occupied && !blocked) results.push(dateLabel(day) + " às " + time(start) + (selectedEmployees.length > 1 ? " com " + employee.name : ""));
+        }
+      }
+    }
+    const patientParam = patient ? "&patientId=" + patient.id : "";
+    const warnings: string[] = [];
+    if (patient && permissions.financeiro.view) {
+      let query = supabase.from("financial_transactions").select("open_amount").eq("patient_id", patient.id).eq("transaction_type", "receita").in("status", ["pendente", "parcial"]);
+      if (scope.clinicId) query = query.eq("clinic_id", scope.clinicId);
+      const openResult = await query;
+      const total = (openResult.data ?? []).reduce((sum, row) => sum + Number(row.open_amount ?? 0), 0);
+      if (total > 0) warnings.push("Pendência financeira: " + money(total));
+    }
+    if (patient && permissions.pacotes.view) {
+      let query = supabase.from("patient_packages").select("remaining_sessions,expiration_date,status").eq("patient_id", patient.id).eq("status", "active").limit(1);
+      if (scope.clinicId) query = query.eq("clinic_id", scope.clinicId);
+      const packageResult = await query.maybeSingle();
+      if (packageResult.data) warnings.push("Pacote: " + packageResult.data.remaining_sessions + " sessão(ões) restante(s)" + (packageResult.data.expiration_date ? ", vence " + dateLabel(packageResult.data.expiration_date) : ""));
+    }
+    return {
+      title: patient ? "Horários para " + patient.full_name : "Horários disponíveis",
+      message: results.length ? "Encontrei opções reais na agenda selecionada." : "Não encontrei horários disponíveis nesse período.",
+      cards: [
+        ...(results.length ? [{ title: parsed.professionalName ? "Com " + parsed.professionalName : "Primeiras opções", lines: results.slice(0, 12), tone: "success" as const }] : []),
+        ...(warnings.length ? [{ title: "Atenção antes de confirmar", lines: warnings, tone: "warning" as const }] : [])
+      ],
+      actions: [
+        ...(permissions.agenda.create && patient ? [action("Agendar retorno", "/agenda?new=1" + patientParam + "&date=" + parsed.date)] : []),
+        action("Abrir agenda", "/agenda?date=" + parsed.date),
+        { label: "Escolher outro dia", prompt: patient ? "Agendar " + patient.full_name : "Horários disponíveis" }
+      ],
+      context: parsed
+    };
+  }
+
+  if (patient) {
+    let appointmentsQuery = supabase.from("appointments").select("id,appointment_date,start_time,status,employee_id,service_id").eq("patient_id", patient.id).order("appointment_date", { ascending: false }).limit(60);
+    let packagesQuery = supabase.from("patient_packages").select("id,status,remaining_sessions,contracted_sessions,completed_sessions,expiration_date,service_id").eq("patient_id", patient.id).order("purchase_date", { ascending: false }).limit(20);
+    let transactionsQuery = supabase.from("financial_transactions").select("id,status,amount,paid_amount,open_amount,payment_date,payment_method,due_date,appointment_date,service_id,description,transaction_type").eq("patient_id", patient.id).eq("transaction_type", "receita").order("due_date", { ascending: false }).limit(80);
+    if (scope.clinicId) {
+      appointmentsQuery = appointmentsQuery.eq("clinic_id", scope.clinicId);
+      packagesQuery = packagesQuery.eq("clinic_id", scope.clinicId);
+      transactionsQuery = transactionsQuery.eq("clinic_id", scope.clinicId);
+    }
+    const [appointmentsResult, packagesResult, transactionsResult] = await Promise.all([
+      permissions.agenda.view ? appointmentsQuery : Promise.resolve({ data: [] }),
+      permissions.pacotes.view ? packagesQuery : Promise.resolve({ data: [] }),
+      permissions.financeiro.view ? transactionsQuery : Promise.resolve({ data: [] })
+    ]);
+    const appointments = appointmentsResult.data ?? [];
+    const packages = packagesResult.data ?? [];
+    const transactions = transactionsResult.data ?? [];
+    const today = isoDate(new Date());
+    const next = [...appointments].reverse().find((row) => row.appointment_date >= today && row.status !== "cancelado");
+    const last = appointments.find((row) => row.appointment_date < today || row.status === "realizado");
+    const activePackage = packages.find((row) => row.status === "active");
+    const open = transactions.filter((row) => row.status !== "cancelado" && Number(row.open_amount ?? 0) > 0);
+    const totalOpen = open.reduce((sum, row) => sum + Number(row.open_amount ?? 0), 0);
+    const paid = transactions.filter((row) => row.status === "pago" || Number(row.paid_amount ?? 0) > 0).sort((a, b) => (b.payment_date ?? b.due_date).localeCompare(a.payment_date ?? a.due_date));
+    const lastPayment = paid[0] ?? null;
+    const employeeMap = new Map(employees.map((row) => [row.id, row.name]));
+    const serviceMap = new Map(services.map((row) => [row.id, row.name]));
+    const commonActions = [
+      ...(permissions.pacientes.view ? [action("Abrir paciente", "/pacientes?patientId=" + patient.id)] : []),
+      ...(permissions.agenda.view ? [action("Abrir agenda", "/agenda?patientId=" + patient.id)] : []),
+      ...(permissions.agenda.create ? [action("Agendar retorno", "/agenda?new=1&patientId=" + patient.id)] : []),
+      ...(permissions.pacotes.view ? [action("Ver pacote", "/pacotes?patientId=" + patient.id)] : []),
+      ...(permissions.financeiro.view ? [action("Abrir financeiro", "/financeiro?patientId=" + patient.id)] : [])
+    ];
+
+    if (parsed.intent === "check_last_payment" || parsed.intent === "check_session_payment") {
+      if (!permissions.financeiro.view) return { title: "Acesso restrito", message: "Seu perfil não possui acesso ao Financeiro.", cards: [], actions: [], context: parsed };
+      const sessionTransaction = parsed.intent === "check_session_payment" && last ? transactions.find((row) => row.appointment_date === last.appointment_date) : null;
+      const selected = sessionTransaction ?? lastPayment;
+      return {
+        title: parsed.intent === "check_session_payment" ? "Pagamento do atendimento" : "Último pagamento de " + patient.full_name,
+        message: selected ? (Number(selected.open_amount ?? 0) > 0 ? "Existe saldo restante neste lançamento." : "Pagamento registrado.") : "Não encontrei pagamento registrado para este paciente.",
+        cards: selected ? [{ title: "Financeiro", lines: [
+          "Data: " + dateLabel(selected.payment_date ?? selected.due_date),
+          "Valor pago: " + money(Number(selected.paid_amount ?? 0)),
+          "Saldo: " + money(Number(selected.open_amount ?? 0)),
+          "Forma: " + (selected.payment_method ?? "Não informada"),
+          "Serviço: " + (serviceMap.get(selected.service_id ?? "") ?? selected.description ?? "Não informado")
+        ], tone: Number(selected.open_amount ?? 0) > 0 ? "warning" : "success" }] : [],
+        actions: commonActions.filter((item) => item.label === "Abrir financeiro" || item.label === "Agendar retorno" || item.label === "Abrir paciente"),
+        context: parsed
+      };
+    }
+
+    if (parsed.intent === "check_patient_financial_status") {
+      if (!permissions.financeiro.view) return { title: "Acesso restrito", message: "Seu perfil não possui acesso ao Financeiro.", cards: [], actions: [], context: parsed };
+      return {
+        title: patient.full_name + (totalOpen > 0 ? " possui pendências" : " está em dia"),
+        message: totalOpen > 0 ? "Total em aberto: " + money(totalOpen) : "Não há saldo em aberto registrado.",
+        cards: [
+          ...(open.length ? [{ title: "Títulos em aberto", lines: open.slice(0, 5).map((row) => money(Number(row.open_amount ?? 0)) + " — vencimento " + dateLabel(row.due_date)), tone: "warning" as const }] : []),
+          ...(lastPayment ? [{ title: "Último pagamento", lines: [dateLabel(lastPayment.payment_date ?? lastPayment.due_date) + " — " + money(Number(lastPayment.paid_amount ?? 0)) + " — " + (lastPayment.payment_method ?? "Forma não informada")], tone: "success" as const }] : [])
+        ],
+        actions: commonActions.filter((item) => item.label !== "Ver pacote"),
+        context: parsed
+      };
+    }
+
+    const history = appointments.filter((row) => row.status === "realizado");
+    const frequent = <T extends string | null>(values: T[]) => {
+      const counts = new Map<string, number>();
+      values.filter(Boolean).forEach((value) => counts.set(String(value), (counts.get(String(value)) ?? 0) + 1));
+      return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    };
+    const frequentEmployee = employeeMap.get(frequent(history.map((row) => row.employee_id)) ?? "");
+    const frequentService = serviceMap.get(frequent(history.map((row) => row.service_id)) ?? "");
+    const frequentHour = frequent(history.map((row) => row.start_time?.slice(0, 5) ?? null));
+    return {
+      title: patient.full_name,
+      message: history.length >= 2 && /costuma|normalmente|horario que/.test(parsed.normalizedText)
+        ? patient.full_name + " costuma vir por volta de " + (frequentHour ?? "horário variável") + (frequentEmployee ? " com " + frequentEmployee : "") + "."
+        : "Resumo operacional compacto, sem dados de prontuário.",
+      cards: [
+        ...(permissions.agenda.view ? [{ title: "Agenda", lines: [
+          "Última sessão: " + (last ? dateLabel(last.appointment_date) + " às " + last.start_time.slice(0, 5) : "Não encontrada"),
+          "Próxima sessão: " + (next ? dateLabel(next.appointment_date) + " às " + next.start_time.slice(0, 5) : "Não agendada"),
+          "Profissional frequente: " + (frequentEmployee ?? "Sem padrão suficiente"),
+          "Serviço frequente: " + (frequentService ?? "Sem padrão suficiente")
+        ] }] : []),
+        ...(permissions.pacotes.view ? [{ title: "Pacote", lines: activePackage ? [
+          "Status: Ativo",
+          "Sessões restantes: " + activePackage.remaining_sessions,
+          "Realizadas: " + activePackage.completed_sessions,
+          "Validade: " + (activePackage.expiration_date ? dateLabel(activePackage.expiration_date) : "Sem data")
+        ] : ["Nenhum pacote ativo encontrado"] }] : []),
+        ...(permissions.financeiro.view ? [{ title: "Financeiro", lines: [
+          totalOpen > 0 ? "Em aberto: " + money(totalOpen) : "Em dia",
+          "Último pagamento: " + (lastPayment ? dateLabel(lastPayment.payment_date ?? lastPayment.due_date) + " — " + money(Number(lastPayment.paid_amount ?? 0)) : "Não encontrado")
+        ], tone: totalOpen > 0 ? "warning" as const : "success" as const }] : [])
+      ],
+      actions: commonActions,
+      context: parsed
+    };
+  }
+
+  return {
+    title: "Não entendi completamente",
+    message: "Posso consultar horários, pacientes, pagamentos, pacotes e preparar um agendamento seguro.",
+    cards: [],
+    actions: [],
+    context: parsed
+  };
+}

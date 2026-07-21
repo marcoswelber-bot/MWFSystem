@@ -8,6 +8,7 @@ import { getDashboardData } from "./actions";
 import { getCurrentClinicScope } from "@/lib/access-control";
 import { getCurrentPermissionMap } from "@/lib/permissions";
 import { createClient } from "@/lib/supabase/server";
+import { MwfAssistant } from "@/components/ai/mwf-assistant";
 
 type Props = { searchParams: Promise<{ q?: string }> };
 type Patient = { id:string; full_name:string; cpf:string|null; phone:string|null; email:string|null };
@@ -68,6 +69,10 @@ export default async function DashboardPage({ searchParams }: Props) {
         </div>;
       })}</div></CardContent>
     </Card>
+    <MwfAssistant
+      contextKey={scope.clinicId ?? "all-clinics"}
+      alerts={pending.map(([label, value, href, , allowed]) => ({ label, value, href, allowed }))}
+    />
     <section><h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Acoes rapidas</h2><div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">{quick.filter(a => a[3]).map(([label,href,Icon]) => <Button key={label} asChild variant="outline" className="h-20 whitespace-normal"><Link href={route(href)} className="flex-col gap-2 text-center"><Icon className="h-5 w-5 text-primary"/>{label}</Link></Button>)}</div></section>
     <section><h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Pendencias</h2><div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{pending.filter(a => a[4]).map(([label,value,href,Icon]) => <Link key={label} href={route(href)}><Card className="h-full hover:border-primary/40"><CardContent className="flex items-center gap-3 p-4"><Icon className="h-5 w-5 shrink-0 text-primary"/><div><p className="text-2xl font-bold">{value}</p><p className="text-xs text-muted-foreground">{label}</p></div></CardContent></Card></Link>)}</div></section>
     <Card><CardHeader className="flex flex-row items-center justify-between gap-3"><div><CardTitle>Agenda de hoje</CardTitle><CardDescription>{data.stats.todayTotal} atendimento(s)</CardDescription></div><Button asChild size="sm" variant="outline"><Link href="/agenda">Ver agenda completa</Link></Button></CardHeader><CardContent>
