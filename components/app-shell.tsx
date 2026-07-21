@@ -44,6 +44,9 @@ export function AppShell({
   const [hoverExpanded, setHoverExpanded] = React.useState(false);
   const hoverCloseTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [mobileOpen, setMobileOpen] = React.useState(false);
+  const mobileMenuButtonRef = React.useRef<HTMLButtonElement>(null);
+  const mobileDrawerRef = React.useRef<HTMLDivElement>(null);
+  const mobileMenuWasOpen = React.useRef(false);
   const [clinicPickerOpen, setClinicPickerOpen] = React.useState(false);
   const [clinicQuery, setClinicQuery] = React.useState("");
   const visibleModuleSet = React.useMemo(
@@ -57,6 +60,39 @@ export function AppShell({
   React.useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
+
+  React.useEffect(() => {
+    const desktopMedia = window.matchMedia("(min-width: 1024px)");
+    const closeOnDesktop = () => {
+      if (desktopMedia.matches) setMobileOpen(false);
+    };
+
+    desktopMedia.addEventListener("change", closeOnDesktop);
+    return () => desktopMedia.removeEventListener("change", closeOnDesktop);
+  }, []);
+
+  React.useEffect(() => {
+    if (!mobileOpen) {
+      if (mobileMenuWasOpen.current) mobileMenuButtonRef.current?.focus();
+      mobileMenuWasOpen.current = false;
+      return;
+    }
+
+    mobileMenuWasOpen.current = true;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    mobileDrawerRef.current?.querySelector<HTMLElement>("a, button")?.focus();
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileOpen(false);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [mobileOpen]);
 
   React.useEffect(() => {
     const stored = window.localStorage.getItem("mwf-sidebar-collapsed");
@@ -77,7 +113,8 @@ export function AppShell({
     if (hoverCloseTimer.current) clearTimeout(hoverCloseTimer.current);
   }, []);
 
-  const sidebarCollapsed = (collapsed || agendaDesktopFocus) && !hoverExpanded;
+  // The mobile drawer is independent from the persisted desktop collapsed state.
+  const sidebarCollapsed = !mobileOpen && (collapsed || agendaDesktopFocus) && !hoverExpanded;
   React.useEffect(() => {
     const media = window.matchMedia("(min-width: 1024px)");
     const sync = () => setAgendaDesktopFocus(media.matches && pathname.startsWith("/agenda"));
@@ -117,8 +154,8 @@ export function AppShell({
         hoverCloseTimer.current = setTimeout(() => setHoverExpanded(false), 220);
       }}
       className={cn(
-        "app-sidebar flex h-full flex-col bg-[hsl(var(--sidebar-bg))] text-[hsl(var(--sidebar-fg))] shadow-xl transition-[width] duration-200",
-        sidebarCollapsed ? "w-[68px]" : "w-64"
+        "app-sidebar flex h-full max-w-[85vw] flex-col bg-[hsl(var(--sidebar-bg))] text-[hsl(var(--sidebar-fg))] shadow-xl transition-[width] duration-200",
+        mobileOpen ? "w-[280px]" : sidebarCollapsed ? "w-[68px]" : "w-64"
       )}
     >
       <div className="flex h-14 items-center justify-between border-b border-white/10 px-4">
@@ -139,15 +176,21 @@ export function AppShell({
           type="button"
           variant="ghost"
           size="icon"
-          className="hidden text-white/70 hover:bg-white/10 hover:text-white lg:inline-flex"
-          onClick={() => setCollapsed((value) => !value)}
-          aria-label={collapsed ? "Fixar sidebar expandida" : "Recolher sidebar"}
-          title={collapsed ? "Fixar sidebar expandida" : "Recolher sidebar"}
+          className="text-white/70 hover:bg-white/10 hover:text-white"
+          onClick={() => {
+            if (mobileOpen) {
+              setMobileOpen(false);
+              return;
+            }
+            setCollapsed((value) => !value);
+          }}
+          aria-label={mobileOpen ? "Fechar menu" : collapsed ? "Fixar sidebar expandida" : "Recolher sidebar"}
+          title={mobileOpen ? "Fechar menu" : collapsed ? "Fixar sidebar expandida" : "Recolher sidebar"}
         >
-          {collapsed ? (
-            <PanelLeftOpen className="h-4 w-4" />
-          ) : (
+          {mobileOpen || !collapsed ? (
             <PanelLeftClose className="h-4 w-4" />
+          ) : (
+            <PanelLeftOpen className="h-4 w-4" />
           )}
         </Button>
       </div>
@@ -204,6 +247,7 @@ export function AppShell({
             <div key={item.href}>
               <Link
                 href={item.href as Route}
+                onClick={() => setMobileOpen(false)}
                 title={item.title}
                 className={cn(
                   "flex h-9 items-center gap-3 rounded-md px-3 text-sm font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white",
@@ -223,6 +267,7 @@ export function AppShell({
                       <Link
                         key={child.href}
                         href={child.href as Route}
+                        onClick={() => setMobileOpen(false)}
                         title={child.title}
                         className={cn(
                           "flex h-9 items-center rounded-md px-3 text-xs font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white",
@@ -257,18 +302,27 @@ export function AppShell({
   );
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen w-full min-w-0 max-w-[100vw] bg-background">
       <div className="app-sidebar hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:block">{sidebar}</div>
 
       {mobileOpen ? (
-        <div className="app-sidebar fixed inset-0 z-40 lg:hidden">
+        <div
+          id="mobile-navigation"
+          ref={mobileDrawerRef}
+          className="fixed inset-0 z-[60] lg:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Menu principal"
+        >
           <button
             type="button"
-            className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+            className="absolute inset-0 cursor-default bg-slate-950/60 backdrop-blur-sm"
             aria-label="Fechar menu"
             onClick={() => setMobileOpen(false)}
           />
-          <div className="absolute inset-y-0 left-0">{sidebar}</div>
+          <div className="absolute inset-y-0 left-0 h-screen h-[100dvh] max-w-[85vw] translate-x-0 overflow-hidden pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] transition-transform duration-200 ease-out">
+            {sidebar}
+          </div>
         </div>
       ) : null}
 
@@ -294,19 +348,22 @@ export function AppShell({
 
       <div
         className={cn(
-          "min-h-screen transition-[padding] duration-200 lg:pl-72",
+          "min-h-screen w-full min-w-0 max-w-full transition-[padding] duration-200 lg:pl-72",
           (collapsed || agendaDesktopFocus) && "lg:pl-[68px]"
         )}
       >
         <header className="app-topbar sticky top-0 z-30 flex h-14 items-center justify-between border-b border-slate-200/70 bg-background/80 px-4 backdrop-blur-xl dark:border-white/10 md:px-6">
           <div className="flex items-center gap-3">
             <Button
+              ref={mobileMenuButtonRef}
               type="button"
               variant="outline"
               size="icon"
               className="lg:hidden"
-              aria-label="Abrir menu"
-              onClick={() => setMobileOpen(true)}
+              aria-label={mobileOpen ? "Fechar menu" : "Abrir menu"}
+              aria-expanded={mobileOpen}
+              aria-controls="mobile-navigation"
+              onClick={() => setMobileOpen((value) => !value)}
             >
               <Menu className="h-4 w-4" />
             </Button>
@@ -359,4 +416,3 @@ export function AppShell({
     </div>
   );
 }
-
