@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Bot, ChevronDown, Search, ShieldCheck, Sparkles, X } from "lucide-react";
 import { askMwfAssistant, type AssistantReply } from "@/app/(app)/dashboard/assistant-actions";
@@ -14,6 +15,7 @@ type Message = { role: "user" | "assistant"; text: string; reply?: AssistantRepl
 const suggestions = ["Horários disponíveis hoje", "Horários disponíveis esta semana", "Agendar paciente", "Consultar pendência", "Consultar último pagamento", "Pacientes sem retorno", "Pacotes vencendo", "Buscar paciente"];
 
 export function MwfAssistant({ alerts, contextKey }: { alerts: Alert[]; contextKey: string }) {
+  const [mounted, setMounted] = React.useState(false);
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [collapsed, setCollapsed] = React.useState(false);
   const [prompt, setPrompt] = React.useState("");
@@ -22,6 +24,7 @@ export function MwfAssistant({ alerts, contextKey }: { alerts: Alert[]; contextK
   const [pending, startTransition] = React.useTransition();
   const inputRef = React.useRef<HTMLInputElement>(null);
 
+  React.useEffect(() => setMounted(true), []);
   React.useEffect(() => { setContext({}); setMessages([]); setMobileOpen(false); }, [contextKey]);
   React.useEffect(() => {
     if (!mobileOpen) return;
@@ -50,16 +53,20 @@ export function MwfAssistant({ alerts, contextKey }: { alerts: Alert[]; contextK
   }
 
   const content = <AssistantContent alerts={alerts} collapsed={collapsed} inputRef={inputRef} messages={messages} pending={pending} prompt={prompt} setCollapsed={setCollapsed} setPrompt={setPrompt} ask={ask} />;
-  return <>
-    <div className="hidden lg:block">{content}</div>
-    <Button type="button" size="icon" onClick={() => setMobileOpen(true)} aria-label="Abrir Assistente MWF" className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-40 h-12 w-12 rounded-full shadow-xl lg:hidden"><Sparkles className="h-5 w-5" /></Button>
-    {mobileOpen ? <div className="fixed inset-0 z-[70] lg:hidden" role="dialog" aria-modal="true" aria-label="Assistente MWF">
+  const mobileAssistant = <>
+    <Button type="button" size="icon" onClick={() => setMobileOpen((value) => !value)} aria-label={mobileOpen ? "Fechar Assistente MWF" : "Abrir Assistente MWF"} aria-expanded={mobileOpen} aria-controls="mwf-mobile-assistant" className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-[65] h-12 w-12 rounded-full shadow-xl lg:hidden"><Sparkles className="h-5 w-5" /></Button>
+    {mobileOpen ? <div id="mwf-mobile-assistant" className="fixed inset-0 z-[70] lg:hidden" role="dialog" aria-modal="true" aria-label="Assistente MWF">
       <button type="button" aria-label="Fechar assistente" className="absolute inset-0 bg-slate-950/60" onClick={() => setMobileOpen(false)} />
-      <div className="absolute inset-x-0 bottom-0 max-h-[min(88dvh,760px)] overflow-y-auto rounded-t-2xl border bg-background pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl">
+      <div className="absolute inset-x-0 bottom-0 max-h-[min(88dvh,760px)] overflow-y-auto overscroll-contain rounded-t-2xl border bg-background pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-background/95 px-4 py-3 backdrop-blur"><strong className="flex items-center gap-2"><Bot className="h-5 w-5 text-primary" />Assistente MWF</strong><Button type="button" variant="ghost" size="icon" aria-label="Fechar assistente" onClick={() => setMobileOpen(false)}><X className="h-5 w-5" /></Button></div>
         <div className="p-4">{content}</div>
       </div>
     </div> : null}
+  </>;
+
+  return <>
+    <div className="hidden lg:block">{content}</div>
+    {mounted ? createPortal(mobileAssistant, document.body) : null}
   </>;
 }
 

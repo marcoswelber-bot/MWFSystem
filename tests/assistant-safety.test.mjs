@@ -19,6 +19,8 @@ test("interface é compacta, móvel e encaminha para fluxos existentes", () => {
   assert.match(component, /Abrir Assistente MWF/);
   assert.match(component, /safe-area-inset-bottom/);
   assert.match(component, /aria-modal="true"/);
+  assert.match(component, /createPortal\(mobileAssistant, document\.body\)/);
+  assert.match(component, /aria-controls="mwf-mobile-assistant"/);
   assert.match(component, /document\.body\.style\.overflow = "hidden"/);
   assert.match(component, /Ações abrem fluxos existentes para revisão/);
 });
