@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { interpretAssistantQuery, normalizeAssistantText, similarity } from "../lib/assistant/interpreter.ts";
+import { getAssistantPatientSearchTerm, interpretAssistantQuery, normalizeAssistantText, similarity } from "../lib/assistant/interpreter.ts";
 
 const now = new Date("2026-07-21T12:00:00-03:00");
 const cases = {
@@ -97,5 +97,52 @@ test("não troca o paciente por serviço ou profissional durante agendamento gui
 test("direciona perguntas de pacote do paciente ao resumo real", () => {
   for (const phrase of ["pacote do Marcos", "sessões do Marcos", "quantas sessões faltam", "sessões restantes"]) {
     assert.equal(interpretAssistantQuery(phrase, { patientName: "marcos" }, now).intent, "patient_summary", phrase);
+  }
+});
+
+test("roteia agendamentos da semana estruturalmente para Agenda", () => {
+  const phrases = [
+    "agendamento da semana", "agendamentos da semana", "agenda da semana", "agenda semanal",
+    "atendimentos da semana", "consultas da semana", "compromissos da semana", "agenda desta semana",
+    "ver semana", "mostrar agenda semanal", "agendamnto da semana", "ageda da semana"
+  ];
+  for (const phrase of phrases) {
+    const result = interpretAssistantQuery(phrase, {}, now);
+    assert.equal(result.intent, "list_appointments", phrase);
+    assert.equal(result.domain, "agenda", phrase);
+    assert.equal(result.action, "list", phrase);
+    assert.equal(result.temporalScope, "current_week", phrase);
+    assert.equal(result.patientSearchAllowed, false, phrase);
+    assert.equal(getAssistantPatientSearchTerm(result, phrase), null, phrase);
+  }
+});
+
+test("gate separa Financeiro, pessoas e texto indefinido antes da busca", () => {
+  for (const phrase of ["débitos", "quem não pagou"]) {
+    const result = interpretAssistantQuery(phrase, {}, now);
+    assert.equal(result.domain, "financeiro", phrase);
+    assert.equal(result.patientSearchAllowed, false, phrase);
+    assert.equal(getAssistantPatientSearchTerm(result, phrase), null, phrase);
+  }
+
+  for (const phrase of ["Marcos", "abrir Marcos"]) {
+    const result = interpretAssistantQuery(phrase, {}, now);
+    assert.equal(result.domain, "pacientes", phrase);
+    assert.equal(result.action, "search", phrase);
+    assert.equal(result.patientSearchAllowed, true, phrase);
+    assert.ok(getAssistantPatientSearchTerm(result, phrase), phrase);
+  }
+
+  const unknown = interpretAssistantQuery("qualquer texto totalmente indefinido", {}, now);
+  assert.equal(unknown.intent, "unknown");
+  assert.equal(unknown.domain, "unknown");
+  assert.equal(unknown.patientSearchAllowed, false);
+  assert.equal(getAssistantPatientSearchTerm(unknown, "qualquer texto totalmente indefinido"), null);
+});
+
+test("vocabulário forte de Agenda ou Financeiro nunca libera fallback de paciente", () => {
+  for (const phrase of ["agenda amanhã", "agenda de hoje", "horários livres", "agendamento da semana", "débitos", "quem não pagou"]) {
+    const parsed = interpretAssistantQuery(phrase, {}, now);
+    assert.equal(getAssistantPatientSearchTerm(parsed, phrase), null, phrase);
   }
 });

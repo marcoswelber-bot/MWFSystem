@@ -2,9 +2,10 @@
 
 import type { Route } from "next";
 import { getCurrentClinicScope } from "@/lib/access-control";
-import { interpretAssistantQuery, normalizeAssistantText, similarity, type AssistantContext } from "@/lib/assistant/interpreter";
+import { getAssistantPatientSearchTerm, interpretAssistantQuery, normalizeAssistantText, similarity, type AssistantContext } from "@/lib/assistant/interpreter";
 import { getCurrentPermissionMap } from "@/lib/permissions";
 import { createClient } from "@/lib/supabase/server";
+import { getAgendaToday, getAgendaVisibleRange } from "@/lib/agenda-date";
 
 export type AssistantCard = { title: string; lines: string[]; tone?: "default" | "warning" | "success" };
 export type AssistantAction = { label: string; href?: Route; externalHref?: string; prompt?: string };
@@ -50,19 +51,16 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
   if (!input.trim()) return { title: "Como posso ajudar?", message: "Digite uma pergunta ou escolha um comando rápido.", cards: [], actions: [], context: parsed };
 
   const navigationCommands = [
-    { names: ["agenda"], label: "Agenda", href: "/agenda", allowed: permissions.agenda.view },
-    { names: ["financeiro", "pagamentos"], label: "Financeiro", href: "/financeiro", allowed: permissions.financeiro.view },
-    { names: ["pacientes"], label: "Pacientes", href: "/pacientes", allowed: permissions.pacientes.view },
-    { names: ["pacotes"], label: "Pacotes", href: "/pacotes", allowed: permissions.pacotes.view },
-    { names: ["prontuarios", "prontuario"], label: "Prontuários", href: "/prontuarios", allowed: permissions.prontuarios.view },
-    { names: ["profissionais", "funcionarios"], label: "Profissionais", href: "/funcionarios", allowed: permissions.funcionarios.view },
-    { names: ["servicos"], label: "Serviços", href: "/servicos", allowed: permissions.servicos.view },
-    { names: ["relatorios"], label: "Relatórios", href: "/relatorios", allowed: permissions.relatorios.view },
-    { names: ["clinicas"], label: "Clínicas", href: "/clinicas", allowed: permissions.clinicas.view }
+    { domain: "agenda", label: "Agenda", href: "/agenda", allowed: permissions.agenda.view },
+    { domain: "financeiro", label: "Financeiro", href: "/financeiro", allowed: permissions.financeiro.view },
+    { domain: "pacientes", label: "Pacientes", href: "/pacientes", allowed: permissions.pacientes.view },
+    { domain: "pacotes", label: "Pacotes", href: "/pacotes", allowed: permissions.pacotes.view },
+    { domain: "prontuarios", label: "Prontuários", href: "/prontuarios", allowed: permissions.prontuarios.view },
+    { domain: "profissionais", label: "Profissionais", href: "/funcionarios", allowed: permissions.funcionarios.view },
+    { domain: "servicos", label: "Serviços", href: "/servicos", allowed: permissions.servicos.view },
+    { domain: "relatorios", label: "Relatórios", href: "/relatorios", allowed: permissions.relatorios.view }
   ];
-  const navigationMatch = navigationCommands.find((item) =>
-    item.names.some((name) => new RegExp(`^(?:abrir|abra|ir para|ver|mostrar) (?:o |a |os |as )?${name}$`).test(parsed.normalizedText))
-  );
+  const navigationMatch = parsed.action === "open" ? navigationCommands.find((item) => item.domain === parsed.domain) : null;
   if (navigationMatch) {
     if (!navigationMatch.allowed) {
       return { title: "Permissão necessária", message: "Você não possui permissão para consultar esta informação.", cards: [], actions: [], context: parsed };
@@ -76,20 +74,113 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
     };
   }
 
-  let patientsQuery = supabase.from("patients").select("id,full_name,cpf,phone,email,clinic_id,status").eq("status", "active").order("full_name").limit(300);
+  const contextualActions = (domain: typeof parsed.domain, date = parsed.date ?? getAgendaToday()): AssistantAction[] => {
+    if (domain === "agenda") return [
+      ...(permissions.agenda.view ? [action("Abrir Agenda", "/agenda?date=" + date)] : []),
+      { label: "Ver hoje", prompt: "agenda de hoje" },
+      { label: "Ver amanhã", prompt: "agenda amanhã" },
+      { label: "Ver próxima semana", prompt: "agenda da próxima semana" },
+      { label: "Consultar horários livres", prompt: "horários livres" }
+    ];
+    if (domain === "financeiro") return [
+      ...(permissions.financeiro.view ? [action("Abrir Financeiro", "/financeiro")] : []),
+      { label: "Ver vencidos", prompt: "pagamentos vencidos" },
+      { label: "Ver valores em aberto", prompt: "valores em aberto" },
+      { label: "Preparar cobrança", prompt: "preparar cobrança" }
+    ];
+    if (domain === "pacientes") return [
+      ...(permissions.pacientes.view ? [action("Abrir cadastro", "/pacientes")] : []),
+      ...(permissions.agenda.view ? [action("Ver Agenda", "/agenda")] : []),
+      ...(permissions.financeiro.view ? [action("Ver Financeiro", "/financeiro")] : []),
+      ...(permissions.pacotes.view ? [action("Ver Pacote", "/pacotes")] : []),
+      ...(permissions.prontuarios.view ? [action("Ver Prontuário", "/prontuarios")] : [])
+    ];
+    return [];
+  };
+
+  if (parsed.intent === "unknown" && parsed.domain === "unknown") {
+    return {
+      title: "Não consegui identificar exatamente o que você deseja",
+      message: "Você quer consultar Agenda, Pacientes, Financeiro, Pacotes, Prontuários ou Relatórios? Ou escreva a pergunta de outra forma.",
+      cards: [],
+      actions: [
+        ...(permissions.agenda.view ? [{ label: "Agenda", prompt: "agenda de hoje" }] : []),
+        ...(permissions.pacientes.view ? [{ label: "Pacientes", prompt: "buscar paciente" }] : []),
+        ...(permissions.financeiro.view ? [{ label: "Financeiro", prompt: "débitos" }] : []),
+        ...(permissions.pacotes.view ? [{ label: "Pacotes", prompt: "pacotes vencendo" }] : []),
+        ...(permissions.prontuarios.view ? [action("Prontuários", "/prontuarios")] : []),
+        ...(permissions.relatorios.view ? [action("Relatórios", "/relatorios")] : [])
+      ],
+      context: parsed
+    };
+  }
+
+  if (parsed.intent === "list_appointments") {
+    if (!permissions.agenda.view) return { title: "Acesso restrito", message: "Você não possui permissão para consultar esta informação.", cards: [], actions: [], context: parsed };
+    if (!scope.clinicId) return { title: "Selecione uma clínica", message: "Escolha uma clínica antes de consultar a Agenda.", cards: [], actions: [], context: parsed };
+    const anchor = parsed.date ?? getAgendaToday();
+    const range = parsed.temporalScope === "current_week" || parsed.temporalScope === "next_week"
+      ? getAgendaVisibleRange(anchor, "week")
+      : { start: anchor, end: anchor };
+    const result = await supabase
+      .from("appointments")
+      .select("id,appointment_date,start_time,status")
+      .eq("clinic_id", scope.clinicId)
+      .gte("appointment_date", range.start)
+      .lte("appointment_date", range.end)
+      .order("appointment_date", { ascending: true })
+      .order("start_time", { ascending: true })
+      .limit(100);
+    if (result.error) return unavailable("Não foi possível consultar a Agenda agora.", parsed);
+    const rows = result.data ?? [];
+    const statusCount = (statuses: string[]) => rows.filter((row) => statuses.includes(normalizeAssistantText(row.status ?? ""))).length;
+    const periodLabel = parsed.temporalScope === "current_week" ? "nesta semana" : parsed.temporalScope === "next_week" ? "na próxima semana" : parsed.temporalScope === "tomorrow" ? "amanhã" : "hoje";
+    return {
+      title: "Agenda",
+      message: rows.length
+        ? `Encontrei ${rows.length} agendamento(s) ${periodLabel}.`
+        : `Não encontrei agendamentos ${periodLabel} nesta clínica. Deseja consultar outro período ou verificar horários disponíveis?`,
+      cards: rows.length ? [
+        {
+          title: "Resumo",
+          lines: [
+            `Confirmados: ${statusCount(["confirmado"])}`,
+            `Pendentes: ${statusCount(["agendado", "pendente"])}`,
+            `Realizados: ${statusCount(["realizado"])}`,
+            `Faltas ou cancelamentos: ${statusCount(["faltou", "cancelado"])}`
+          ]
+        },
+        {
+          title: "Próximos registros",
+          lines: rows.slice(0, 6).map((row) => `${dateLabel(row.appointment_date)} às ${row.start_time.slice(0, 5)} — ${row.status}`)
+        }
+      ] : [],
+      actions: contextualActions("agenda", range.start),
+      context: { ...parsed, date: range.start, dateRangeEnd: range.end }
+    };
+  }
+
+  const shouldLoadPatients = parsed.patientSearchAllowed || parsed.intent === "check_alerts";
+  const patientsQuery = shouldLoadPatients
+    ? supabase.from("patients").select("id,full_name,cpf,phone,email,clinic_id,status").eq("status", "active").order("full_name").limit(300)
+    : null;
   let employeesQuery = supabase.from("employees").select("id,name,clinic_id,status").eq("status", "active").order("name").limit(200);
   let servicesQuery = supabase.from("services").select("id,name,clinic_id,status,duration_minutes,default_duration_minutes").eq("status", "active").order("name").limit(200);
   if (scope.clinicId) {
-    patientsQuery = patientsQuery.eq("clinic_id", scope.clinicId);
     employeesQuery = employeesQuery.eq("clinic_id", scope.clinicId);
     servicesQuery = servicesQuery.eq("clinic_id", scope.clinicId);
   }
-  const [patientsResult, employeesResult, servicesResult] = await Promise.all([patientsQuery, employeesQuery, servicesQuery]);
+  const scopedPatientsQuery = patientsQuery && scope.clinicId ? patientsQuery.eq("clinic_id", scope.clinicId) : patientsQuery;
+  const [patientsResult, employeesResult, servicesResult] = await Promise.all([
+    scopedPatientsQuery ?? Promise.resolve({ data: [], error: null }),
+    employeesQuery,
+    servicesQuery
+  ]);
   if (patientsResult.error || employeesResult.error || servicesResult.error) return unavailable("Tente novamente ou abra o módulo correspondente.", parsed);
   let patients = patientsResult.data ?? [];
   const employees = employeesResult.data ?? [];
   const services = servicesResult.data ?? [];
-  const directPatientTerm = parsed.patientName ?? (parsed.intent === "search" ? input.trim() : null);
+  const directPatientTerm = getAssistantPatientSearchTerm(parsed, input);
   if (directPatientTerm && directPatientTerm.length >= 2) {
     const term = directPatientTerm.replaceAll("%", "\\%").replaceAll(",", " ");
     let directQuery = supabase
@@ -182,16 +273,15 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
       message: debtors.length ? `Encontrei ${allDebtors.length} paciente(s). Total em aberto: ${money(totalOpen)}.` : "Não encontrei pacientes com débitos nesta clínica. Todos os pagamentos consultados estão em dia.",
       cards: debtors.length ? [{ title: "Financeiro", lines: debtors.map((item) => `${item.name}: ${money(item.total)}`), tone: "warning" }] : [],
       actions: [
-        action("Ver todos no Financeiro", "/financeiro/baixas"),
-        ...(!onlyOverdue ? [{ label: "Filtrar vencidos", prompt: "pagamentos vencidos" }] : []),
-        { label: "Buscar paciente", prompt: "buscar paciente" }
+        ...contextualActions("financeiro"),
+        ...(!onlyOverdue ? [{ label: "Filtrar vencidos", prompt: "pagamentos vencidos" }] : [])
       ],
       context: parsed
     };
   }
 
   let patient: (typeof patients)[number] | null = null;
-  const patientSearchTerm = parsed.patientName ?? (parsed.intent === "search" ? input.trim() : null);
+  const patientSearchTerm = getAssistantPatientSearchTerm(parsed, input);
   if (patientSearchTerm) {
     const matches = patientMatches(patientSearchTerm, patients);
     if (matches.length > 1 && matches[0].score - matches[1].score < 0.35) {
@@ -214,8 +304,7 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
         cards: [],
         actions: [
           ...(permissions.pacientes.view ? [action("Ver pacientes", "/pacientes")] : []),
-          ...(permissions.financeiro.view ? [{ label: "Ver pacientes com débitos", prompt: "débitos" }] : []),
-          ...(permissions.agenda.view ? [{ label: "Consultar Agenda", prompt: "tem horário disponível?" }] : [])
+          { label: "Buscar novamente", prompt: "buscar paciente" }
         ],
         context: { ...parsed, patientName: null }
       };
@@ -446,13 +535,7 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
     title: "Não consegui identificar exatamente o que você deseja",
     message: "Você pode consultar Agenda, Pacientes, Financeiro, Pacotes ou Profissionais.",
     cards: [],
-    actions: [
-      ...(permissions.agenda.view ? [{ label: "Agenda", prompt: "tem horário disponível?" }] : []),
-      ...(permissions.pacientes.view ? [{ label: "Pacientes", prompt: "buscar paciente" }] : []),
-      ...(permissions.financeiro.view ? [{ label: "Financeiro", prompt: "débitos" }] : []),
-      ...(permissions.pacotes.view ? [{ label: "Pacotes", prompt: "pacotes vencendo" }] : []),
-      ...(permissions.funcionarios.view ? [{ label: "Profissionais", prompt: "buscar profissional" }] : [])
-    ],
+    actions: contextualActions(parsed.domain),
     context: parsed
   };
 }

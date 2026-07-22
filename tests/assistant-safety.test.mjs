@@ -76,6 +76,14 @@ test("navegação usa rotas e permissões existentes sem realizar mutações", (
   assert.doesNotMatch(action, /\.insert\(|\.update\(|\.delete\(|\.upsert\(/);
 });
 
+test("gate impede consultas de paciente para intenções de Agenda e Financeiro coletivo", () => {
+  assert.match(action, /getAssistantPatientSearchTerm\(parsed, input\)/);
+  assert.match(action, /const shouldLoadPatients = parsed\.patientSearchAllowed/);
+  assert.match(action, /parsed\.intent === "list_appointments"/);
+  assert.match(action, /getAgendaVisibleRange\(anchor, "week"\)/);
+  assert.doesNotMatch(action, /parsed\.intent === "search" \? input\.trim\(\) : null/);
+});
+
 test("menu grande foi removido e rota antiga preserva compatibilidade", () => {
   assert.doesNotMatch(navigation, /MWF IA|\/mwf-ia/);
   assert.match(legacyPage, /redirect\("\/dashboard"\)/);
