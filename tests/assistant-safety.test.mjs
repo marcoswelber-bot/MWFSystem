@@ -17,37 +17,63 @@ test("consultas respeitam clínica, permissões e não gravam dados", () => {
   assert.doesNotMatch(action, /\.insert\(|\.update\(|\.delete\(|\.upsert\(/);
 });
 
-test("interface é compacta, móvel e encaminha para fluxos existentes", () => {
-  assert.match(component, /Abrir Assistente MWF/);
+test("MWF IA é flutuante, acessível e encaminha para fluxos existentes", () => {
+  assert.match(component, /Abrir MWF IA/);
+  assert.match(component, /Assistente Inteligente/);
   assert.match(component, /safe-area-inset-bottom/);
   assert.match(component, /aria-modal="true"/);
-  assert.match(component, /createPortal\(mobileAssistant, document\.body\)/);
-  assert.match(component, /aria-controls="mwf-mobile-assistant"/);
+  assert.match(component, /createPortal\(/);
+  assert.match(component, /aria-controls="mwf-ai-panel"/);
   assert.match(component, /document\.body\.style\.overflow = "hidden"/);
-  assert.match(component, /Ações abrem fluxos existentes para revisão/);
-  assert.doesNotMatch(component, /const suggestions/);
+  assert.match(component, /role="dialog"/);
+  assert.match(component, /event\.key === "Escape"/);
+  assert.match(component, /launcherRef\.current\?\.focus/);
+  assert.match(component, /h-\[90dvh\]/);
+  assert.match(component, /lg:w-\[410px\]/);
   assert.doesNotMatch(component, /Hoje você possui/);
-  assert.match(component, /h-\[75dvh\]/);
-  assert.match(component, /Expandir assistente/);
   assert.match(component, /Posso ajudar com mais alguma coisa/);
 });
 
-test("dashboard original foi restaurado e o Assistente permanece adicional", () => {
-  assert.match(dashboard, /Pesquisa global de pacientes/);
-  assert.match(dashboard, /name="q"/);
+test("dashboard mantém cards e destinos enquanto a pesquisa global migra para a MWF IA", () => {
+  assert.doesNotMatch(dashboard, /Pesquisa global de pacientes/);
+  assert.doesNotMatch(dashboard, /<MwfAssistant/);
   assert.match(dashboard, /Ações rápidas/);
   assert.match(dashboard, /Pendências/);
   assert.match(dashboard, /Agenda de hoje/);
   assert.match(dashboard, /Novo paciente/);
   assert.match(dashboard, /Novo agendamento/);
   assert.match(dashboard, /Receber pagamento/);
-  assert.match(dashboard, /<MwfAssistant/);
-  assert.match(dashboard, /mode="desktop"/);
-  assert.match(appShell, /<MwfAssistant mode="mobile"/);
+  assert.match(dashboard, /\/pacientes\?new=1/);
+  assert.match(dashboard, /\/agenda\?new=1/);
+  assert.match(dashboard, /\/financeiro\/baixas/);
+  assert.match(dashboard, /\/prontuarios/);
+  assert.match(dashboard, /\/pacotes/);
+  assert.match(dashboard, /\/agenda\?appointmentId=/);
+  assert.match(appShell, /<MwfAssistant userName=/);
   assert.match(action, /cpf,phone,email/);
+  assert.match(action, /full_name\.ilike/);
   assert.match(action, /Você quis dizer\?/);
   assert.match(action, /Qual serviço\?/);
   assert.match(action, /Qual profissional\?/);
+});
+
+test("MWF IA usa ícone próprio e continua fora do fluxo do Dashboard", () => {
+  const icon = readFileSync(new URL("../components/ai/mwf-ai-icon.tsx", import.meta.url), "utf8");
+  assert.match(icon, /linearGradient/);
+  assert.match(icon, /feDropShadow/);
+  assert.match(icon, /stroke="white"/);
+  assert.match(icon, /circle cx="78"/);
+  assert.match(component, /fixed right-4/);
+  assert.match(component, /lg:bottom-\[100px\]/);
+  assert.doesNotMatch(component, /MWF Assistant|Assistente MWF|Chatbot|Copilot/);
+});
+
+test("navegação usa rotas e permissões existentes sem realizar mutações", () => {
+  for (const route of ["/agenda", "/financeiro", "/pacientes", "/pacotes", "/prontuarios", "/funcionarios", "/servicos", "/relatorios", "/clinicas"]) {
+    assert.match(action, new RegExp(route.replaceAll("/", "\\/")));
+  }
+  assert.match(action, /Você não possui permissão para consultar esta informação/);
+  assert.doesNotMatch(action, /\.insert\(|\.update\(|\.delete\(|\.upsert\(/);
 });
 
 test("menu grande foi removido e rota antiga preserva compatibilidade", () => {

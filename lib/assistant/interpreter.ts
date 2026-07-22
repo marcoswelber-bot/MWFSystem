@@ -17,7 +17,7 @@ export type AssistantInterpretation = AssistantContext & { intent: AssistantInte
 const availabilityWords = ["horario", "vaga", "livre", "disponivel", "disponibilidade", "encaixe", "agenda", "aberto", "espaco", "desocupado", "sobrou", "sobrando"];
 const schedulingWords = ["agendar", "marcar", "encaixar", "reservar", "colocar", "retorno", "retornar", "voltar", "remarcar", "consulta", "sessao", "atendimento"];
 const financialWords = ["devendo", "deve", "divida", "debito", "pendencia", "pendente", "aberto", "atrasado", "pagamento", "pagou", "quitado", "quitou", "saldo", "cobranca", "parcela", "financeiro", "em dia"];
-const debtListWords = ["debitos", "debito", "devedor", "devedores", "devendo", "dividas", "divida", "pendencias", "pendencia", "atrasados", "inadimplentes", "inadimplencia", "devdor", "debto", "decedo", "decendo", "pendecia", "atrazados", "divda"];
+const debtListWords = ["debitos", "debito", "devedor", "devedores", "devendo", "dividas", "divida", "pendencias", "pendencia", "atrasados", "inadimplentes", "inadimplencia", "debdor", "devdor", "debto", "decedo", "decendo", "pendecia", "atrazados", "divda"];
 
 export function normalizeAssistantText(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9:\s]/g, " ").replace(/\s+/g, " ").trim();
@@ -95,7 +95,7 @@ export function interpretAssistantQuery(input: string, context: AssistantContext
   const dateInfo = extractDate(text, now);
   const extractedName = extractLikelyName(text);
   const individualFinancial = !/^(?:pacientes?|alguem|quem|tem alguem|nao)\b/.test(text) && /^(?:o |a )?[a-z]{3,}(?: [a-z]{3,}){0,4} (?:esta )?(?:devendo|deve|tem pendencia|tem debito)|(?:financeiro|pendencia|saldo|pagamento) (?:do|da|de) [a-z]{3,}|quanto (?:o|a) [a-z]{3,}(?: [a-z]{3,}){0,4} deve/.test(text);
-  const debtList = !individualFinancial && (hasAny(text, debtListWords) || /quem (?:esta )?(?:devendo|deve)|tem alguem devendo|pagamentos? (?:vencidos?|atrasados?|pendentes?)|valores? em aberto|contas? (?:em aberto|atrasadas?|vencidas?)|financeiro pendente|nao tem debitos/.test(text));
+  const debtList = !individualFinancial && (hasAny(text, debtListWords) || /quem (?:esta )?(?:devendo|deve)|quem nao pagou|nao pagou|tem alguem devendo|pagamentos? (?:vencidos?|atrasados?|pendentes?)|valores? em aberto|contas? (?:em aberto|atrasadas?|vencidas?)|financeiro pendente|pendencias? financeiras?|nao tem debitos/.test(text));
   const patientName = debtList ? null : context.pendingIntent === "schedule_patient" && context.patientName ? context.patientName : extractedName ?? context.patientName ?? null;
   const timeMatch = text.match(/\b([01]?\d|2[0-3])(?::|h)([0-5]\d)?\b/);
   const period = /\bmanha\b/.test(text) ? "morning" : /\btarde\b/.test(text) ? "afternoon" : /\bnoite\b/.test(text) ? "evening" : null;

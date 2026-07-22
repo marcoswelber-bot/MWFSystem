@@ -414,7 +414,7 @@ export function AppShell({
           </ActiveClinicProvider>
         </main>
       </div>
-      <MwfAssistant mode="mobile" userName={userName} contextKey={activeClinicId ?? (isAdmMaster ? "all-clinics" : "linked-clinic")} />
+      <MwfAssistant userName={userName} contextKey={activeClinicId ?? (isAdmMaster ? "all-clinics" : "linked-clinic")} />
     </div>
   );
 }

@@ -7,7 +7,7 @@ import { getCurrentPermissionMap } from "@/lib/permissions";
 import { createClient } from "@/lib/supabase/server";
 
 export type AssistantCard = { title: string; lines: string[]; tone?: "default" | "warning" | "success" };
-export type AssistantAction = { label: string; href?: Route; prompt?: string };
+export type AssistantAction = { label: string; href?: Route; externalHref?: string; prompt?: string };
 export type AssistantReply = { title: string; message: string; cards: AssistantCard[]; actions: AssistantAction[]; context: AssistantContext };
 
 const money = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -49,6 +49,33 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
   const parsed = interpretAssistantQuery(input, context);
   if (!input.trim()) return { title: "Como posso ajudar?", message: "Digite uma pergunta ou escolha um comando rápido.", cards: [], actions: [], context: parsed };
 
+  const navigationCommands = [
+    { names: ["agenda"], label: "Agenda", href: "/agenda", allowed: permissions.agenda.view },
+    { names: ["financeiro", "pagamentos"], label: "Financeiro", href: "/financeiro", allowed: permissions.financeiro.view },
+    { names: ["pacientes"], label: "Pacientes", href: "/pacientes", allowed: permissions.pacientes.view },
+    { names: ["pacotes"], label: "Pacotes", href: "/pacotes", allowed: permissions.pacotes.view },
+    { names: ["prontuarios", "prontuario"], label: "Prontuários", href: "/prontuarios", allowed: permissions.prontuarios.view },
+    { names: ["profissionais", "funcionarios"], label: "Profissionais", href: "/funcionarios", allowed: permissions.funcionarios.view },
+    { names: ["servicos"], label: "Serviços", href: "/servicos", allowed: permissions.servicos.view },
+    { names: ["relatorios"], label: "Relatórios", href: "/relatorios", allowed: permissions.relatorios.view },
+    { names: ["clinicas"], label: "Clínicas", href: "/clinicas", allowed: permissions.clinicas.view }
+  ];
+  const navigationMatch = navigationCommands.find((item) =>
+    item.names.some((name) => new RegExp(`^(?:abrir|abra|ir para|ver|mostrar) (?:o |a |os |as )?${name}$`).test(parsed.normalizedText))
+  );
+  if (navigationMatch) {
+    if (!navigationMatch.allowed) {
+      return { title: "Permissão necessária", message: "Você não possui permissão para consultar esta informação.", cards: [], actions: [], context: parsed };
+    }
+    return {
+      title: navigationMatch.label,
+      message: `Posso abrir o módulo ${navigationMatch.label} para você.`,
+      cards: [],
+      actions: [action(`Abrir ${navigationMatch.label}`, navigationMatch.href)],
+      context: parsed
+    };
+  }
+
   let patientsQuery = supabase.from("patients").select("id,full_name,cpf,phone,email,clinic_id,status").eq("status", "active").order("full_name").limit(300);
   let employeesQuery = supabase.from("employees").select("id,name,clinic_id,status").eq("status", "active").order("name").limit(200);
   let servicesQuery = supabase.from("services").select("id,name,clinic_id,status,duration_minutes,default_duration_minutes").eq("status", "active").order("name").limit(200);
@@ -59,15 +86,31 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
   }
   const [patientsResult, employeesResult, servicesResult] = await Promise.all([patientsQuery, employeesQuery, servicesQuery]);
   if (patientsResult.error || employeesResult.error || servicesResult.error) return unavailable("Tente novamente ou abra o módulo correspondente.", parsed);
-  const patients = patientsResult.data ?? [];
+  let patients = patientsResult.data ?? [];
   const employees = employeesResult.data ?? [];
   const services = servicesResult.data ?? [];
+  const directPatientTerm = parsed.patientName ?? (parsed.intent === "search" ? input.trim() : null);
+  if (directPatientTerm && directPatientTerm.length >= 2) {
+    const term = directPatientTerm.replaceAll("%", "\\%").replaceAll(",", " ");
+    let directQuery = supabase
+      .from("patients")
+      .select("id,full_name,cpf,phone,email,clinic_id,status")
+      .eq("status", "active")
+      .or("full_name.ilike.%" + term + "%,cpf.ilike.%" + term + "%,phone.ilike.%" + term + "%,email.ilike.%" + term + "%")
+      .order("full_name")
+      .limit(12);
+    if (scope.clinicId) directQuery = directQuery.eq("clinic_id", scope.clinicId);
+    const directResult = await directQuery;
+    if (!directResult.error) {
+      patients = [...new Map([...(directResult.data ?? []), ...patients].map((patient) => [patient.id, patient])).values()];
+    }
+  }
   const employeeMatch = catalogMatch(parsed.normalizedText, employees);
   const serviceMatch = catalogMatch(parsed.normalizedText, services);
   if (employeeMatch?.score >= 0.78) parsed.professionalName = employeeMatch.row.name;
   if (serviceMatch?.score >= 0.78) parsed.serviceName = serviceMatch.row.name;
 
-  if (parsed.intent === "check_debtors" && /^(devedor|devdor|debto|decedo|decendo|pendecia|atrazados|divda)$/.test(parsed.normalizedText)) {
+  if (parsed.intent === "check_debtors" && /^(devedor|debdor|devdor|debto|decedo|decendo|pendecia|atrazados|divda)$/.test(parsed.normalizedText)) {
     return {
       title: "Você quis dizer?",
       message: "Posso consultar os dados reais do Financeiro.",
@@ -321,7 +364,12 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
       ...(permissions.agenda.view ? [action("Abrir agenda", "/agenda?patientId=" + patient.id)] : []),
       ...(permissions.agenda.create ? [action("Agendar retorno", "/agenda?new=1&patientId=" + patient.id)] : []),
       ...(permissions.pacotes.view ? [action("Ver pacote", "/pacotes?patientId=" + patient.id)] : []),
-      ...(permissions.financeiro.view ? [action("Abrir financeiro", "/financeiro?patientId=" + patient.id)] : [])
+      ...(permissions.prontuarios.view ? [action("Ver prontuário", "/prontuarios?q=" + encodeURIComponent(patient.full_name))] : []),
+      ...(permissions.financeiro.view ? [action("Abrir financeiro", "/financeiro/baixas?patientId=" + patient.id)] : []),
+      ...((patient.phone ?? "").replace(/\D/g, "") ? [{
+        label: "WhatsApp",
+        externalHref: "https://wa.me/" + ((patient.phone ?? "").replace(/\D/g, "").startsWith("55") ? (patient.phone ?? "").replace(/\D/g, "") : "55" + (patient.phone ?? "").replace(/\D/g, ""))
+      }] : [])
     ];
 
     if (parsed.intent === "check_last_payment" || parsed.intent === "check_session_payment") {

@@ -76,7 +76,7 @@ test("classifica sinônimos e erros financeiros antes de procurar paciente", () 
     "débitos", "debitos", "débito", "debito", "devedor", "devedores", "devendo", "dívidas", "dividas",
     "pendências", "pendencias", "atrasados", "pagamentos vencidos", "quem está devendo", "quem deve",
     "valores em aberto", "contas em aberto", "financeiro pendente", "inadimplentes", "inadimplência",
-    "tem alguém devendo?", "não tem débitos?", "devdor", "debto", "decedo", "decendo", "pendecia", "atrazados", "divda"
+    "tem alguém devendo?", "quem não pagou?", "pendências financeiras", "não tem débitos?", "debdor", "devdor", "debto", "decedo", "decendo", "pendecia", "atrazados", "divda"
   ];
   for (const phrase of phrases) {
     const result = interpretAssistantQuery(phrase, {}, now);
