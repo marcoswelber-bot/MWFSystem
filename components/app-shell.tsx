@@ -8,6 +8,7 @@ import { Activity, Bell, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Search } f
 import { setActiveClinic } from "@/app/(app)/clinic-actions";
 import { signOut } from "@/app/login/actions";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { MwfAssistant } from "@/components/ai/mwf-assistant";
 import { ActiveClinicProvider } from "@/components/active-clinic-context";
 import { Button } from "@/components/ui/button";
 import { appNavigation } from "@/lib/navigation";
@@ -413,6 +414,7 @@ export function AppShell({
           </ActiveClinicProvider>
         </main>
       </div>
+      <MwfAssistant mode="mobile" userName={userName} contextKey={activeClinicId ?? (isAdmMaster ? "all-clinics" : "linked-clinic")} />
     </div>
   );
 }

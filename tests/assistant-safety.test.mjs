@@ -7,6 +7,7 @@ const component = readFileSync(new URL("../components/ai/mwf-assistant.tsx", imp
 const navigation = readFileSync(new URL("../lib/navigation.ts", import.meta.url), "utf8");
 const legacyPage = readFileSync(new URL("../app/(app)/mwf-ia/page.tsx", import.meta.url), "utf8");
 const dashboard = readFileSync(new URL("../app/(app)/dashboard/page.tsx", import.meta.url), "utf8");
+const appShell = readFileSync(new URL("../components/app-shell.tsx", import.meta.url), "utf8");
 
 test("consultas respeitam clínica, permissões e não gravam dados", () => {
   assert.match(action, /getCurrentClinicScope/);
@@ -25,12 +26,24 @@ test("interface é compacta, móvel e encaminha para fluxos existentes", () => {
   assert.match(component, /document\.body\.style\.overflow = "hidden"/);
   assert.match(component, /Ações abrem fluxos existentes para revisão/);
   assert.doesNotMatch(component, /const suggestions/);
-  assert.match(component, /Hoje você possui/);
+  assert.doesNotMatch(component, /Hoje você possui/);
+  assert.match(component, /h-\[75dvh\]/);
+  assert.match(component, /Expandir assistente/);
+  assert.match(component, /Posso ajudar com mais alguma coisa/);
 });
 
-test("dashboard usa somente o Assistente como pesquisa", () => {
-  assert.doesNotMatch(dashboard, /Pesquisa global de pacientes|name="q"|searchParams/);
+test("dashboard original foi restaurado e o Assistente permanece adicional", () => {
+  assert.match(dashboard, /Pesquisa global de pacientes/);
+  assert.match(dashboard, /name="q"/);
+  assert.match(dashboard, /Ações rápidas/);
+  assert.match(dashboard, /Pendências/);
+  assert.match(dashboard, /Agenda de hoje/);
+  assert.match(dashboard, /Novo paciente/);
+  assert.match(dashboard, /Novo agendamento/);
+  assert.match(dashboard, /Receber pagamento/);
   assert.match(dashboard, /<MwfAssistant/);
+  assert.match(dashboard, /mode="desktop"/);
+  assert.match(appShell, /<MwfAssistant mode="mobile"/);
   assert.match(action, /cpf,phone,email/);
   assert.match(action, /Você quis dizer\?/);
   assert.match(action, /Qual serviço\?/);

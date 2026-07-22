@@ -17,6 +17,7 @@ export type AssistantInterpretation = AssistantContext & { intent: AssistantInte
 const availabilityWords = ["horario", "vaga", "livre", "disponivel", "disponibilidade", "encaixe", "agenda", "aberto", "espaco", "desocupado", "sobrou", "sobrando"];
 const schedulingWords = ["agendar", "marcar", "encaixar", "reservar", "colocar", "retorno", "retornar", "voltar", "remarcar", "consulta", "sessao", "atendimento"];
 const financialWords = ["devendo", "deve", "divida", "debito", "pendencia", "pendente", "aberto", "atrasado", "pagamento", "pagou", "quitado", "quitou", "saldo", "cobranca", "parcela", "financeiro", "em dia"];
+const debtListWords = ["debitos", "debito", "devedor", "devedores", "devendo", "dividas", "divida", "pendencias", "pendencia", "atrasados", "inadimplentes", "inadimplencia", "devdor", "debto", "decedo", "decendo", "pendecia", "atrazados", "divda"];
 
 export function normalizeAssistantText(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9:\s]/g, " ").replace(/\s+/g, " ").trim();
@@ -93,8 +94,10 @@ export function interpretAssistantQuery(input: string, context: AssistantContext
   const text = normalizeAssistantText(input);
   const dateInfo = extractDate(text, now);
   const extractedName = extractLikelyName(text);
-  const patientName = context.pendingIntent === "schedule_patient" && context.patientName ? context.patientName : extractedName ?? context.patientName ?? null;
-  const timeMatch = text.match(/\b([01]?\d|2[0-3])[:h]([0-5]\d)\b/);
+  const individualFinancial = !/^(?:pacientes?|alguem|quem|tem alguem|nao)\b/.test(text) && /^(?:o |a )?[a-z]{3,}(?: [a-z]{3,}){0,4} (?:esta )?(?:devendo|deve|tem pendencia|tem debito)|(?:financeiro|pendencia|saldo|pagamento) (?:do|da|de) [a-z]{3,}|quanto (?:o|a) [a-z]{3,}(?: [a-z]{3,}){0,4} deve/.test(text);
+  const debtList = !individualFinancial && (hasAny(text, debtListWords) || /quem (?:esta )?(?:devendo|deve)|tem alguem devendo|pagamentos? (?:vencidos?|atrasados?|pendentes?)|valores? em aberto|contas? (?:em aberto|atrasadas?|vencidas?)|financeiro pendente|nao tem debitos/.test(text));
+  const patientName = debtList ? null : context.pendingIntent === "schedule_patient" && context.patientName ? context.patientName : extractedName ?? context.patientName ?? null;
+  const timeMatch = text.match(/\b([01]?\d|2[0-3])(?::|h)([0-5]\d)?\b/);
   const period = /\bmanha\b/.test(text) ? "morning" : /\btarde\b/.test(text) ? "afternoon" : /\bnoite\b/.test(text) ? "evening" : null;
   const asksLastPayment = /ultimo.*(pagamento|pix)|pagou.*ultima|ultima.*(sessao paga|pagamento)/.test(text);
   const asksSessionPayment = /(sessao|atendimento).*(pago|paga|quitad)|ultimo atendimento/.test(text);
@@ -103,9 +106,10 @@ export function interpretAssistantQuery(input: string, context: AssistantContext
   const availability = hasAny(text, availabilityWords);
   let intent: AssistantIntent = "unknown";
   if (/pacotes?.*venc|sem retorno/.test(text)) intent = "check_alerts";
-  else if (/quem.*(devendo|deve)|pacientes?.*deved|devedores/.test(text)) intent = "check_debtors";
+  else if (debtList) intent = "check_debtors";
   else if (asksLastPayment) intent = "check_last_payment";
   else if (asksSessionPayment) intent = "check_session_payment";
+  else if (/pacote (?:do|da|de)|sessoes? (?:do|da|de)|quantas sessoes|sessoes restantes/.test(text)) intent = "patient_summary";
   else if (/(quando|qual).*(ultima|ultimo).*(sessao|consulta|atendimento)|(ultima|ultimo).*(sessao|consulta|atendimento)/.test(text)) intent = "patient_summary";
   else if (financial) intent = "check_patient_financial_status";
   else if ((scheduling || (timeMatch && context.date)) && (patientName || /\bpaciente\b/.test(text))) intent = "schedule_patient";
@@ -121,7 +125,7 @@ export function interpretAssistantQuery(input: string, context: AssistantContext
     date: dateInfo.date ?? context.date ?? null,
     dateRangeEnd: dateInfo.dateRangeEnd ?? (dateInfo.date ? null : context.dateRangeEnd) ?? null,
     period: period ?? context.period ?? null,
-    time: timeMatch ? timeMatch[1].padStart(2, "0") + ":" + timeMatch[2] : context.time ?? null,
+    time: timeMatch ? timeMatch[1].padStart(2, "0") + ":" + (timeMatch[2] ?? "00") : context.time ?? null,
     updatedAt: Date.now()
   };
 }

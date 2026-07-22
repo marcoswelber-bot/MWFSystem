@@ -39,6 +39,9 @@ test("mantém contexto curto entre perguntas", () => {
   assert.equal(third.professionalName, "Giovana");
   assert.equal(third.patientName, "marcos");
   assert.equal(third.time, "15:30");
+  const hourOnly = interpretAssistantQuery("Pode colocar o Marcos às 14h?", second, now);
+  assert.equal(hourOnly.intent, "schedule_patient");
+  assert.equal(hourOnly.time, "14:00");
 });
 
 test("mantém paciente no contexto financeiro", () => {
@@ -68,6 +71,20 @@ test("diferencia lista de devedores e mantém paciente ao consultar última sess
   assert.equal(session.patientName, "marcos");
 });
 
+test("classifica sinônimos e erros financeiros antes de procurar paciente", () => {
+  const phrases = [
+    "débitos", "debitos", "débito", "debito", "devedor", "devedores", "devendo", "dívidas", "dividas",
+    "pendências", "pendencias", "atrasados", "pagamentos vencidos", "quem está devendo", "quem deve",
+    "valores em aberto", "contas em aberto", "financeiro pendente", "inadimplentes", "inadimplência",
+    "tem alguém devendo?", "não tem débitos?", "devdor", "debto", "decedo", "decendo", "pendecia", "atrazados", "divda"
+  ];
+  for (const phrase of phrases) {
+    const result = interpretAssistantQuery(phrase, {}, now);
+    assert.equal(result.intent, "check_debtors", phrase);
+    assert.equal(result.patientName, null, phrase);
+  }
+});
+
 test("não troca o paciente por serviço ou profissional durante agendamento guiado", () => {
   const waitingService = { pendingIntent: "schedule_patient", patientName: "Marcos Welber Ferreira" };
   const service = interpretAssistantQuery("Massagem", waitingService, now);
@@ -75,4 +92,10 @@ test("não troca o paciente por serviço ou profissional durante agendamento gui
   assert.equal(service.patientName, "Marcos Welber Ferreira");
   assert.equal(professional.patientName, "Marcos Welber Ferreira");
   assert.equal(professional.intent, "schedule_patient");
+});
+
+test("direciona perguntas de pacote do paciente ao resumo real", () => {
+  for (const phrase of ["pacote do Marcos", "sessões do Marcos", "quantas sessões faltam", "sessões restantes"]) {
+    assert.equal(interpretAssistantQuery(phrase, { patientName: "marcos" }, now).intent, "patient_summary", phrase);
+  }
 });

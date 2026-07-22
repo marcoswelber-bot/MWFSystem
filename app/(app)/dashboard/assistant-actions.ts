@@ -67,6 +67,20 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
   if (employeeMatch?.score >= 0.78) parsed.professionalName = employeeMatch.row.name;
   if (serviceMatch?.score >= 0.78) parsed.serviceName = serviceMatch.row.name;
 
+  if (parsed.intent === "check_debtors" && /^(devedor|devdor|debto|decedo|decendo|pendecia|atrazados|divda)$/.test(parsed.normalizedText)) {
+    return {
+      title: "Você quis dizer?",
+      message: "Posso consultar os dados reais do Financeiro.",
+      cards: [],
+      actions: [
+        { label: "Pacientes com débitos", prompt: "débitos" },
+        { label: "Pagamentos vencidos", prompt: "pagamentos vencidos" },
+        { label: "Valores em aberto", prompt: "valores em aberto" }
+      ],
+      context: { ...parsed, patientName: null }
+    };
+  }
+
   const concepts = [
     { terms: ["pagamento", "pagamentos"], label: "Pagamentos", prompt: "Abrir pagamentos", href: permissions.financeiro.view ? "/financeiro/baixas" : null },
     { terms: ["devedor", "devedores"], label: "Pacientes devedores", prompt: "Quem está devendo?", href: null },
@@ -103,15 +117,34 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
 
   if (parsed.intent === "check_debtors") {
     if (!permissions.financeiro.view) return { title: "Acesso restrito", message: "Seu perfil não possui acesso ao Financeiro.", cards: [], actions: [], context: parsed };
+    const onlyOverdue = /vencid|atrasad/.test(parsed.normalizedText);
+    const today = isoDate(new Date());
     let debtQuery = supabase.from("financial_transactions").select("patient_id,open_amount,due_date").eq("transaction_type", "receita").in("status", ["pendente", "parcial"]).gt("open_amount", 0).order("due_date").limit(100);
     if (scope.clinicId) debtQuery = debtQuery.eq("clinic_id", scope.clinicId);
+    if (onlyOverdue) debtQuery = debtQuery.lt("due_date", today);
     const debtResult = await debtQuery;
     if (debtResult.error) return unavailable("Não foi possível consultar o Financeiro agora.", parsed);
     const totals = new Map<string, number>();
     for (const row of debtResult.data ?? []) if (row.patient_id) totals.set(row.patient_id, (totals.get(row.patient_id) ?? 0) + Number(row.open_amount ?? 0));
-    const names = new Map(patients.map((row) => [row.id, row.full_name]));
-    const debtors = [...totals.entries()].map(([id, total]) => ({ id, name: names.get(id), total })).filter((item) => item.name).sort((left, right) => right.total - left.total).slice(0, 10);
-    return { title: "Pacientes devedores", message: debtors.length ? `${debtors.length} paciente(s) com saldo em aberto.` : "Nenhum paciente com saldo em aberto.", cards: debtors.length ? [{ title: "Financeiro", lines: debtors.map((item) => `${item.name}: ${money(item.total)}`), tone: "warning" }] : [], actions: [action("Abrir Financeiro", "/financeiro/baixas")], context: parsed };
+    const debtPatientIds = [...totals.keys()];
+    let debtPatientsQuery = supabase.from("patients").select("id,full_name").in("id", debtPatientIds.length ? debtPatientIds : ["00000000-0000-0000-0000-000000000000"]);
+    if (scope.clinicId) debtPatientsQuery = debtPatientsQuery.eq("clinic_id", scope.clinicId);
+    const debtPatientsResult = await debtPatientsQuery;
+    const names = new Map((debtPatientsResult.data ?? []).map((row) => [row.id, row.full_name]));
+    const allDebtors = [...totals.entries()].map(([id, total]) => ({ id, name: names.get(id), total })).filter((item) => item.name).sort((left, right) => right.total - left.total);
+    const totalOpen = allDebtors.reduce((sum, item) => sum + item.total, 0);
+    const debtors = allDebtors.slice(0, 10);
+    return {
+      title: onlyOverdue ? "Pagamentos vencidos" : "Pacientes com débitos",
+      message: debtors.length ? `Encontrei ${allDebtors.length} paciente(s). Total em aberto: ${money(totalOpen)}.` : "Não encontrei pacientes com débitos nesta clínica. Todos os pagamentos consultados estão em dia.",
+      cards: debtors.length ? [{ title: "Financeiro", lines: debtors.map((item) => `${item.name}: ${money(item.total)}`), tone: "warning" }] : [],
+      actions: [
+        action("Ver todos no Financeiro", "/financeiro/baixas"),
+        ...(!onlyOverdue ? [{ label: "Filtrar vencidos", prompt: "pagamentos vencidos" }] : []),
+        { label: "Buscar paciente", prompt: "buscar paciente" }
+      ],
+      context: parsed
+    };
   }
 
   let patient: (typeof patients)[number] | null = null;
@@ -133,10 +166,14 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
     patient = matches[0]?.patient ?? null;
     if (!patient && parsed.intent !== "check_availability" && parsed.intent !== "search") {
       return {
-        title: "Paciente não encontrado",
-        message: "Não encontrei um paciente com esse nome nesta clínica.",
+        title: "Não encontrei esse paciente",
+        message: "Não encontrei um paciente com esse nome nesta clínica. Talvez o nome esteja incompleto ou você queira consultar outro módulo.",
         cards: [],
-        actions: permissions.pacientes.view ? [action("Ver pacientes", "/pacientes")] : [],
+        actions: [
+          ...(permissions.pacientes.view ? [action("Ver pacientes", "/pacientes")] : []),
+          ...(permissions.financeiro.view ? [{ label: "Ver pacientes com débitos", prompt: "débitos" }] : []),
+          ...(permissions.agenda.view ? [{ label: "Consultar Agenda", prompt: "tem horário disponível?" }] : [])
+        ],
         context: { ...parsed, patientName: null }
       };
     }
@@ -358,10 +395,16 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
   }
 
   return {
-    title: "Não entendi completamente",
-    message: "Posso consultar horários, pacientes, pagamentos, pacotes e preparar um agendamento seguro.",
+    title: "Não consegui identificar exatamente o que você deseja",
+    message: "Você pode consultar Agenda, Pacientes, Financeiro, Pacotes ou Profissionais.",
     cards: [],
-    actions: [],
+    actions: [
+      ...(permissions.agenda.view ? [{ label: "Agenda", prompt: "tem horário disponível?" }] : []),
+      ...(permissions.pacientes.view ? [{ label: "Pacientes", prompt: "buscar paciente" }] : []),
+      ...(permissions.financeiro.view ? [{ label: "Financeiro", prompt: "débitos" }] : []),
+      ...(permissions.pacotes.view ? [{ label: "Pacotes", prompt: "pacotes vencendo" }] : []),
+      ...(permissions.funcionarios.view ? [{ label: "Profissionais", prompt: "buscar profissional" }] : [])
+    ],
     context: parsed
   };
 }
