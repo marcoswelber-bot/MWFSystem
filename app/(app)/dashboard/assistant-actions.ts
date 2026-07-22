@@ -71,17 +71,71 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
   }
   if (core.resolution?.kind === "result" && core.resolution.result) {
     const selected = core.resolution.result;
+    const preparesCharge = selected.domain === "financeiro" && Boolean(selected.payload?.patientId);
     return {
-      title: "Confirmacao", message: `Voce esta se referindo a ${selected.label}?`, cards: [],
+      title: "Confirmação", message: preparesCharge ? `Você quer preparar a cobrança de ${selected.label}?` : `Você está se referindo a ${selected.label}?`, cards: [],
       actions: [{ label: "Sim", prompt: "Sim" }, { label: "Nao", prompt: "Nao" }, ...(selected.domain === "pacientes" && permissions.pacientes.view ? [action("Abrir paciente", "/pacientes?patientId=" + selected.id)] : [])],
-      context: { ...core, pendingOperation: { kind: "confirmation", actionId: `select:${selected.domain}:${selected.id}`, domain: selected.domain, intent: "search", label: selected.label, payload: selected.payload } }
+      context: { ...core, pendingOperation: { kind: "confirmation", actionId: preparesCharge ? `prepare_charge:${selected.payload!.patientId}` : `select:${selected.domain}:${selected.id}`, domain: selected.domain, intent: preparesCharge ? "check_patient_financial_status" : "search", label: selected.label, payload: selected.payload } }
     };
   }
   if (core.resolution?.kind === "selected") {
     const selected = capabilityRegistry.find(item => item.domain === core.domain);
+    if (selected?.domain === "prontuarios" && permissions.prontuarios.view) {
+      let recordsQuery = supabase.from("medical_records").select("status").limit(1000);
+      if (scope.clinicId) recordsQuery = recordsQuery.eq("clinic_id", scope.clinicId);
+      const records = await recordsQuery;
+      if (records.error) return unavailable("Não foi possível consultar Prontuários agora.", core);
+      const counts = new Map<string, number>();
+      for (const record of records.data ?? []) counts.set(record.status, (counts.get(record.status) ?? 0) + 1);
+      const statusLabels: Record<string, string> = { active: "Ativos", inactive: "Inativos" };
+      return {
+        title: "Prontuários",
+        message: `Encontrei ${records.data?.length ?? 0} prontuário(s) nesta clínica.`,
+        cards: counts.size ? [{ title: "Status reais", lines: [...counts.entries()].map(([status, total]) => `${statusLabels[status] ?? status}: ${total}`) }] : [],
+        actions: [
+          ...[...counts.keys()].map(status => ({ label: statusLabels[status] ?? status, prompt: `prontuários ${status}` })),
+          action("Abrir Prontuários", "/prontuarios")
+        ],
+        context: { ...core, currentDomain: "prontuarios", pendingOptions: [] }
+      };
+    }
     if (selected) return {
       title: selected.label, message: `Entendi que voce deseja consultar ${selected.label}.`, cards: [],
       actions: [{ label: `Abrir ${selected.label}`, href: selected.route as Route }], context: { ...core, currentDomain: selected.domain }
+    };
+  }
+
+  if (core.resolution?.kind === "confirmed" && context.pendingOperation?.actionId.startsWith("prepare_charge:")) {
+    const patientId = context.pendingOperation.actionId.split(":")[1];
+    let patientQuery = supabase.from("patients").select("id,full_name,phone").eq("id", patientId);
+    if (scope.clinicId) patientQuery = patientQuery.eq("clinic_id", scope.clinicId);
+    const patientResult = await patientQuery.maybeSingle();
+    if (patientResult.error || !patientResult.data) return unavailable("Não foi possível preparar a cobrança para este paciente.", core);
+    const digits = (patientResult.data.phone ?? "").replace(/\D/g, "");
+    const maskedPhone = digits.length >= 4 ? `${"*".repeat(Math.max(0, digits.length - 4))}${digits.slice(-4)}` : "Não cadastrado";
+    const total = Number(context.pendingOperation.payload?.total ?? 0);
+    return {
+      title: "Prévia da cobrança",
+      message: "Revise os dados antes de continuar para o fluxo oficial do Financeiro.",
+      cards: [{ title: patientResult.data.full_name, lines: [`Valor em aberto: ${money(total)}`, `WhatsApp: ${maskedPhone}`], tone: "warning" }],
+      actions: [
+        ...(digits ? [{ label: "Confirmar envio", prompt: "Sim" }] : []),
+        action("Revisar no Financeiro", "/financeiro/baixas?patientId=" + patientId),
+        { label: "Cancelar", prompt: "Cancelar" }
+      ],
+      context: {
+        ...core, patientId, patientName: patientResult.data.full_name,
+        pendingOperation: { kind: "confirmation", actionId: `send_charge:${patientId}`, domain: "financeiro", intent: "check_patient_financial_status", label: `Cobrança de ${patientResult.data.full_name}`, payload: context.pendingOperation.payload }
+      }
+    };
+  }
+  if (core.resolution?.kind === "confirmed" && context.pendingOperation?.actionId.startsWith("send_charge:")) {
+    const patientId = context.pendingOperation.actionId.split(":")[1];
+    return {
+      title: "Cobrança confirmada",
+      message: "Abra o fluxo oficial do Financeiro para revisar a mensagem e enviar pelo WhatsApp.", cards: [],
+      actions: [action("Abrir cobrança no Financeiro", "/financeiro/baixas?patientId=" + patientId)],
+      context: { ...core, patientId, patientName: context.patientName, currentDomain: "financeiro", pendingOperation: null }
     };
   }
 
@@ -124,6 +178,30 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
       cards: rows.length ? [{ title: "Primeiros resultados", lines: rows.map((row, index) => `${index + 1}. ${row.full_name}`) }] : [],
       actions: [{ label: "Com debitos", prompt: "pacientes que estao devendo" }, { label: "Proximos agendamentos", prompt: "pacientes do proximo agendamento" }, action("Abrir Pacientes", "/pacientes")],
       context: { ...core, currentDomain: "pacientes", recentResults: rows.map((row, index) => ({ id: row.id, domain: "pacientes", label: row.full_name, ordinal: index + 1, numericTokens: row.full_name.match(/\d+/g) ?? [] })) }
+    };
+  }
+
+  const requestedRecordStatus = context.currentDomain === "prontuarios" && /\b(ativos?|active|inativos?|inactive)\b/.exec(core.normalizedText)?.[1];
+  if (requestedRecordStatus && permissions.prontuarios.view) {
+    const status = requestedRecordStatus.startsWith("inativ") || requestedRecordStatus === "inactive" ? "inactive" : "active";
+    let recordsQuery = supabase.from("medical_records").select("id,patient_id,status").eq("status", status).limit(10);
+    if (scope.clinicId) recordsQuery = recordsQuery.eq("clinic_id", scope.clinicId);
+    const records = await recordsQuery;
+    if (records.error) return unavailable("Não foi possível consultar Prontuários agora.", core);
+    const patientIds = [...new Set((records.data ?? []).map(record => record.patient_id))];
+    let recordPatientsQuery = supabase.from("patients").select("id,full_name").in("id", patientIds.length ? patientIds : ["00000000-0000-0000-0000-000000000000"]);
+    if (scope.clinicId) recordPatientsQuery = recordPatientsQuery.eq("clinic_id", scope.clinicId);
+    const recordPatients = await recordPatientsQuery;
+    const names = new Map((recordPatients.data ?? []).map(patient => [patient.id, patient.full_name]));
+    return {
+      title: status === "active" ? "Prontuários ativos" : "Prontuários inativos",
+      message: records.data?.length ? `Mostrando os primeiros ${records.data.length} resultado(s).` : "Nenhum prontuário encontrado com este status.",
+      cards: records.data?.length ? [{ title: "Pacientes", lines: records.data.map((record, index) => `${index + 1}. ${names.get(record.patient_id) ?? "Paciente"}`) }] : [],
+      actions: [action("Abrir Prontuários", `/prontuarios?status=${status}`)],
+      context: {
+        ...core, currentDomain: "prontuarios",
+        recentResults: (records.data ?? []).map((record, index) => ({ id: record.id, domain: "prontuarios", label: names.get(record.patient_id) ?? "Prontuário", ordinal: index + 1, payload: { patientId: record.patient_id, status } }))
+      }
     };
   }
 
@@ -201,7 +279,7 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
       : { start: anchor, end: anchor };
     const result = await supabase
       .from("appointments")
-      .select("id,appointment_date,start_time,status")
+      .select("id,patient_id,appointment_date,start_time,status")
       .eq("clinic_id", scope.clinicId)
       .gte("appointment_date", range.start)
       .lte("appointment_date", range.end)
@@ -210,6 +288,11 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
       .limit(100);
     if (result.error) return unavailable("Não foi possível consultar a Agenda agora.", parsed);
     const rows = result.data ?? [];
+    const patientIds = [...new Set(rows.map(row => row.patient_id).filter((id): id is string => Boolean(id)))];
+    let appointmentPatientsQuery = supabase.from("patients").select("id,full_name").in("id", patientIds.length ? patientIds : ["00000000-0000-0000-0000-000000000000"]);
+    if (scope.clinicId) appointmentPatientsQuery = appointmentPatientsQuery.eq("clinic_id", scope.clinicId);
+    const appointmentPatients = await appointmentPatientsQuery;
+    const appointmentPatientNames = new Map((appointmentPatients.data ?? []).map(row => [row.id, row.full_name]));
     const statusCount = (statuses: string[]) => rows.filter((row) => statuses.includes(normalizeAssistantText(row.status ?? ""))).length;
     const periodLabel = parsed.temporalScope === "current_week" ? "nesta semana" : parsed.temporalScope === "next_week" ? "na próxima semana" : parsed.temporalScope === "tomorrow" ? "amanhã" : "hoje";
     return {
@@ -229,11 +312,14 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
         },
         {
           title: "Próximos registros",
-          lines: rows.slice(0, 6).map((row) => `${dateLabel(row.appointment_date)} às ${row.start_time.slice(0, 5)} — ${row.status}`)
+          lines: rows.slice(0, 6).map((row, index) => `${index + 1}. ${dateLabel(row.appointment_date)} às ${row.start_time.slice(0, 5)} — ${appointmentPatientNames.get(row.patient_id ?? "") ?? "Paciente"} — ${row.status}`)
         }
       ] : [],
       actions: contextualActions("agenda", range.start),
-      context: { ...parsed, date: range.start, dateRangeEnd: range.end }
+      context: {
+        ...parsed, currentDomain: "agenda", date: range.start, dateRangeEnd: range.end,
+        recentResults: rows.slice(0, 10).map((row, index) => ({ id: row.id, domain: "agenda", label: `${appointmentPatientNames.get(row.patient_id ?? "") ?? "Paciente"} — ${dateLabel(row.appointment_date)} ${row.start_time.slice(0, 5)}`, ordinal: index + 1 }))
+      }
     };
   }
 
@@ -344,18 +430,30 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
     if (scope.clinicId) debtPatientsQuery = debtPatientsQuery.eq("clinic_id", scope.clinicId);
     const debtPatientsResult = await debtPatientsQuery;
     const names = new Map((debtPatientsResult.data ?? []).map((row) => [row.id, row.full_name]));
-    const allDebtors = [...totals.entries()].map(([id, total]) => ({ id, name: names.get(id), total })).filter((item) => item.name).sort((left, right) => right.total - left.total);
+    const firstDueDates = new Map<string, string>();
+    for (const row of debtResult.data ?? []) {
+      if (!row.patient_id) continue;
+      const current = firstDueDates.get(row.patient_id);
+      if (!current || row.due_date < current) firstDueDates.set(row.patient_id, row.due_date);
+    }
+    const allDebtors = [...totals.entries()].map(([id, total]) => ({ id, name: names.get(id), total, dueDate: firstDueDates.get(id) })).filter((item) => item.name).sort((left, right) => right.total - left.total);
     const totalOpen = allDebtors.reduce((sum, item) => sum + item.total, 0);
     const debtors = allDebtors.slice(0, 10);
     return {
       title: onlyOverdue ? "Pagamentos vencidos" : "Pacientes com débitos",
       message: debtors.length ? `Encontrei ${allDebtors.length} paciente(s). Total em aberto: ${money(totalOpen)}.` : "Não encontrei pacientes com débitos nesta clínica. Todos os pagamentos consultados estão em dia.",
-      cards: debtors.length ? [{ title: "Financeiro", lines: debtors.map((item) => `${item.name}: ${money(item.total)}`), tone: "warning" }] : [],
+      cards: debtors.length ? [{ title: "Financeiro", lines: debtors.map((item, index) => `${index + 1}. ${item.name} — ${money(item.total)}${item.dueDate ? ` — vencimento ${dateLabel(item.dueDate)}` : ""}`), tone: "warning" }] : [],
       actions: [
         ...contextualActions("financeiro"),
         ...(!onlyOverdue ? [{ label: "Filtrar vencidos", prompt: "pagamentos vencidos" }] : [])
       ],
-      context: parsed
+      context: {
+        ...parsed, currentDomain: "financeiro",
+        recentResults: debtors.map((item, index) => ({
+          id: item.id, domain: "financeiro", label: item.name!, ordinal: index + 1,
+          numericTokens: item.name?.match(/\d+/g) ?? [], payload: { patientId: item.id, total: String(item.total), ...(item.dueDate ? { dueDate: item.dueDate } : {}) }
+        }))
+      }
     };
   }
 
