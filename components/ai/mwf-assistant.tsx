@@ -238,7 +238,7 @@ export function MwfAssistant({ contextKey, userName }: MwfAssistantProps) {
                           ))}
                         </div>
                       ) : null}
-                      {message.role === "assistant" ? <p className="mt-2 text-xs text-muted-foreground">Posso ajudar com mais alguma coisa?</p> : null}
+                      {message.role === "assistant" && !message.reply?.actions.length && !message.reply?.context.pendingOperation && !message.reply?.context.pendingOptions?.length ? <p className="mt-2 text-xs text-muted-foreground">Posso ajudar com mais alguma coisa?</p> : null}
                     </article>
                   ))}
                 </div>

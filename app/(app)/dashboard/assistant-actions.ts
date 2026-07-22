@@ -3,12 +3,15 @@
 import type { Route } from "next";
 import { getCurrentClinicScope } from "@/lib/access-control";
 import { getAssistantPatientSearchTerm, interpretAssistantQuery, normalizeAssistantText, similarity, type AssistantContext } from "@/lib/assistant/interpreter";
+import { classifyMessage } from "@/lib/mwf-ai/core/intent-classifier";
+import { capabilityRegistry } from "@/lib/mwf-ai/core/capability-registry";
+import { buildDiscoveryPlan } from "@/lib/mwf-ai/core/global-discovery";
 import { getCurrentPermissionMap } from "@/lib/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { getAgendaToday, getAgendaVisibleRange } from "@/lib/agenda-date";
 
 export type AssistantCard = { title: string; lines: string[]; tone?: "default" | "warning" | "success" };
-export type AssistantAction = { label: string; href?: Route; externalHref?: string; prompt?: string };
+export type AssistantAction = { label: string; href?: Route; externalHref?: string; prompt?: string; actionId?: string; domain?: string; intent?: string; payload?: Record<string, string> };
 export type AssistantReply = { title: string; message: string; cards: AssistantCard[]; actions: AssistantAction[]; context: AssistantContext };
 
 const money = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -47,8 +50,82 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
   const scope = await getCurrentClinicScope();
   const supabase = await createClient();
   const context = previousContext.updatedAt && Date.now() - previousContext.updatedAt < 30 * 60_000 ? previousContext : {};
-  const parsed = interpretAssistantQuery(input, context);
+  const core = classifyMessage(input, context);
+  const legacy = interpretAssistantQuery(input, context);
+  const coreOwnsRouting = core.intent === "check_debtors" || Boolean(core.filters?.some(filter => filter.operator === "starts_with" || filter.operator === "next"));
+  const parsed = { ...core, ...legacy, ...(coreOwnsRouting ? { intent: core.intent, domain: core.domain, action: core.action, temporalScope: core.temporalScope } : {}), filters: core.filters, entities: core.entities, confidence: core.confidence, requiresClarification: core.requiresClarification, currentDomain: core.currentDomain, patientName: core.patientName ?? legacy.patientName, professionalName: core.professionalName ?? legacy.professionalName, serviceName: core.serviceName ?? legacy.serviceName };
+  const permissionViews: Record<string, boolean> = {
+    pacientes: permissions.pacientes.view, agenda: permissions.agenda.view, financeiro: permissions.financeiro.view,
+    pacotes: permissions.pacotes.view, prontuarios: permissions.prontuarios.view, profissionais: permissions.funcionarios.view,
+    servicos: permissions.servicos.view, relatorios: permissions.relatorios.view, clinicas: permissions.clinicas.view, comissoes: permissions.comissoes.view
+  };
+  const discoveryPlan = buildDiscoveryPlan(core, permission => Boolean(permissionViews[permission]));
   if (!input.trim()) return { title: "Como posso ajudar?", message: "Digite uma pergunta ou escolha um comando rápido.", cards: [], actions: [], context: parsed };
+
+  if (core.pendingOptions?.length) return {
+    title: "Possibilidades", message: "Qual delas deseja consultar?", cards: [],
+    actions: core.pendingOptions.map(option => ({ label: option.label, prompt: option.label, actionId: option.actionId, domain: option.domain, intent: option.intent, payload: option.payload })), context: core
+  };
+  if (core.intent === "unknown" && core.requiresClarification && /^(?:sim|s|isso|correto|exato|quero|pode|pode ser|confirmar|confirmo|ok|e isso)$/.test(core.normalizedText)) {
+    return { title: "Contexto necessario", message: "O que voce deseja confirmar?", cards: [], actions: [], context: core };
+  }
+  if (core.resolution?.kind === "result" && core.resolution.result) {
+    const selected = core.resolution.result;
+    return {
+      title: "Confirmacao", message: `Voce esta se referindo a ${selected.label}?`, cards: [],
+      actions: [{ label: "Sim", prompt: "Sim" }, { label: "Nao", prompt: "Nao" }, ...(selected.domain === "pacientes" && permissions.pacientes.view ? [action("Abrir paciente", "/pacientes?patientId=" + selected.id)] : [])],
+      context: { ...core, pendingOperation: { kind: "confirmation", actionId: `select:${selected.domain}:${selected.id}`, domain: selected.domain, intent: "search", label: selected.label, payload: selected.payload } }
+    };
+  }
+  if (core.resolution?.kind === "selected") {
+    const selected = capabilityRegistry.find(item => item.domain === core.domain);
+    if (selected) return {
+      title: selected.label, message: `Entendi que voce deseja consultar ${selected.label}.`, cards: [],
+      actions: [{ label: `Abrir ${selected.label}`, href: selected.route as Route }], context: { ...core, currentDomain: selected.domain }
+    };
+  }
+
+  if (core.resolution?.kind === "confirmed" && context.pendingOperation) {
+    const selectedId = context.pendingOperation.actionId.startsWith("select:pacientes:") ? context.pendingOperation.actionId.split(":")[2] : null;
+    return {
+      title: "Confirmado", message: context.pendingOperation.label, cards: [],
+      actions: selectedId && permissions.pacientes.view ? [action("Abrir paciente", "/pacientes?patientId=" + selectedId)] : [],
+      context: { ...core, pendingOperation: null, currentDomain: context.pendingOperation.domain }
+    };
+  }
+  if (core.resolution?.kind === "cancelled") return { title: "Cancelado", message: "Tudo bem. Qual resultado voce deseja consultar?", cards: [], actions: [], context: { ...core, pendingOperation: null } };
+
+  if (/^\d+$/.test(core.normalizedText) && !context.recentResults?.length && discoveryPlan.primary.includes("pacientes")) {
+    const term = core.normalizedText.replaceAll("%", "");
+    let numericPatientsQuery = supabase.from("patients").select("id,full_name").eq("status", "active").ilike("full_name", `%${term}%`).order("full_name").limit(5);
+    if (scope.clinicId) numericPatientsQuery = numericPatientsQuery.eq("clinic_id", scope.clinicId);
+    const numericPatients = await numericPatientsQuery;
+    const rows = numericPatients.data ?? [];
+    if (rows.length) return {
+      title: `Resultados relacionados a ${term}`, message: `Encontrei ${rows.length} resultado(s) em Pacientes.`,
+      cards: [{ title: "Pacientes", lines: rows.map((row, index) => `${index + 1}. ${row.full_name}`) }],
+      actions: rows.map(row => action(`Abrir ${row.full_name}`, "/pacientes?patientId=" + row.id)),
+      context: { ...core, currentDomain: "pacientes", recentResults: rows.map((row, index) => ({ id: row.id, domain: "pacientes", label: row.full_name, ordinal: index + 1, numericTokens: row.full_name.match(/\d+/g) ?? [] })) }
+    };
+  }
+
+  const shortPatientConcept = core.domain === "pacientes" && core.normalizedText.length >= 2 && core.normalizedText.length <= 5 && !core.normalizedText.includes(" ");
+  const initialFilter = core.filters?.find(filter => filter.field === "full_name" && filter.operator === "starts_with")?.value;
+  if ((shortPatientConcept || initialFilter) && permissions.pacientes.view) {
+    let query = supabase.from("patients").select("id,full_name", { count: "exact" }).eq("status", "active").order("full_name").limit(10);
+    if (scope.clinicId) query = query.eq("clinic_id", scope.clinicId);
+    if (initialFilter) query = query.ilike("full_name", `${initialFilter}%`);
+    const result = await query;
+    if (result.error) return unavailable("Nao foi possivel consultar Pacientes agora.", core);
+    const rows = result.data ?? [];
+    return {
+      title: "Pacientes",
+      message: initialFilter ? `Encontrei ${result.count ?? rows.length} paciente(s) cujo nome comeca com ${initialFilter.toUpperCase()}.` : `Entendi que voce deseja consultar Pacientes. Encontrei ${result.count ?? rows.length} paciente(s) nesta clinica.`,
+      cards: rows.length ? [{ title: "Primeiros resultados", lines: rows.map((row, index) => `${index + 1}. ${row.full_name}`) }] : [],
+      actions: [{ label: "Com debitos", prompt: "pacientes que estao devendo" }, { label: "Proximos agendamentos", prompt: "pacientes do proximo agendamento" }, action("Abrir Pacientes", "/pacientes")],
+      context: { ...core, currentDomain: "pacientes", recentResults: rows.map((row, index) => ({ id: row.id, domain: "pacientes", label: row.full_name, ordinal: index + 1, numericTokens: row.full_name.match(/\d+/g) ?? [] })) }
+    };
+  }
 
   const navigationCommands = [
     { domain: "agenda", label: "Agenda", href: "/agenda", allowed: permissions.agenda.view },
@@ -162,19 +239,21 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
 
   const shouldLoadPatients = parsed.patientSearchAllowed || parsed.intent === "check_alerts";
   const patientsQuery = shouldLoadPatients
-    ? supabase.from("patients").select("id,full_name,cpf,phone,email,clinic_id,status").eq("status", "active").order("full_name").limit(300)
+    ? supabase.from("patients").select("id,full_name,cpf,phone,email,clinic_id,status").eq("status", "active").order("full_name").limit(30)
     : null;
-  let employeesQuery = supabase.from("employees").select("id,name,clinic_id,status").eq("status", "active").order("name").limit(200);
-  let servicesQuery = supabase.from("services").select("id,name,clinic_id,status,duration_minutes,default_duration_minutes").eq("status", "active").order("name").limit(200);
+  const shouldLoadEmployees = parsed.domain === "agenda" || parsed.domain === "profissionais";
+  const shouldLoadServices = parsed.domain === "agenda" || parsed.domain === "servicos";
+  let employeesQuery = shouldLoadEmployees ? supabase.from("employees").select("id,name,clinic_id,status").eq("status", "active").order("name").limit(30) : null;
+  let servicesQuery = shouldLoadServices ? supabase.from("services").select("id,name,clinic_id,status,duration_minutes,default_duration_minutes").eq("status", "active").order("name").limit(30) : null;
   if (scope.clinicId) {
-    employeesQuery = employeesQuery.eq("clinic_id", scope.clinicId);
-    servicesQuery = servicesQuery.eq("clinic_id", scope.clinicId);
+    employeesQuery = employeesQuery?.eq("clinic_id", scope.clinicId) ?? null;
+    servicesQuery = servicesQuery?.eq("clinic_id", scope.clinicId) ?? null;
   }
   const scopedPatientsQuery = patientsQuery && scope.clinicId ? patientsQuery.eq("clinic_id", scope.clinicId) : patientsQuery;
   const [patientsResult, employeesResult, servicesResult] = await Promise.all([
     scopedPatientsQuery ?? Promise.resolve({ data: [], error: null }),
-    employeesQuery,
-    servicesQuery
+    employeesQuery ?? Promise.resolve({ data: [], error: null }),
+    servicesQuery ?? Promise.resolve({ data: [], error: null })
   ]);
   if (patientsResult.error || employeesResult.error || servicesResult.error) return unavailable("Tente novamente ou abra o módulo correspondente.", parsed);
   let patients = patientsResult.data ?? [];

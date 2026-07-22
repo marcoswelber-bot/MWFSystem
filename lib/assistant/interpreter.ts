@@ -1,3 +1,5 @@
+import type { MwfAiContext } from "@/lib/mwf-ai/core/types";
+
 export type AssistantIntent =
   | "list_appointments"
   | "check_availability"
@@ -8,6 +10,10 @@ export type AssistantIntent =
   | "check_session_payment"
   | "check_alerts"
   | "patient_summary"
+  | "discover"
+  | "select_domain"
+  | "confirm"
+  | "cancel"
   | "search"
   | "unknown";
 
@@ -20,6 +26,8 @@ export type AssistantDomain =
   | "servicos"
   | "profissionais"
   | "pacientes"
+  | "clinicas"
+  | "comissoes"
   | "unknown";
 
 export type AssistantRouteAction =
@@ -30,6 +38,7 @@ export type AssistantRouteAction =
   | "search"
   | "open"
   | "summarize"
+  | "prepare_charge"
   | "unknown";
 
 export type AssistantTemporalScope =
@@ -39,11 +48,11 @@ export type AssistantTemporalScope =
   | "current_week"
   | "next_week"
   | "current_month"
+  | "next"
   | "explicit_date"
   | null;
 
-export type AssistantContext = {
-  pendingIntent?: AssistantIntent | null;
+export type AssistantContext = MwfAiContext & {
   patientName?: string | null;
   professionalName?: string | null;
   serviceName?: string | null;
