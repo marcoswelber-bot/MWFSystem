@@ -1,4 +1,4 @@
-export type AssistantIntent = "check_availability" | "schedule_patient" | "check_patient_financial_status" | "check_last_payment" | "check_session_payment" | "check_alerts" | "patient_summary" | "search" | "unknown";
+export type AssistantIntent = "check_availability" | "schedule_patient" | "check_patient_financial_status" | "check_debtors" | "check_last_payment" | "check_session_payment" | "check_alerts" | "patient_summary" | "search" | "unknown";
 
 export type AssistantContext = {
   pendingIntent?: AssistantIntent | null;
@@ -75,7 +75,7 @@ function extractDate(text: string, now: Date) {
 }
 
 function extractLikelyName(text: string) {
-  const ignored = new Set([...availabilityWords, ...schedulingWords, ...financialWords, "paciente", "fisioterapia", "hoje", "amanha", "me", "mostra", "mostrar", "quais", "qual", "tem", "onde", "ultimo", "ultima", "foi", "ele", "ela", "dele", "dela", "tudo", "pode", "abrir", "o", "a"]);
+  const ignored = new Set([...availabilityWords, ...schedulingWords, ...financialWords, "paciente", "fisioterapia", "hoje", "amanha", "me", "mostra", "mostrar", "quais", "qual", "quando", "tem", "onde", "ultimo", "ultima", "foi", "ele", "ela", "dele", "dela", "tudo", "pode", "abrir", "o", "a"]);
   const patterns = [
     /\b(?:paciente|para|do|da|de|o|a)\s+([a-z][a-z\s]{1,45}?)(?=\s+(?:esta|tem|precisa|com|para|hoje|amanha|terca|quarta|quinta|sexta|sabado|domingo|no|na|as|deve|pagou|quitou|financeiro|costuma|normalmente)|$)/,
     /^(?:buscar|abrir|agendar|marcar|remarcar)?\s*([a-z][a-z\s]{1,45})$/
@@ -92,7 +92,8 @@ function extractLikelyName(text: string) {
 export function interpretAssistantQuery(input: string, context: AssistantContext = {}, now = new Date()): AssistantInterpretation {
   const text = normalizeAssistantText(input);
   const dateInfo = extractDate(text, now);
-  const patientName = extractLikelyName(text) ?? context.patientName ?? null;
+  const extractedName = extractLikelyName(text);
+  const patientName = context.pendingIntent === "schedule_patient" && context.patientName ? context.patientName : extractedName ?? context.patientName ?? null;
   const timeMatch = text.match(/\b([01]?\d|2[0-3])[:h]([0-5]\d)\b/);
   const period = /\bmanha\b/.test(text) ? "morning" : /\btarde\b/.test(text) ? "afternoon" : /\bnoite\b/.test(text) ? "evening" : null;
   const asksLastPayment = /ultimo.*(pagamento|pix)|pagou.*ultima|ultima.*(sessao paga|pagamento)/.test(text);
@@ -102,8 +103,10 @@ export function interpretAssistantQuery(input: string, context: AssistantContext
   const availability = hasAny(text, availabilityWords);
   let intent: AssistantIntent = "unknown";
   if (/pacotes?.*venc|sem retorno/.test(text)) intent = "check_alerts";
+  else if (/quem.*(devendo|deve)|pacientes?.*deved|devedores/.test(text)) intent = "check_debtors";
   else if (asksLastPayment) intent = "check_last_payment";
   else if (asksSessionPayment) intent = "check_session_payment";
+  else if (/(quando|qual).*(ultima|ultimo).*(sessao|consulta|atendimento)|(ultima|ultimo).*(sessao|consulta|atendimento)/.test(text)) intent = "patient_summary";
   else if (financial) intent = "check_patient_financial_status";
   else if ((scheduling || (timeMatch && context.date)) && (patientName || /\bpaciente\b/.test(text))) intent = "schedule_patient";
   else if (availability || scheduling) intent = "check_availability";

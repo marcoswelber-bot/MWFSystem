@@ -24,12 +24,15 @@ function catalogMatch<T extends { name: string }>(text: string, rows: T[]) {
   return rows.map((row) => ({ row, score: normalized.includes(normalizeAssistantText(row.name)) ? 2 : Math.max(...normalizeAssistantText(row.name).split(" ").map((part) => Math.max(...normalized.split(" ").map((token) => similarity(token, part))))) })).sort((a, b) => b.score - a.score)[0];
 }
 
-function patientMatches<T extends { id: string; full_name: string }>(term: string, patients: T[]) {
+function patientMatches<T extends { id: string; full_name: string; cpf?: string | null; phone?: string | null; email?: string | null }>(term: string, patients: T[]) {
   const normalized = normalizeAssistantText(term);
+  const searchedDigits = term.replace(/\D/g, "");
   return patients.map((patient) => {
     const name = normalizeAssistantText(patient.full_name);
     const first = name.split(" ")[0];
-    const score = name === normalized ? 3 : name.includes(normalized) ? 2 + normalized.length / name.length : Math.max(similarity(normalized, name), similarity(normalized, first));
+    const exactDocument = searchedDigits.length >= 4 && [patient.cpf, patient.phone].some((value) => (value ?? "").replace(/\D/g, "").includes(searchedDigits));
+    const exactEmail = Boolean(patient.email) && patient.email?.trim().toLowerCase() === term.trim().toLowerCase();
+    const score = exactDocument || exactEmail ? 3 : name === normalized ? 3 : name.includes(normalized) ? 2 + normalized.length / name.length : Math.max(similarity(normalized, name), similarity(normalized, first));
     return { patient, score };
   }).filter((item) => item.score >= 0.62).sort((a, b) => b.score - a.score).slice(0, 5);
 }
@@ -46,7 +49,7 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
   const parsed = interpretAssistantQuery(input, context);
   if (!input.trim()) return { title: "Como posso ajudar?", message: "Digite uma pergunta ou escolha um comando rápido.", cards: [], actions: [], context: parsed };
 
-  let patientsQuery = supabase.from("patients").select("id,full_name,clinic_id,status").eq("status", "active").order("full_name").limit(300);
+  let patientsQuery = supabase.from("patients").select("id,full_name,cpf,phone,email,clinic_id,status").eq("status", "active").order("full_name").limit(300);
   let employeesQuery = supabase.from("employees").select("id,name,clinic_id,status").eq("status", "active").order("name").limit(200);
   let servicesQuery = supabase.from("services").select("id,name,clinic_id,status,duration_minutes,default_duration_minutes").eq("status", "active").order("name").limit(200);
   if (scope.clinicId) {
@@ -63,6 +66,23 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
   const serviceMatch = catalogMatch(parsed.normalizedText, services);
   if (employeeMatch?.score >= 0.78) parsed.professionalName = employeeMatch.row.name;
   if (serviceMatch?.score >= 0.78) parsed.serviceName = serviceMatch.row.name;
+
+  const concepts = [
+    { terms: ["pagamento", "pagamentos"], label: "Pagamentos", prompt: "Abrir pagamentos", href: permissions.financeiro.view ? "/financeiro/baixas" : null },
+    { terms: ["devedor", "devedores"], label: "Pacientes devedores", prompt: "Quem está devendo?", href: null },
+    { terms: ["agenda", "horarios"], label: "Agenda", prompt: "Tem horário disponível?", href: permissions.agenda.view ? "/agenda" : null },
+    { terms: ["paciente", "pacientes"], label: "Pacientes", prompt: "Buscar paciente", href: permissions.pacientes.view ? "/pacientes" : null },
+    { terms: ["profissional", "profissionais"], label: "Profissionais", prompt: "Buscar profissional", href: permissions.funcionarios.view ? "/funcionarios" : null },
+    { terms: ["clinica", "clinicas"], label: "Clínicas", prompt: "Buscar clínica", href: permissions.clinicas.view ? "/clinicas" : null },
+    { terms: ["financeiro"], label: "Financeiro", prompt: "Consultar financeiro", href: permissions.financeiro.view ? "/financeiro" : null },
+    { terms: ["pacotes"], label: "Pacotes", prompt: "Pacotes vencendo", href: permissions.pacotes.view ? "/pacotes" : null },
+    { terms: ["relatorios"], label: "Relatórios", prompt: "Abrir relatórios", href: permissions.relatorios.view ? "/relatorios" : null }
+  ];
+  const concept = concepts.map((item) => ({ item, score: Math.max(...item.terms.map((term) => similarity(parsed.normalizedText, term))) })).sort((left, right) => right.score - left.score)[0];
+  if (concept?.score >= 0.72 && (!concept.item.terms.includes(parsed.normalizedText) || parsed.normalizedText === "devedor") && parsed.normalizedText.split(" ").length <= 2) {
+    const actions = concept.item.label === "Pacientes devedores" || concept.item.href ? [{ label: concept.item.label, ...(concept.item.href ? { href: concept.item.href as Route } : { prompt: concept.item.prompt }) }] : [];
+    return { title: "Você quis dizer?", message: concept.item.label, cards: [], actions, context: { ...parsed, patientName: null } };
+  }
 
   if (parsed.intent === "check_alerts") {
     if (!scope.clinicId) return { title: "Selecione uma clínica", message: "Escolha uma clínica para ver alertas operacionais isolados.", cards: [], actions: [], context: parsed };
@@ -81,9 +101,23 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
     return { title: "Pacientes sem retorno", message: rows.length ? "Pacientes ativos sem próximo atendimento encontrado." : "Nenhum paciente sem retorno encontrado.", cards: rows.length ? [{ title: "Primeiros resultados", lines: rows.map((row) => row.full_name) }] : [], actions: [action("Ver pacientes", "/pacientes"), action("Abrir agenda", "/agenda")], context: parsed };
   }
 
+  if (parsed.intent === "check_debtors") {
+    if (!permissions.financeiro.view) return { title: "Acesso restrito", message: "Seu perfil não possui acesso ao Financeiro.", cards: [], actions: [], context: parsed };
+    let debtQuery = supabase.from("financial_transactions").select("patient_id,open_amount,due_date").eq("transaction_type", "receita").in("status", ["pendente", "parcial"]).gt("open_amount", 0).order("due_date").limit(100);
+    if (scope.clinicId) debtQuery = debtQuery.eq("clinic_id", scope.clinicId);
+    const debtResult = await debtQuery;
+    if (debtResult.error) return unavailable("Não foi possível consultar o Financeiro agora.", parsed);
+    const totals = new Map<string, number>();
+    for (const row of debtResult.data ?? []) if (row.patient_id) totals.set(row.patient_id, (totals.get(row.patient_id) ?? 0) + Number(row.open_amount ?? 0));
+    const names = new Map(patients.map((row) => [row.id, row.full_name]));
+    const debtors = [...totals.entries()].map(([id, total]) => ({ id, name: names.get(id), total })).filter((item) => item.name).sort((left, right) => right.total - left.total).slice(0, 10);
+    return { title: "Pacientes devedores", message: debtors.length ? `${debtors.length} paciente(s) com saldo em aberto.` : "Nenhum paciente com saldo em aberto.", cards: debtors.length ? [{ title: "Financeiro", lines: debtors.map((item) => `${item.name}: ${money(item.total)}`), tone: "warning" }] : [], actions: [action("Abrir Financeiro", "/financeiro/baixas")], context: parsed };
+  }
+
   let patient: (typeof patients)[number] | null = null;
-  if (parsed.patientName) {
-    const matches = patientMatches(parsed.patientName, patients);
+  const patientSearchTerm = parsed.patientName ?? (parsed.intent === "search" ? input.trim() : null);
+  if (patientSearchTerm) {
+    const matches = patientMatches(patientSearchTerm, patients);
     if (matches.length > 1 && matches[0].score - matches[1].score < 0.35) {
       return {
         title: "Você quis dizer?",
@@ -93,8 +127,11 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
         context: { ...parsed, patientName: null }
       };
     }
+    if (matches[0] && matches[0].score < 1.25) {
+      return { title: "Você quis dizer?", message: matches[0].patient.full_name, cards: [], actions: [{ label: matches[0].patient.full_name, prompt: "Buscar " + matches[0].patient.full_name }], context: { ...parsed, patientName: null } };
+    }
     patient = matches[0]?.patient ?? null;
-    if (!patient && parsed.intent !== "check_availability") {
+    if (!patient && parsed.intent !== "check_availability" && parsed.intent !== "search") {
       return {
         title: "Paciente não encontrado",
         message: "Não encontrei um paciente com esse nome nesta clínica.",
@@ -109,8 +146,8 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
   if (parsed.intent === "search" && !patient) {
     const service = serviceMatch?.score >= 0.78 ? serviceMatch.row : null;
     const employee = employeeMatch?.score >= 0.78 ? employeeMatch.row : null;
-    if (service) return { title: "Serviço encontrado", message: service.name, cards: [], actions: permissions.servicos.view ? [action("Abrir serviços", "/servicos")] : [], context: { ...parsed, serviceName: service.name } };
-    if (employee) return { title: "Profissional encontrado", message: employee.name, cards: [], actions: permissions.agenda.view ? [action("Ver agenda", "/agenda")] : [], context: { ...parsed, professionalName: employee.name } };
+    if (service) return { title: serviceMatch.score < 1.25 ? "Você quis dizer?" : "Serviço encontrado", message: service.name, cards: [], actions: serviceMatch.score < 1.25 ? [{ label: service.name, prompt: "Buscar " + service.name }] : permissions.servicos.view ? [action("Abrir serviços", "/servicos")] : [], context: { ...parsed, serviceName: service.name } };
+    if (employee) return { title: employeeMatch.score < 1.25 ? "Você quis dizer?" : "Profissional encontrado", message: employee.name, cards: [], actions: employeeMatch.score < 1.25 ? [{ label: employee.name, prompt: "Buscar " + employee.name }] : permissions.agenda.view ? [action("Ver agenda", "/agenda")] : [], context: { ...parsed, professionalName: employee.name } };
     return { title: "Busca universal", message: "Informe o nome de um paciente, profissional ou serviço.", cards: [], actions: [], context: parsed };
   }
 
@@ -119,7 +156,27 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
   }
 
   if (parsed.intent === "schedule_patient" && !patient) {
-    return { title: "Qual paciente?", message: "Informe o nome do paciente que deseja agendar.", cards: [], actions: permissions.pacientes.view ? [action("Buscar paciente", "/pacientes")] : [], context: { ...parsed, pendingIntent: parsed.intent } };
+    return { title: "Qual paciente?", message: "Informe o nome, CPF ou telefone do paciente que deseja agendar.", cards: [], actions: [], context: { ...parsed, pendingIntent: parsed.intent } };
+  }
+
+  if (parsed.intent === "schedule_patient" && patient && !parsed.serviceName) {
+    return {
+      title: "Qual serviço?",
+      message: `Encontrei ${patient.full_name}. Escolha um serviço real da clínica.`,
+      cards: [],
+      actions: services.slice(0, 6).map((service) => ({ label: service.name, prompt: service.name })),
+      context: { ...parsed, patientName: patient.full_name, pendingIntent: parsed.intent }
+    };
+  }
+
+  if (parsed.intent === "schedule_patient" && patient && !parsed.professionalName) {
+    return {
+      title: "Qual profissional?",
+      message: `Serviço: ${parsed.serviceName}. Escolha um profissional da clínica.`,
+      cards: [],
+      actions: employees.slice(0, 6).map((employee) => ({ label: employee.name, prompt: employee.name })),
+      context: { ...parsed, patientName: patient.full_name, pendingIntent: parsed.intent }
+    };
   }
 
   if (parsed.intent === "check_availability" || parsed.intent === "schedule_patient") {
@@ -141,7 +198,8 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
     const [appointmentResult, blockResult, hoursResult] = await Promise.all([appointmentQuery, blockQuery, hoursQuery]);
     if (appointmentResult.error || blockResult.error) return unavailable("Não foi possível consultar a Agenda agora.", parsed);
     const selectedEmployees = parsed.professionalName ? employees.filter((employee) => employee.name === parsed.professionalName) : employees;
-    const duration = serviceMatch?.score >= 0.78 ? Number(serviceMatch.row.duration_minutes ?? serviceMatch.row.default_duration_minutes ?? 30) : 30;
+    const selectedService = services.find((service) => service.name === parsed.serviceName);
+    const duration = selectedService ? Number(selectedService.duration_minutes ?? selectedService.default_duration_minutes ?? 30) : 30;
     const results: string[] = [];
     for (let cursor = new Date(parsed.date + "T12:00:00"); isoDate(cursor) <= rangeEnd && results.length < 18; cursor = addDays(cursor, 1)) {
       const day = isoDate(cursor);

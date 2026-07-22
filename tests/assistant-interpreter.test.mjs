@@ -59,3 +59,20 @@ test("reconhece alertas e pedidos incompletos", () => {
   assert.equal(continued.intent, "check_patient_financial_status");
   assert.equal(continued.patientName, "marcos");
 });
+
+test("diferencia lista de devedores e mantém paciente ao consultar última sessão", () => {
+  assert.equal(interpretAssistantQuery("Quem está devendo?", {}, now).intent, "check_debtors");
+  const financial = interpretAssistantQuery("O Marcos está devendo?", {}, now);
+  const session = interpretAssistantQuery("Quando foi a última sessão?", financial, now);
+  assert.equal(session.intent, "patient_summary");
+  assert.equal(session.patientName, "marcos");
+});
+
+test("não troca o paciente por serviço ou profissional durante agendamento guiado", () => {
+  const waitingService = { pendingIntent: "schedule_patient", patientName: "Marcos Welber Ferreira" };
+  const service = interpretAssistantQuery("Massagem", waitingService, now);
+  const professional = interpretAssistantQuery("Giovana", { ...service, pendingIntent: "schedule_patient", serviceName: "Massagem" }, now);
+  assert.equal(service.patientName, "Marcos Welber Ferreira");
+  assert.equal(professional.patientName, "Marcos Welber Ferreira");
+  assert.equal(professional.intent, "schedule_patient");
+});
