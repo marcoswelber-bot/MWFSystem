@@ -4,7 +4,7 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowUp, Maximize2, Minimize2, X } from "lucide-react";
+import { ArrowUp, Maximize2, Minimize2, Trash2, X } from "lucide-react";
 import { askMwfAssistant, type AssistantReply } from "@/app/(app)/dashboard/assistant-actions";
 import type { AssistantContext } from "@/lib/assistant/interpreter";
 import { MwfAiIcon } from "@/components/ai/mwf-ai-icon";
@@ -29,6 +29,14 @@ export function MwfAssistant({ contextKey, userName }: MwfAssistantProps) {
   const historyRef = React.useRef<HTMLDivElement>(null);
   const messageId = React.useRef(0);
   const wasOpen = React.useRef(false);
+
+  function clearConversation() {
+    setMessages([]);
+    setContext({});
+    setPrompt("");
+    messageId.current = 0;
+    window.requestAnimationFrame(() => inputRef.current?.focus());
+  }
 
   React.useEffect(() => setMounted(true), []);
   React.useEffect(() => {
@@ -159,6 +167,18 @@ export function MwfAssistant({ contextKey, userName }: MwfAssistantProps) {
               </div>
               <Button type="button" variant="ghost" size="icon" className="text-white hover:bg-white/15 hover:text-white lg:hidden" aria-label={expanded ? "Reduzir MWF IA" : "Expandir MWF IA"} onClick={() => setExpanded((value) => !value)}>
                 {expanded ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 text-white/70 hover:bg-white/15 hover:text-white disabled:opacity-30"
+                aria-label="Limpar conversa"
+                title="Limpar conversa"
+                onClick={clearConversation}
+                disabled={messages.length === 0 && !prompt.trim() && Object.keys(context).length === 0}
+              >
+                <Trash2 className="h-4 w-4" />
               </Button>
               <Button type="button" variant="ghost" size="icon" className="text-white hover:bg-white/15 hover:text-white" aria-label="Fechar MWF IA" onClick={() => setOpen(false)}>
                 <X className="h-5 w-5" />
