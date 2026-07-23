@@ -8,17 +8,19 @@ import { ArrowUp, Maximize2, Minimize2, Trash2, X } from "lucide-react";
 import { askMwfAssistant, type AssistantReply } from "@/app/(app)/dashboard/assistant-actions";
 import type { AssistantContext } from "@/lib/assistant/interpreter";
 import { MwfAiIcon } from "@/components/ai/mwf-ai-icon";
+import { AssistantResponseCard } from "@/components/ai/assistant-response-components";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type Message = { id: number; role: "user" | "assistant"; text: string; reply?: AssistantReply };
-type MwfAssistantProps = { contextKey: string; userName?: string };
+type MwfAssistantProps = { contextKey: string; userName?: string; suppressed?: boolean };
 
-export function MwfAssistant({ contextKey, userName }: MwfAssistantProps) {
+export function MwfAssistant({ contextKey, userName, suppressed = false }: MwfAssistantProps) {
   const pathname = usePathname();
   const [mounted, setMounted] = React.useState(false);
   const [open, setOpen] = React.useState(false);
   const [expanded, setExpanded] = React.useState(false);
+  const [interfaceBlocked, setInterfaceBlocked] = React.useState(false);
   const [prompt, setPrompt] = React.useState("");
   const [context, setContext] = React.useState<AssistantContext>({});
   const [messages, setMessages] = React.useState<Message[]>([]);
@@ -40,6 +42,34 @@ export function MwfAssistant({ contextKey, userName }: MwfAssistantProps) {
 
   React.useEffect(() => setMounted(true), []);
   React.useEffect(() => {
+    const blockingSelector = 'select,input[type="date"],input[type="time"],[role="listbox"],[role="menu"],[role="dialog"]:not(#mwf-ai-panel)';
+    let focusTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const syncFromDocument = () => {
+      const active = document.activeElement instanceof HTMLElement && Boolean(document.activeElement.closest(blockingSelector));
+      const overlay = Boolean(document.querySelector('[role="listbox"],[role="menu"],[role="dialog"]:not(#mwf-ai-panel)'));
+      setInterfaceBlocked(active || overlay);
+    };
+    const onFocusIn = (event: FocusEvent) => {
+      if (event.target instanceof HTMLElement && event.target.closest(blockingSelector)) setInterfaceBlocked(true);
+    };
+    const onFocusOut = () => {
+      if (focusTimer) clearTimeout(focusTimer);
+      focusTimer = setTimeout(syncFromDocument, 0);
+    };
+    const observer = new MutationObserver(syncFromDocument);
+    document.addEventListener("focusin", onFocusIn);
+    document.addEventListener("focusout", onFocusOut);
+    observer.observe(document.body, { childList: true, subtree: true });
+    syncFromDocument();
+    return () => {
+      if (focusTimer) clearTimeout(focusTimer);
+      document.removeEventListener("focusin", onFocusIn);
+      document.removeEventListener("focusout", onFocusOut);
+      observer.disconnect();
+    };
+  }, []);
+  React.useEffect(() => {
     setContext({});
     setMessages([]);
     setPrompt("");
@@ -50,6 +80,12 @@ export function MwfAssistant({ contextKey, userName }: MwfAssistantProps) {
     setOpen(false);
     setExpanded(false);
   }, [pathname]);
+  React.useEffect(() => {
+    if (suppressed) {
+      setOpen(false);
+      setExpanded(false);
+    }
+  }, [suppressed]);
   React.useEffect(() => {
     if (!open) {
       if (wasOpen.current) launcherRef.current?.focus();
@@ -112,7 +148,7 @@ export function MwfAssistant({ contextKey, userName }: MwfAssistantProps) {
     });
   }
 
-  if (!mounted) return null;
+  if (!mounted || suppressed || interfaceBlocked) return null;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
   const firstName = userName?.trim().split(/\s+/)[0];
@@ -127,17 +163,17 @@ export function MwfAssistant({ contextKey, userName }: MwfAssistantProps) {
         aria-expanded={open}
         aria-controls="mwf-ai-panel"
         className={cn(
-          "group fixed right-4 z-[75] grid h-16 w-16 place-items-center rounded-full bg-transparent outline-none transition duration-200 hover:-translate-y-1 focus-visible:ring-4 focus-visible:ring-sky-400/50 motion-reduce:transform-none motion-reduce:transition-none lg:bottom-6 lg:right-6",
+          "mwf-assistant-launcher group fixed right-4 z-40 grid h-14 w-14 place-items-center rounded-full bg-transparent outline-none transition duration-200 hover:-translate-y-1 focus-visible:ring-4 focus-visible:ring-sky-400/50 motion-reduce:transform-none motion-reduce:transition-none sm:h-16 sm:w-16 lg:bottom-6 lg:right-6",
           "bottom-[calc(5rem+env(safe-area-inset-bottom))]",
           open && "pointer-events-none scale-95 opacity-0"
         )}
       >
         <span className="sr-only">MWF IA — Assistente Inteligente</span>
-        <MwfAiIcon className={cn("h-16 w-16 transition group-hover:drop-shadow-lg", pending && "opacity-80")} />
+        <MwfAiIcon className={cn("h-14 w-14 transition group-hover:drop-shadow-lg sm:h-16 sm:w-16", pending && "opacity-80")} />
       </button>
 
       {open ? (
-        <div className="pointer-events-none fixed inset-0 z-[74]">
+        <div className="mwf-assistant-panel pointer-events-none fixed inset-0 z-40">
           <button
             type="button"
             tabIndex={-1}
@@ -207,16 +243,7 @@ export function MwfAssistant({ contextKey, userName }: MwfAssistantProps) {
                         {message.reply?.cards.length ? (
                           <div className="mt-3 grid gap-2">
                             {message.reply.cards.map((card, cardIndex) => (
-                              <div key={`${card.title}-${cardIndex}`} className={cn(
-                                "rounded-xl border bg-background/80 p-3",
-                                card.tone === "warning" && "border-amber-500/40 bg-amber-500/5",
-                                card.tone === "success" && "border-emerald-500/40 bg-emerald-500/5"
-                              )}>
-                                <strong className="text-xs uppercase tracking-wide">{card.title}</strong>
-                                <ul className="mt-2 grid gap-1.5 text-xs">
-                                  {card.lines.map((line, lineIndex) => <li key={`${line}-${lineIndex}`} className="break-words">{line}</li>)}
-                                </ul>
-                              </div>
+                              <AssistantResponseCard key={`${card.title}-${cardIndex}`} title={card.title} lines={card.lines} tone={card.tone} />
                             ))}
                           </div>
                         ) : null}
@@ -238,7 +265,6 @@ export function MwfAssistant({ contextKey, userName }: MwfAssistantProps) {
                           ))}
                         </div>
                       ) : null}
-                      {message.role === "assistant" && !message.reply?.actions.length && !message.reply?.context.pendingOperation && !message.reply?.context.pendingOptions?.length ? <p className="mt-2 text-xs text-muted-foreground">Posso ajudar com mais alguma coisa?</p> : null}
                     </article>
                   ))}
                 </div>

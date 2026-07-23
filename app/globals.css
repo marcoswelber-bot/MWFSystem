@@ -358,6 +358,16 @@ table tbody tr:hover { background: hsl(var(--primary) / .055); }
   .app-main [role="dialog"], .app-main dialog { inset: 0.5rem !important; max-height: calc(100dvh - 1rem); max-width: calc(100vw - 1rem); width: auto !important; }
 }
 
+@media (max-width: 1023px) {
+  .agenda-workspace { padding-bottom: calc(5rem + env(safe-area-inset-bottom)); }
+  .agenda-workspace > header { padding: 0.875rem; }
+  .agenda-toolbar { grid-template-columns: 2.75rem minmax(0, 1fr) 2.75rem !important; }
+  .agenda-toolbar > :nth-child(4) { grid-column: 1 / -1; }
+  .agenda-toolbar > :nth-child(n + 5) { grid-column: 1 / -1; }
+  .agenda-workspace aside { position: static; }
+  .agenda-workspace aside > * { width: 100%; }
+}
+
 @media (min-width: 768px) and (max-width: 1100px) {
   .app-main { padding: 1.25rem !important; }
   .app-main [style*="repeat(auto-fit"] { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
@@ -427,3 +437,42 @@ main.min-h-screen [class*="max-w-md"] { max-width: min(28rem, 100%); }
 .dark .app-sidebar select:focus-visible,
 .dark .app-sidebar a:focus-visible,
 .dark .app-sidebar button:focus-visible { outline: 2px solid hsl(199 89% 65%); outline-offset: 2px; }
+
+/* Light sidebar contrast; dark-theme declarations above remain authoritative. */
+:root:not(.dark) .app-sidebar .text-white,
+:root:not(.dark) .app-sidebar .text-white\/70,
+:root:not(.dark) .app-sidebar .text-white\/60,
+:root:not(.dark) .app-sidebar .text-white\/50 {
+  color: hsl(var(--sidebar-fg)) !important;
+}
+:root:not(.dark) .app-sidebar .border-white\/10 { border-color: hsl(var(--border)) !important; }
+:root:not(.dark) .app-sidebar .bg-white\/5 { background: hsl(var(--sidebar-muted) / .55) !important; }
+:root:not(.dark) .app-sidebar .hover\:bg-white\/10:hover { background: hsl(var(--primary) / .10) !important; }
+
+/* The assistant yields to every application overlay and never intercepts it. */
+body:has(.app-main [role="dialog"]) .mwf-assistant-launcher,
+body:has(.app-main [role="dialog"]) .mwf-assistant-panel {
+  pointer-events: none !important;
+  visibility: hidden;
+}
+
+@media (max-width: 1023px) {
+  .permissions-manager { padding: 0.75rem !important; }
+  .permissions-users-table td::before,
+  .permissions-matrix td::before {
+    color: hsl(var(--muted-foreground));
+    content: attr(data-label);
+    flex: 0 0 42%;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.025em;
+    text-transform: uppercase;
+  }
+  .permissions-matrix tr { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .permissions-matrix td { align-items: center; min-height: 3rem; }
+  .permissions-matrix td:first-child { grid-column: 1 / -1; font-weight: 700; }
+  .permissions-actions { display: grid !important; gap: 0.5rem; grid-template-columns: 1fr; }
+  .permissions-actions button { margin-right: 0 !important; width: 100%; }
+}
+
+:root:not(.dark) .app-sidebar .sidebar-logo { color: white !important; }

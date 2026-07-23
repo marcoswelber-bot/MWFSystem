@@ -1,6 +1,7 @@
 "use server";
 
 import type { Route } from "next";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getAccessProfileByEmail } from "@/lib/access-control";
@@ -55,6 +56,7 @@ export async function signInWithPassword(formData: FormData) {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
   const redirectedFrom = normalizeRedirectRoute(formData.get("redirectedFrom"));
+  const rememberMe = formData.get("rememberMe") === "true";
   let errorMessage: string | null = null;
   let targetRoute: Route = redirectedFrom;
 
@@ -69,6 +71,18 @@ export async function signInWithPassword(formData: FormData) {
       // Mensagem amigável em vez de expor detalhes técnicos
       errorMessage = "Email ou senha incorretos.";
     } else {
+      if (!rememberMe) {
+        const cookieStore = await cookies();
+        cookieStore.getAll().forEach((cookie) => {
+          if (cookie.name.startsWith("sb-") && cookie.name.includes("auth-token")) {
+            cookieStore.set(cookie.name, cookie.value, {
+              path: "/",
+              sameSite: "lax",
+              secure: process.env.NODE_ENV === "production"
+            });
+          }
+        });
+      }
       const profile = await getAccessProfileByEmail(email);
 
       if (profile.kind === "blocked" || profile.kind === "unknown") {

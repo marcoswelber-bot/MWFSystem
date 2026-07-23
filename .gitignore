@@ -29,3 +29,5 @@ supabase/.temp/
 # codex workspace artifacts
 outputs
 work
+
+.env*

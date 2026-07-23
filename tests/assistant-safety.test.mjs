@@ -31,7 +31,7 @@ test("MWF IA é flutuante, acessível e encaminha para fluxos existentes", () =>
   assert.match(component, /h-\[90dvh\]/);
   assert.match(component, /lg:w-\[410px\]/);
   assert.doesNotMatch(component, /Hoje você possui/);
-  assert.match(component, /Posso ajudar com mais alguma coisa/);
+  assert.doesNotMatch(component, /Posso ajudar com mais alguma coisa/);
 });
 
 test("dashboard mantém cards e destinos enquanto a pesquisa global migra para a MWF IA", () => {

@@ -195,6 +195,7 @@ export function UserPermissionsManager({
 
   return (
     <section
+      className="permissions-manager"
       style={{
         border: "1px solid hsl(var(--border))",
         borderRadius: "8px",
@@ -319,8 +320,16 @@ export function UserPermissionsManager({
         </div>
       </div>
 
+      {selectedEmployee ? (
+        <div className="grid gap-2 rounded-lg border bg-muted/25 p-3 sm:grid-cols-3" aria-label="Usuario selecionado">
+          <div><p className="text-xs font-semibold uppercase text-muted-foreground">Usuario</p><p className="mt-1 break-words font-semibold">{selectedEmployee.name}</p></div>
+          <div><p className="text-xs font-semibold uppercase text-muted-foreground">Email</p><p className="mt-1 break-words">{selectedEmployee.email ?? "-"}</p></div>
+          <div><p className="text-xs font-semibold uppercase text-muted-foreground">Cargo</p><p className="mt-1 break-words">{selectedEmployee.role ?? "-"}</p></div>
+        </div>
+      ) : null}
+
       <div style={{ overflowX: "auto" }}>
-        <table style={{ borderCollapse: "collapse", width: "100%" }}>
+        <table className="permissions-users-table" style={{ borderCollapse: "collapse", width: "100%" }}>
           <thead>
             <tr>
               {["Usuario", "Email", "Cargo", "Status"].map((heading) => (
@@ -363,16 +372,16 @@ export function UserPermissionsManager({
                   cursor: "pointer"
                 }}
               >
-                <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                <td data-label="Usuario" style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
                   {employee.name}
                 </td>
-                <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                <td data-label="Email" style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
                   {employee.email ?? "-"}
                 </td>
-                <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                <td data-label="Cargo" style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
                   {employee.role ?? "-"}
                 </td>
-                <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                <td data-label="Status" style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
                   {employee.status === "active" ? "Ativo" : "Inativo"}
                 </td>
               </tr>
@@ -395,7 +404,7 @@ export function UserPermissionsManager({
       ) : null}
 
       <div style={{ overflowX: "auto" }}>
-        <table style={{ borderCollapse: "collapse", width: "100%" }}>
+        <table className="permissions-matrix" style={{ borderCollapse: "collapse", width: "100%" }}>
           <thead>
             <tr>
               <th style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px", textAlign: "left" }}>
@@ -423,12 +432,13 @@ export function UserPermissionsManager({
 
               return (
                 <tr key={module.key}>
-                  <td style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
+                  <td data-label="Modulo" style={{ borderBottom: "1px solid hsl(var(--border))", padding: "10px" }}>
                     {module.label}
                   </td>
                   {permissionActions.map((action) => (
                     <td
                       key={action}
+                      data-label={permissionActionLabels[action]}
                       style={{
                         borderBottom: "1px solid hsl(var(--border))",
                         padding: "10px",
@@ -437,6 +447,8 @@ export function UserPermissionsManager({
                     >
                       <input
                         type="checkbox"
+                        className="h-5 w-5 cursor-pointer accent-primary disabled:cursor-not-allowed"
+                        aria-label={`${module.label}: ${permissionActionLabels[action]}`}
                         disabled={!isAdmMaster || selectedIsAdmMaster}
                         checked={Boolean(modulePermissions?.[action])}
                         onChange={(event) =>
@@ -452,7 +464,7 @@ export function UserPermissionsManager({
         </table>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+      <div className="permissions-actions" style={{ display: "flex", justifyContent: "flex-end" }}>
         <button
           type="button"
           disabled={!isAdmMaster || selectedIsAdmMaster || isPending}

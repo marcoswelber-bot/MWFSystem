@@ -14,6 +14,7 @@ import {
   type CrudValue
 } from "@/lib/actions/entity-crud";
 import type { PermissionSet } from "@/lib/permission-modules";
+import { ClinicSettingsManager, type ClinicSettingsClinic, type ClinicSettingsHour } from "@/components/clinics/clinic-settings-manager";
 
 export type EntityRecord = {
   id: string;
@@ -53,6 +54,10 @@ type EntityCrudManagerProps = {
   initialSearch: string;
   loadError?: string;
   permissions?: PermissionSet;
+  clinicSettings?: {
+    clinics: ClinicSettingsClinic[];
+    openingHours: ClinicSettingsHour[];
+  };
 };
 
 type StatusFilter = "all" | "active" | "inactive";
@@ -115,7 +120,8 @@ export function EntityCrudManager({
   columns,
   initialSearch,
   loadError,
-  permissions
+  permissions,
+  clinicSettings
 }: EntityCrudManagerProps) {
   const router = useRouter();
   const [isPending, startTransition] = React.useTransition();
@@ -468,6 +474,21 @@ export function EntityCrudManager({
               </button>
             </div>
           </form>
+
+          {table === "clinics" && editingRecord && clinicSettings ? (
+            <ClinicSettingsManager
+              key={editingRecord.id}
+              clinics={clinicSettings.clinics.filter((clinic) => clinic.id === editingRecord.id)}
+              openingHours={clinicSettings.openingHours.filter((hour) => hour.clinic_id === editingRecord.id)}
+              canEdit={canEdit}
+              initialClinicId={editingRecord.id}
+              embedded
+            />
+          ) : table === "clinics" && !editingRecord ? (
+            <div className="rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">
+              Salve os dados gerais da clinica para configurar Pix e Horarios no painel de edicao.
+            </div>
+          ) : null}
         </section>
       ) : null}
 

@@ -393,10 +393,16 @@ export function SettlementsManager({ transactions, clinics, patients, services, 
         {receipt ? <div className="flex flex-wrap gap-2 rounded-md border p-3"><span className="w-full text-sm font-medium">Baixa confirmada. Escolha como receber o recibo:</span><Button type="button" variant="outline" onClick={() => { const popup = window.open("", "_blank", "noopener,noreferrer"); if (popup) { popup.document.write(receipt.html); popup.document.close(); popup.print(); void auditFinancialAction({ action: "pdf_generated", clinic_id: receipt.clinicId, transaction_ids: receipt.ids }); } }}>Baixar recibo em PDF</Button><Button type="button" variant="outline" disabled={!receipt.phone} onClick={() => { if (!window.confirm("Confirmar envio do recibo pelo WhatsApp?")) return; void auditFinancialAction({ action: "receipt_sent", clinic_id: receipt.clinicId, transaction_ids: receipt.ids }); window.open(`https://wa.me/${receipt.phone}?text=${encodeURIComponent("Ola! Seu pagamento foi confirmado. Segue o recibo emitido pela clinica. Obrigado!")}`, "_blank", "noopener,noreferrer"); }}>Enviar recibo pelo WhatsApp</Button></div> : null}
       </Card>
       <Card className="overflow-hidden">
-        <div className="hidden xl:block">
+        <div className="hidden lg:block">
           {tab === "patients" ? <PatientTable rows={rows} selectedIds={selectedIds} onToggle={toggleSelection} onToggleAll={toggleAll} onSingle={selectSingle} /> : <StaffTable rows={rows} selectedIds={selectedIds} onToggle={toggleSelection} onToggleAll={toggleAll} onSingle={selectSingle} />}
         </div>
-        <div className="grid gap-3 p-3 xl:hidden">{rows.map((row) => <article key={row.id} className="grid gap-2 rounded-md border p-3"><div className="flex items-start justify-between gap-3"><label className="flex items-center gap-2 text-sm font-semibold"><SelectionCell id={row.id} selectedIds={selectedIds} onToggle={toggleSelection} />{tab === "patients" ? row.patient_name : row.employee_name}</label><span className="text-xs">{getStatusLabel(row.derived_status)}</span></div><Metric label="Pendente" value={formatCurrency(getOpenAmount(row))} /><p className="text-xs text-muted-foreground">{row.clinic_name} · {row.service_name || getStaffType(row)} · vencimento {row.due_date}</p><Button type="button" size="sm" variant="outline" onClick={() => selectSingle(row.id)}>{tab === "patients" ? "Receber" : "Pagar"}</Button></article>)}</div>
+        <div className="grid gap-3 p-3 lg:hidden">
+          {rows.map((row) => tab === "patients" ? (
+            <PatientMobileCard key={row.id} row={row} selectedIds={selectedIds} onToggle={toggleSelection} onSingle={selectSingle} />
+          ) : (
+            <StaffMobileCard key={row.id} row={row} selectedIds={selectedIds} onToggle={toggleSelection} onSingle={selectSingle} />
+          ))}
+        </div>
         {rows.length === 0 ? <div className="p-8 text-center text-sm text-slate-500 dark:text-slate-400">Nenhum lançamento em aberto encontrado para os filtros selecionados.</div> : null}
       </Card>
     </div>
@@ -454,11 +460,34 @@ function SelectField({ label, value, onChange, options }: { label: string; value
 }
 
 function SelectionHeader({ rows, selectedIds, onToggleAll }: { rows: FinancialTransaction[]; selectedIds: string[]; onToggleAll: () => void }) {
-  return <input type="checkbox" aria-label="Selecionar todos" checked={rows.length > 0 && selectedIds.length === rows.length} onChange={onToggleAll} className="h-4 w-4 rounded border-slate-300" />;
+  return <input type="checkbox" aria-label="Selecionar todos" checked={rows.length > 0 && selectedIds.length === rows.length} onChange={onToggleAll} className="h-5 w-5 rounded border-slate-300 accent-primary" />;
 }
 
 function SelectionCell({ id, selectedIds, onToggle }: { id: string; selectedIds: string[]; onToggle: (id: string) => void }) {
-  return <input type="checkbox" aria-label="Selecionar lançamento" checked={selectedIds.includes(id)} onChange={() => onToggle(id)} className="h-4 w-4 rounded border-slate-300" />;
+  return <input type="checkbox" aria-label="Selecionar lançamento" checked={selectedIds.includes(id)} onChange={() => onToggle(id)} className="h-5 w-5 rounded border-slate-300 accent-primary" />;
+}
+
+function MobileValue({ label, value }: { label: string; value: React.ReactNode }) {
+  return <div className="min-w-0 rounded-lg bg-muted/40 p-2"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p><div className="mt-1 break-words text-sm font-medium">{value}</div></div>;
+}
+
+function PatientMobileCard({ row, selectedIds, onToggle, onSingle }: { row: FinancialTransaction; selectedIds: string[]; onToggle: (id: string) => void; onSingle: (id: string) => void }) {
+  return <article className="grid min-w-0 gap-3 rounded-xl border bg-card p-3 shadow-sm">
+    <div className="flex min-w-0 items-start justify-between gap-3"><label className="flex min-w-0 items-center gap-2 text-sm font-semibold"><SelectionCell id={row.id} selectedIds={selectedIds} onToggle={onToggle} /><span className="min-w-0 break-words">{row.patient_name}</span></label><span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[10px] font-semibold">{getStatusLabel(row.derived_status)}</span></div>
+    <div className="grid grid-cols-2 gap-2"><MobileValue label="Clinica" value={row.clinic_name} /><MobileValue label="Servico" value={row.service_name || "-"} /><MobileValue label="Origem" value={row.origin ?? "-"} /><MobileValue label="Vencimento" value={row.due_date} /><MobileValue label="Valor total" value={formatCurrency(row.amount)} /><MobileValue label="Valor pago" value={formatCurrency(getPaidAmount(row))} /><div className="col-span-2"><MobileValue label="Valor em aberto" value={formatCurrency(getOpenAmount(row))} /></div></div>
+    <Button type="button" size="sm" variant="outline" className="w-full" onClick={() => onSingle(row.id)}>Receber</Button>
+  </article>;
+}
+
+function StaffMobileCard({ row, selectedIds, onToggle, onSingle }: { row: FinancialTransaction; selectedIds: string[]; onToggle: (id: string) => void; onSingle: (id: string) => void }) {
+  const type = getStaffType(row);
+  const discount = type === "Desconto" ? Math.abs(row.amount) : 0;
+  const netAmount = type === "Desconto" ? -Math.abs(row.amount) : row.amount;
+  return <article className="grid min-w-0 gap-3 rounded-xl border bg-card p-3 shadow-sm">
+    <div className="flex min-w-0 items-start justify-between gap-3"><label className="flex min-w-0 items-center gap-2 text-sm font-semibold"><SelectionCell id={row.id} selectedIds={selectedIds} onToggle={onToggle} /><span className="min-w-0 break-words">{row.employee_name}</span></label><span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[10px] font-semibold">{getStatusLabel(row.derived_status)}</span></div>
+    <div className="grid grid-cols-2 gap-2"><MobileValue label="Clinica" value={row.clinic_name} /><MobileValue label="Tipo" value={type} /><div className="col-span-2"><MobileValue label="Descricao" value={row.description ?? "-"} /></div><MobileValue label="Valor bruto" value={formatCurrency(row.amount)} /><MobileValue label="Descontos" value={formatCurrency(discount)} /><MobileValue label="Valor liquido" value={formatCurrency(netAmount)} /><MobileValue label="Valor pago" value={formatCurrency(getPaidAmount(row))} /><div className="col-span-2"><MobileValue label="Valor em aberto" value={formatCurrency(getOpenAmount(row))} /></div></div>
+    <Button type="button" size="sm" variant="outline" className="w-full" onClick={() => onSingle(row.id)}>Pagar</Button>
+  </article>;
 }
 
 function PatientTable({ rows, selectedIds, onToggle, onToggleAll, onSingle }: { rows: FinancialTransaction[]; selectedIds: string[]; onToggle: (id: string) => void; onToggleAll: () => void; onSingle: (id: string) => void }) {

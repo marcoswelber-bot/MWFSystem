@@ -9,6 +9,7 @@ import { buildDiscoveryPlan } from "@/lib/mwf-ai/core/global-discovery";
 import { getCurrentPermissionMap } from "@/lib/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { getAgendaToday, getAgendaVisibleRange } from "@/lib/agenda-date";
+import { handleCentralIntent } from "@/lib/mwf-ai/central-intent-handler";
 
 export type AssistantCard = { title: string; lines: string[]; tone?: "default" | "warning" | "success" };
 export type AssistantAction = { label: string; href?: Route; externalHref?: string; prompt?: string; actionId?: string; domain?: string; intent?: string; payload?: Record<string, string> };
@@ -50,6 +51,8 @@ export async function askMwfAssistant(input: string, previousContext: AssistantC
   const scope = await getCurrentClinicScope();
   const supabase = await createClient();
   const context = previousContext.updatedAt && Date.now() - previousContext.updatedAt < 30 * 60_000 ? previousContext : {};
+  const centralReply = await handleCentralIntent(input, context, permissions, scope.clinicId, supabase);
+  if (centralReply) return centralReply;
   const core = classifyMessage(input, context);
   const legacy = interpretAssistantQuery(input, context);
   const coreOwnsRouting = core.intent === "check_debtors" || Boolean(core.filters?.some(filter => filter.operator === "starts_with" || filter.operator === "next"));
