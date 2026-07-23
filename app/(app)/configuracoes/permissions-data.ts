@@ -5,6 +5,7 @@ import {
   type PermissionMap
 } from "@/lib/permission-modules";
 import { isCurrentUserAdmMaster } from "@/lib/permissions";
+import { getCurrentClinicScope } from "@/lib/access-control";
 import type { Database } from "@/types/database";
 
 type Employee = Database["public"]["Tables"]["employees"]["Row"];
@@ -46,21 +47,33 @@ export async function loadPermissionsPageData() {
   let permissionRows: UserPermission[] = [];
   let loadError: string | undefined;
   const isAdmMaster = await isCurrentUserAdmMaster();
+  const scope = await getCurrentClinicScope();
 
   if (!isAdmMaster) {
     return {
       employees,
       initialPermissions: {},
       isAdmMaster,
+      activeClinic: null,
       loadError: "Apenas o ADM Master pode acessar Permissoes de Usuarios."
+    };
+  }
+
+  if (!scope.clinicId) {
+    return {
+      employees,
+      initialPermissions: {},
+      isAdmMaster,
+      activeClinic: null,
+      loadError
     };
   }
 
   try {
     const supabase = await createClient();
-    const [employeesResult, permissionsResult] = await Promise.all([
-      supabase.from("employees").select("*").order("name", { ascending: true }),
-      supabase.from("user_permissions").select("*")
+    const [clinicResult, employeesResult] = await Promise.all([
+      supabase.from("clinics").select("id,name").eq("id", scope.clinicId).maybeSingle(),
+      supabase.from("employees").select("*").eq("clinic_id", scope.clinicId).order("name", { ascending: true })
     ]);
 
     if (employeesResult.error) {
@@ -68,6 +81,11 @@ export async function loadPermissionsPageData() {
     } else {
       employees = Array.isArray(employeesResult.data) ? employeesResult.data : [];
     }
+
+    const employeeIds = employees.map((employee) => employee.id);
+    const permissionsResult = employeeIds.length
+      ? await supabase.from("user_permissions").select("*").in("employee_id", employeeIds)
+      : { data: [], error: null };
 
     if (permissionsResult.error) {
       const permissionsError = isMissingSupabaseTableError(
@@ -83,6 +101,17 @@ export async function loadPermissionsPageData() {
         ? permissionsResult.data
         : [];
     }
+    const activeClinic = clinicResult.data ?? null;
+    if (clinicResult.error || !activeClinic) {
+      loadError = loadError ?? "Nao foi possivel validar a clinica selecionada.";
+    }
+    return {
+      employees,
+      initialPermissions: buildPermissionMaps(employees, permissionRows),
+      isAdmMaster,
+      activeClinic,
+      loadError
+    };
   } catch (error) {
     loadError = getErrorMessage(error);
   }
@@ -91,6 +120,7 @@ export async function loadPermissionsPageData() {
     employees,
     initialPermissions: buildPermissionMaps(employees, permissionRows),
     isAdmMaster,
+    activeClinic: null,
     loadError
   };
 }

@@ -3,7 +3,7 @@ import { UserPermissionsManager } from "@/components/settings/user-permissions-m
 import { loadPermissionsPageData } from "@/app/(app)/configuracoes/permissions-data";
 
 export default async function PermissoesUsuariosPage() {
-  const { employees, initialPermissions, isAdmMaster, loadError } =
+  const { employees, initialPermissions, isAdmMaster, activeClinic, loadError } =
     await loadPermissionsPageData();
 
   if (!isAdmMaster) {
@@ -40,6 +40,7 @@ export default async function PermissoesUsuariosPage() {
         employees={employees}
         initialPermissions={initialPermissions}
         isAdmMaster={isAdmMaster}
+        activeClinic={activeClinic}
       />
     </div>
   );

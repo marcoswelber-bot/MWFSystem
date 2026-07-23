@@ -5,14 +5,11 @@ import { createClient } from "@/lib/supabase/server";
 import { getErrorMessage, isMissingSupabaseTableError } from "@/lib/supabase/env";
 import {
   permissionModules,
-  getEmptyPermissionMap,
   type PermissionModuleKey,
   type PermissionSet
 } from "@/lib/permission-modules";
 import { assertAdmMaster, getCurrentEmployee, isAdmRole } from "@/lib/permissions";
-import type { Database } from "@/types/database";
-
-type EmployeeUpdate = Database["public"]["Tables"]["employees"]["Update"];
+import { getCurrentClinicScope } from "@/lib/access-control";
 
 export type PermissionActionResult = {
   ok: boolean;
@@ -27,51 +24,13 @@ function getPermissionTableErrorMessage(error: unknown) {
   return getErrorMessage(error);
 }
 
-function normalizeRole(role?: string | null) {
-  return role
-    ?.normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_|_$/g, "");
-}
-
-function toStoredRole(role: string) {
-  const normalizedRole = normalizeRole(role);
-
-  if (normalizedRole === "adm_master") {
-    return "adm_master";
-  }
-
-  if (normalizedRole === "admin_master") {
-    return "adm_master";
-  }
-
-  if (normalizedRole === "administrador") {
-    return "Administrador";
-  }
-
-  if (normalizedRole === "gerente") {
-    return "Gerente";
-  }
-
-  if (normalizedRole === "recepcao") {
-    return "Recepcao";
-  }
-
-  if (normalizedRole === "profissional") {
-    return "Profissional";
-  }
-
-  throw new Error("Cargo invalido.");
-}
-
-async function getEmployeeAccess(employeeId: string) {
+async function getEmployeeAccess(employeeId: string, clinicId: string) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("employees")
-    .select("id,email,role")
+    .select("id,email,role,clinic_id")
     .eq("id", employeeId)
+    .eq("clinic_id", clinicId)
     .maybeSingle();
 
   if (error) {
@@ -81,9 +40,20 @@ async function getEmployeeAccess(employeeId: string) {
   return data;
 }
 
-async function assertCanManageEmployeeAccess(employeeId: string) {
+async function assertSelectedClinic(clinicId: string) {
+  const scope = await getCurrentClinicScope();
+  if (!scope.isAdmMaster || !scope.clinicId || scope.clinicId !== clinicId) {
+    throw new Error("A clinica selecionada nao corresponde ao seu escopo atual.");
+  }
+}
+
+async function assertCanManageEmployeeAccess(employeeId: string, clinicId: string) {
   const { employee: currentEmployee } = await getCurrentEmployee();
-  const targetEmployee = await getEmployeeAccess(employeeId);
+  const targetEmployee = await getEmployeeAccess(employeeId, clinicId);
+
+  if (!targetEmployee || targetEmployee.clinic_id !== clinicId) {
+    throw new Error("Funcionario nao pertence a clinica selecionada.");
+  }
 
   if (
     targetEmployee &&
@@ -96,57 +66,16 @@ async function assertCanManageEmployeeAccess(employeeId: string) {
   return targetEmployee;
 }
 
-export async function updateEmployeeRole(
-  employeeId: string,
-  role: string
-): Promise<PermissionActionResult> {
-  try {
-    await assertAdmMaster();
-
-    const { employee: currentEmployee } = await getCurrentEmployee();
-    const targetEmployee = await getEmployeeAccess(employeeId);
-    const currentRole = targetEmployee?.role ?? null;
-    const nextRole = toStoredRole(role);
-
-    if (
-      targetEmployee?.id === currentEmployee?.id
-    ) {
-      throw new Error("Nao e permitido alterar o proprio cargo do ADM Master.");
-    }
-
-    if (
-      isAdmRole(currentRole) &&
-      nextRole !== "adm_master"
-    ) {
-      throw new Error("O ADM Master nao pode perder o acesso total.");
-    }
-
-    const payload: EmployeeUpdate = { role: nextRole };
-    const supabase = await createClient();
-    const { error } = await supabase
-      .from("employees")
-      .update(payload)
-      .eq("id", employeeId);
-
-    if (error) {
-      return { ok: false, message: getErrorMessage(error) };
-    }
-
-    revalidatePath("/configuracoes");
-    return { ok: true, message: "Cargo atualizado com sucesso." };
-  } catch (error) {
-    return { ok: false, message: getErrorMessage(error) };
-  }
-}
-
 export async function saveUserPermissions(
   employeeId: string,
+  clinicId: string,
   permissions: Partial<Record<PermissionModuleKey, PermissionSet>>
 ): Promise<PermissionActionResult> {
   try {
     await assertAdmMaster();
+    await assertSelectedClinic(clinicId);
 
-    await assertCanManageEmployeeAccess(employeeId);
+    await assertCanManageEmployeeAccess(employeeId, clinicId);
 
     const supabase = await createClient();
     const rows = permissionModules.map((module) => {
@@ -174,64 +103,10 @@ export async function saveUserPermissions(
     }
 
     revalidatePath("/configuracoes");
-    return { ok: true, message: "Permissoes salvas com sucesso." };
+    revalidatePath("/configuracoes/permissoes");
+    return { ok: true, message: "Permissões salvas com sucesso" };
   } catch (error) {
+    if (process.env.NODE_ENV === "development") console.error("[Permissoes] Falha ao salvar", error);
     return { ok: false, message: getErrorMessage(error) };
   }
-}
-
-export async function copyUserPermissions(
-  sourceEmployeeId: string,
-  targetEmployeeId: string
-): Promise<PermissionActionResult> {
-  try {
-    await assertAdmMaster();
-
-    await assertCanManageEmployeeAccess(targetEmployeeId);
-
-    const supabase = await createClient();
-    const { data, error: loadError } = await supabase
-      .from("user_permissions")
-      .select("*")
-      .eq("employee_id", sourceEmployeeId);
-
-    if (loadError) {
-      return { ok: false, message: getPermissionTableErrorMessage(loadError) };
-    }
-
-    const rows = permissionModules.map((module) => {
-      const source = data?.find((row) => row.module_key === module.key);
-
-      return {
-        employee_id: targetEmployeeId,
-        module_key: module.key,
-        can_view: Boolean(source?.can_view),
-        can_create: Boolean(source?.can_create),
-        can_edit: Boolean(source?.can_edit),
-        can_delete: Boolean(source?.can_delete),
-        can_toggle: Boolean(source?.can_toggle),
-        can_export: Boolean(source?.can_export),
-        can_import: Boolean(source?.can_import)
-      };
-    });
-
-    const { error } = await supabase
-      .from("user_permissions")
-      .upsert(rows, { onConflict: "employee_id,module_key" });
-
-    if (error) {
-      return { ok: false, message: getPermissionTableErrorMessage(error) };
-    }
-
-    revalidatePath("/configuracoes");
-    return { ok: true, message: "Permissoes copiadas com sucesso." };
-  } catch (error) {
-    return { ok: false, message: getErrorMessage(error) };
-  }
-}
-
-export async function restoreDefaultUserPermissions(
-  employeeId: string
-): Promise<PermissionActionResult> {
-  return saveUserPermissions(employeeId, getEmptyPermissionMap());
 }
