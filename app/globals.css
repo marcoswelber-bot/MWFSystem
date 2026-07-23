@@ -456,7 +456,7 @@ body:has(.app-main [role="dialog"]) .mwf-assistant-panel {
   visibility: hidden;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 1023px) {
   .permissions-manager { padding: 0.75rem !important; }
   .permissions-users-table td::before,
   .permissions-matrix td::before {
@@ -474,3 +474,5 @@ body:has(.app-main [role="dialog"]) .mwf-assistant-panel {
   .permissions-actions { display: grid !important; gap: 0.5rem; grid-template-columns: 1fr; }
   .permissions-actions button { margin-right: 0 !important; width: 100%; }
 }
+
+:root:not(.dark) .app-sidebar .sidebar-logo { color: white !important; }

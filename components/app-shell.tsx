@@ -161,7 +161,7 @@ export function AppShell({
     >
       <div className="flex h-14 items-center justify-between border-b border-white/10 px-4">
         <Link href="/dashboard" className="flex min-w-0 items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400 via-blue-500 to-violet-500 text-white shadow-lg shadow-blue-500/30">
+          <div className="sidebar-logo flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400 via-blue-500 to-violet-500 text-white shadow-lg shadow-blue-500/30">
             <Activity className="h-5 w-5" />
           </div>
           {!sidebarCollapsed ? (
@@ -286,7 +286,7 @@ export function AppShell({
         })}
       </nav>
 
-      <div className="border-t border-white/10 p-3">
+      <div className="shrink-0 border-t border-white/10 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:pb-3">
         <form action={signOut}>
           <Button
             type="submit"

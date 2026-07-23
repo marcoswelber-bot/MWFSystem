@@ -320,6 +320,14 @@ export function UserPermissionsManager({
         </div>
       </div>
 
+      {selectedEmployee ? (
+        <div className="grid gap-2 rounded-lg border bg-muted/25 p-3 sm:grid-cols-3" aria-label="Usuario selecionado">
+          <div><p className="text-xs font-semibold uppercase text-muted-foreground">Usuario</p><p className="mt-1 break-words font-semibold">{selectedEmployee.name}</p></div>
+          <div><p className="text-xs font-semibold uppercase text-muted-foreground">Email</p><p className="mt-1 break-words">{selectedEmployee.email ?? "-"}</p></div>
+          <div><p className="text-xs font-semibold uppercase text-muted-foreground">Cargo</p><p className="mt-1 break-words">{selectedEmployee.role ?? "-"}</p></div>
+        </div>
+      ) : null}
+
       <div style={{ overflowX: "auto" }}>
         <table className="permissions-users-table" style={{ borderCollapse: "collapse", width: "100%" }}>
           <thead>
@@ -440,6 +448,7 @@ export function UserPermissionsManager({
                       <input
                         type="checkbox"
                         className="h-5 w-5 cursor-pointer accent-primary disabled:cursor-not-allowed"
+                        aria-label={`${module.label}: ${permissionActionLabels[action]}`}
                         disabled={!isAdmMaster || selectedIsAdmMaster}
                         checked={Boolean(modulePermissions?.[action])}
                         onChange={(event) =>

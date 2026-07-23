@@ -20,6 +20,7 @@ export function MwfAssistant({ contextKey, userName, suppressed = false }: MwfAs
   const [mounted, setMounted] = React.useState(false);
   const [open, setOpen] = React.useState(false);
   const [expanded, setExpanded] = React.useState(false);
+  const [interfaceBlocked, setInterfaceBlocked] = React.useState(false);
   const [prompt, setPrompt] = React.useState("");
   const [context, setContext] = React.useState<AssistantContext>({});
   const [messages, setMessages] = React.useState<Message[]>([]);
@@ -40,6 +41,34 @@ export function MwfAssistant({ contextKey, userName, suppressed = false }: MwfAs
   }
 
   React.useEffect(() => setMounted(true), []);
+  React.useEffect(() => {
+    const blockingSelector = 'select,input[type="date"],input[type="time"],[role="listbox"],[role="menu"],[role="dialog"]:not(#mwf-ai-panel)';
+    let focusTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const syncFromDocument = () => {
+      const active = document.activeElement instanceof HTMLElement && Boolean(document.activeElement.closest(blockingSelector));
+      const overlay = Boolean(document.querySelector('[role="listbox"],[role="menu"],[role="dialog"]:not(#mwf-ai-panel)'));
+      setInterfaceBlocked(active || overlay);
+    };
+    const onFocusIn = (event: FocusEvent) => {
+      if (event.target instanceof HTMLElement && event.target.closest(blockingSelector)) setInterfaceBlocked(true);
+    };
+    const onFocusOut = () => {
+      if (focusTimer) clearTimeout(focusTimer);
+      focusTimer = setTimeout(syncFromDocument, 0);
+    };
+    const observer = new MutationObserver(syncFromDocument);
+    document.addEventListener("focusin", onFocusIn);
+    document.addEventListener("focusout", onFocusOut);
+    observer.observe(document.body, { childList: true, subtree: true });
+    syncFromDocument();
+    return () => {
+      if (focusTimer) clearTimeout(focusTimer);
+      document.removeEventListener("focusin", onFocusIn);
+      document.removeEventListener("focusout", onFocusOut);
+      observer.disconnect();
+    };
+  }, []);
   React.useEffect(() => {
     setContext({});
     setMessages([]);
@@ -119,7 +148,7 @@ export function MwfAssistant({ contextKey, userName, suppressed = false }: MwfAs
     });
   }
 
-  if (!mounted || suppressed) return null;
+  if (!mounted || suppressed || interfaceBlocked) return null;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
   const firstName = userName?.trim().split(/\s+/)[0];
