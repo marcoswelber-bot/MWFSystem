@@ -133,6 +133,9 @@ test("camada operacional valida permissão, clínica e confirmação antes de mu
   assert.match(source, /patient_packages/);
   assert.match(source, /medical_records/);
   assert.match(source, /internal_notifications/);
+  assert.match(source, /professional_service_commissions/);
+  assert.match(source, /Resumo operacional/);
+  assert.match(source, /Dados reais relacionados conforme suas permissões/);
   assert.doesNotMatch(source, /select\(".*complaint.*history.*evolution/s);
 });
 

@@ -206,6 +206,36 @@ export async function handleOperationalAssistant(args: {
     if (selected) {
       stored.patientId = selected.id; stored.patientName = selected.full_name;
     }
+    if (parsed.intent === "patient_history" && selected) {
+      const [appointments, packages, debts, records] = await Promise.all([
+        permissions.agenda.view
+          ? client.from("appointments").select("id,appointment_date,start_time,status").eq("clinic_id", clinicId).eq("patient_id", selected.id).order("appointment_date", { ascending: false }).limit(5)
+          : Promise.resolve({ data: [], error: null }),
+        permissions.pacotes.view
+          ? client.from("patient_packages").select("remaining_sessions,expiration_date,status").eq("clinic_id", clinicId).eq("patient_id", selected.id).order("created_at", { ascending: false }).limit(5)
+          : Promise.resolve({ data: [], error: null }),
+        permissions.financeiro.view
+          ? client.from("financial_transactions").select("open_amount").eq("clinic_id", clinicId).eq("patient_id", selected.id).gt("open_amount", 0)
+          : Promise.resolve({ data: [], error: null }),
+        permissions.prontuarios.view
+          ? client.from("medical_records").select("id,status,created_at").eq("clinic_id", clinicId).eq("patient_id", selected.id).order("created_at", { ascending: false }).limit(5)
+          : Promise.resolve({ data: [], error: null })
+      ]);
+      if (appointments.error || packages.error || debts.error || records.error) return reply(stored, "Erro ao consultar histórico", "Não foi possível relacionar todos os dados autorizados do paciente.");
+      const totalOpen = (debts.data ?? []).reduce((sum, item) => sum + Number(item.open_amount ?? 0), 0);
+      const activePackage = (packages.data ?? []).find((item) => item.status === "active" || item.status === "ativo");
+      saveConversation(stored);
+      return reply(stored, `Resumo de ${selected.full_name}`, "Dados reais relacionados conforme suas permissões.", [
+        ...(permissions.agenda.view ? [{ title: "Agenda", lines: appointments.data?.length ? appointments.data.map((item) => `${dateLabel(item.appointment_date)} às ${item.start_time.slice(0, 5)} • ${item.status}`) : ["Nenhum atendimento encontrado."] }] : []),
+        ...(permissions.pacotes.view ? [{ title: "Pacote", lines: activePackage ? [`${activePackage.remaining_sessions} sessões restantes`, `Validade: ${activePackage.expiration_date ? dateLabel(activePackage.expiration_date) : "não informada"}`, `Status: ${activePackage.status}`] : ["Nenhum pacote ativo encontrado."] }] : []),
+        ...(permissions.financeiro.view ? [{ title: "Financeiro", lines: [totalOpen > 0 ? `Em aberto: ${money(totalOpen)}` : "Sem débito em aberto"], tone: totalOpen > 0 ? "warning" as const : "success" as const }] : []),
+        ...(permissions.prontuarios.view ? [{ title: "Prontuários", lines: [`${records.data?.length ?? 0} registro(s) recente(s) autorizado(s).`] }] : [])
+      ], [
+        route("Abrir paciente", `/pacientes?patientId=${selected.id}`),
+        ...(permissions.agenda.view ? [route("Ver Agenda", `/agenda?patientId=${selected.id}`)] : []),
+        ...(permissions.pacotes.view ? [route("Ver Pacotes", `/pacotes?patientId=${selected.id}`)] : [])
+      ]);
+    }
     stored.recentResults = rows.slice(0, 10).map((row, index) => ({ id: row.id, domain: "pacientes", label: row.full_name, ordinal: index + 1 }));
     saveConversation(stored);
     return reply(stored, "Pacientes", rows.length ? `Encontrei ${rows.length} paciente(s) na clínica ativa.` : "Nenhum paciente encontrado.", rows.length ? [{ title: "Resultados", lines: rows.slice(0, 10).map((row, index) => `${index + 1}. ${row.full_name} • ${row.status}`) }] : [], rows.slice(0, 5).map((row) => route(`Abrir ${row.full_name}`, `/pacientes?patientId=${row.id}`)));
@@ -396,7 +426,13 @@ export async function handleOperationalAssistant(args: {
   if (parsed.module === "agenda") {
     const start = parsed.date ?? new Date().toISOString().slice(0, 10);
     const end = parsed.dateEnd ?? start;
-    const appointments = client.from("appointments").select("id,patient_id,employee_id,service_id,appointment_date,start_time,end_time,status").eq("clinic_id", clinicId).gte("appointment_date", start).lte("appointment_date", end).order("appointment_date").order("start_time").limit(100);
+    const patient = parsed.entities.patient ? await resolvePatient(client, clinicId, parsed.entities.patient) : null;
+    const professional = parsed.entities.professional ? await resolveEmployee(client, clinicId, parsed.entities.professional) : null;
+    if (patient?.kind === "ambiguous") return ambiguityReply(stored, "Paciente", patient.candidates);
+    if (professional?.kind === "ambiguous") return ambiguityReply(stored, "Profissional", professional.candidates);
+    let appointments = client.from("appointments").select("id,patient_id,employee_id,service_id,appointment_date,start_time,end_time,status").eq("clinic_id", clinicId).gte("appointment_date", start).lte("appointment_date", end).order("appointment_date").order("start_time").limit(100);
+    if (patient?.kind === "resolved") appointments = appointments.eq("patient_id", patient.candidate.id);
+    if (professional?.kind === "resolved") appointments = appointments.eq("employee_id", professional.candidate.id);
     const result = await appointments;
     if (result.error) return reply(stored, "Erro ao consultar agenda", result.error.message);
     const patientIds = [...new Set((result.data ?? []).map((row) => row.patient_id))];
@@ -419,6 +455,49 @@ export async function handleOperationalAssistant(args: {
     if (result.error) return reply(stored, "Erro ao consultar notificações", result.error.message);
     saveConversation(stored);
     return reply(stored, "Notificações", `${result.data?.length ?? 0} notificação(ões) encontrada(s).`, result.data?.length ? [{ title: "Recentes", lines: result.data.map((row) => `${row.title} • ${row.status}`) }] : []);
+  }
+
+  if (parsed.module === "comissoes") {
+    if (!permissions.comissoes.view) return denied(stored);
+    const professional = parsed.entities.professional ?? parsed.entities.employee ?? stored.professionalName ?? undefined;
+    const employee = professional ? await resolveEmployee(client, clinicId, professional) : null;
+    if (employee?.kind === "ambiguous") return ambiguityReply(stored, "Profissional", employee.candidates);
+    const employeeResult = await client.from("employees").select("id,name").eq("clinic_id", clinicId).eq("status", "active");
+    if (employeeResult.error) return reply(stored, "Erro ao consultar profissionais", employeeResult.error.message);
+    const employeeIds = employee?.kind === "resolved" ? [employee.candidate.id] : (employeeResult.data ?? []).map((item) => item.id);
+    const commissions = employeeIds.length
+      ? await client.from("professional_service_commissions").select("id,professional_id,service_id,commission_type,commission_value,estimated_amount,active").in("professional_id", employeeIds).eq("active", true).limit(100)
+      : { data: [], error: null };
+    if (commissions.error) return reply(stored, "Erro ao consultar comissões", commissions.error.message);
+    const names = new Map((employeeResult.data ?? []).map((item) => [item.id, item.name]));
+    saveConversation(stored);
+    return reply(stored, "Comissões", `${commissions.data?.length ?? 0} regra(s) ativa(s) encontrada(s) para profissionais desta clínica.`, commissions.data?.length ? [{ title: "Regras", lines: commissions.data.slice(0, 20).map((item) => `${names.get(item.professional_id) ?? "Profissional"} • ${item.commission_type} ${item.commission_value} • estimativa ${money(Number(item.estimated_amount ?? 0))}`) }] : [], [route("Abrir Comissões", "/funcionarios")]);
+  }
+
+  if (parsed.module === "relatorios") {
+    if (!permissions.relatorios.view) return denied(stored);
+    const start = parsed.date ?? new Date().toISOString().slice(0, 10);
+    const end = parsed.dateEnd ?? start;
+    const [appointments, financial, packages] = await Promise.all([
+      permissions.agenda.view
+        ? client.from("appointments").select("id,status", { count: "exact" }).eq("clinic_id", clinicId).gte("appointment_date", start).lte("appointment_date", end).limit(1000)
+        : Promise.resolve({ data: [], count: 0, error: null }),
+      permissions.financeiro.view
+        ? client.from("financial_transactions").select("transaction_type,amount,paid_amount,open_amount").eq("clinic_id", clinicId).gte("due_date", start).lte("due_date", end).limit(1000)
+        : Promise.resolve({ data: [], error: null }),
+      permissions.pacotes.view
+        ? client.from("patient_packages").select("remaining_sessions,status", { count: "exact" }).eq("clinic_id", clinicId).limit(1000)
+        : Promise.resolve({ data: [], count: 0, error: null })
+    ]);
+    if (appointments.error || financial.error || packages.error) return reply(stored, "Erro ao gerar resumo", "Não foi possível relacionar os indicadores autorizados.");
+    const revenues = (financial.data ?? []).filter((item) => item.transaction_type === "receita").reduce((sum, item) => sum + Number(item.amount ?? 0), 0);
+    const expenses = (financial.data ?? []).filter((item) => item.transaction_type === "despesa").reduce((sum, item) => sum + Number(item.amount ?? 0), 0);
+    saveConversation(stored);
+    return reply(stored, "Resumo operacional", `Indicadores reais de ${dateLabel(start)} a ${dateLabel(end)}.`, [
+      ...(permissions.agenda.view ? [{ title: "Agenda", lines: [`${appointments.count ?? appointments.data?.length ?? 0} atendimento(s)`] }] : []),
+      ...(permissions.financeiro.view ? [{ title: "Financeiro", lines: [`Receitas: ${money(revenues)}`, `Despesas: ${money(expenses)}`, `Resultado previsto: ${money(revenues - expenses)}`] }] : []),
+      ...(permissions.pacotes.view ? [{ title: "Pacotes", lines: [`${packages.count ?? packages.data?.length ?? 0} pacote(s)`, `${(packages.data ?? []).reduce((sum, item) => sum + Number(item.remaining_sessions ?? 0), 0)} sessões restantes`] }] : [])
+    ], [route("Abrir Relatórios", "/relatorios")]);
   }
 
   saveConversation(stored);
