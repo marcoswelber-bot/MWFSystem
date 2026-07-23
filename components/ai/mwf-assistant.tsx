@@ -13,9 +13,9 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type Message = { id: number; role: "user" | "assistant"; text: string; reply?: AssistantReply };
-type MwfAssistantProps = { contextKey: string; userName?: string };
+type MwfAssistantProps = { contextKey: string; userName?: string; suppressed?: boolean };
 
-export function MwfAssistant({ contextKey, userName }: MwfAssistantProps) {
+export function MwfAssistant({ contextKey, userName, suppressed = false }: MwfAssistantProps) {
   const pathname = usePathname();
   const [mounted, setMounted] = React.useState(false);
   const [open, setOpen] = React.useState(false);
@@ -51,6 +51,12 @@ export function MwfAssistant({ contextKey, userName }: MwfAssistantProps) {
     setOpen(false);
     setExpanded(false);
   }, [pathname]);
+  React.useEffect(() => {
+    if (suppressed) {
+      setOpen(false);
+      setExpanded(false);
+    }
+  }, [suppressed]);
   React.useEffect(() => {
     if (!open) {
       if (wasOpen.current) launcherRef.current?.focus();
@@ -113,7 +119,7 @@ export function MwfAssistant({ contextKey, userName }: MwfAssistantProps) {
     });
   }
 
-  if (!mounted) return null;
+  if (!mounted || suppressed) return null;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
   const firstName = userName?.trim().split(/\s+/)[0];
@@ -128,17 +134,17 @@ export function MwfAssistant({ contextKey, userName }: MwfAssistantProps) {
         aria-expanded={open}
         aria-controls="mwf-ai-panel"
         className={cn(
-          "group fixed right-4 z-[75] grid h-16 w-16 place-items-center rounded-full bg-transparent outline-none transition duration-200 hover:-translate-y-1 focus-visible:ring-4 focus-visible:ring-sky-400/50 motion-reduce:transform-none motion-reduce:transition-none lg:bottom-6 lg:right-6",
+          "mwf-assistant-launcher group fixed right-4 z-40 grid h-14 w-14 place-items-center rounded-full bg-transparent outline-none transition duration-200 hover:-translate-y-1 focus-visible:ring-4 focus-visible:ring-sky-400/50 motion-reduce:transform-none motion-reduce:transition-none sm:h-16 sm:w-16 lg:bottom-6 lg:right-6",
           "bottom-[calc(5rem+env(safe-area-inset-bottom))]",
           open && "pointer-events-none scale-95 opacity-0"
         )}
       >
         <span className="sr-only">MWF IA — Assistente Inteligente</span>
-        <MwfAiIcon className={cn("h-16 w-16 transition group-hover:drop-shadow-lg", pending && "opacity-80")} />
+        <MwfAiIcon className={cn("h-14 w-14 transition group-hover:drop-shadow-lg sm:h-16 sm:w-16", pending && "opacity-80")} />
       </button>
 
       {open ? (
-        <div className="pointer-events-none fixed inset-0 z-[74]">
+        <div className="mwf-assistant-panel pointer-events-none fixed inset-0 z-40">
           <button
             type="button"
             tabIndex={-1}

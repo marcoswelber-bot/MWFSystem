@@ -414,7 +414,10 @@ export function AppShell({
           </ActiveClinicProvider>
         </main>
       </div>
-      <MwfAssistant userName={userName} contextKey={activeClinicId ?? (isAdmMaster ? "all-clinics" : "linked-clinic")} />
+      <MwfAssistant userName={userName}
+        contextKey={activeClinicId ?? (isAdmMaster ? "all-clinics" : "linked-clinic")}
+        suppressed={mobileOpen || clinicPickerOpen}
+      />
     </div>
   );
 }

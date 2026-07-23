@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { Activity, Building2, Shield } from "lucide-react";
-import { requestPasswordRecovery, signInWithPassword } from "@/app/login/actions";
+import { requestPasswordRecovery } from "@/app/login/actions";
+import { LoginForm } from "@/components/login/login-form";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
@@ -93,48 +94,12 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                       <a className="block text-center text-sm text-primary hover:underline" href="/login">Voltar ao login</a>
                     </form>
                   ) : (
-                  <form action={signInWithPassword} className="space-y-5">
-                    <input
-                      type="hidden"
-                      name="redirectedFrom"
-                      value={params.redirectedFrom ?? "/dashboard"}
-                    />
-                    <div className="space-y-2">
-                      <Label htmlFor="email">Email</Label>
-                      <Input
-                        id="email"
-                        name="email"
-                        type="email"
-                        autoComplete="email"
-                        placeholder="seu@email.com"
-                        className="h-11"
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="password">Senha</Label>
-                      <Input
-                        id="password"
-                        name="password"
-                        type="password"
-                        autoComplete="current-password"
-                        className="h-11"
-                        required
-                      />
-                    </div>
-                    {params.error ? (
-                      <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                        {params.error}
-                      </p>
-                    ) : null}
-                    {params.message ? (
-                      <p className="rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 text-sm">{params.message}</p>
-                    ) : null}
-                    <Button className="h-11 w-full text-base font-semibold" type="submit">
-                      Entrar
-                    </Button>
-                    <a className="block text-center text-sm text-primary hover:underline" href="/login?recovery=form">Esqueci minha senha</a>
-                  </form>
+                  <LoginForm
+                    redirectedFrom={params.redirectedFrom ?? "/dashboard"}
+                    error={params.error}
+                    message={params.message}
+                    recoveryLabel="Esqueci minha senha"
+                  />
                   )}
                 </CardContent>
               </Card>

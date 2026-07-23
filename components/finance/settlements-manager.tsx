@@ -396,7 +396,7 @@ export function SettlementsManager({ transactions, clinics, patients, services, 
         <div className="hidden xl:block">
           {tab === "patients" ? <PatientTable rows={rows} selectedIds={selectedIds} onToggle={toggleSelection} onToggleAll={toggleAll} onSingle={selectSingle} /> : <StaffTable rows={rows} selectedIds={selectedIds} onToggle={toggleSelection} onToggleAll={toggleAll} onSingle={selectSingle} />}
         </div>
-        <div className="grid gap-3 p-3 xl:hidden">{rows.map((row) => <article key={row.id} className="grid gap-2 rounded-md border p-3"><div className="flex items-start justify-between gap-3"><label className="flex items-center gap-2 text-sm font-semibold"><SelectionCell id={row.id} selectedIds={selectedIds} onToggle={toggleSelection} />{tab === "patients" ? row.patient_name : row.employee_name}</label><span className="text-xs">{getStatusLabel(row.derived_status)}</span></div><Metric label="Pendente" value={formatCurrency(getOpenAmount(row))} /><p className="text-xs text-muted-foreground">{row.clinic_name} · {row.service_name || getStaffType(row)} · vencimento {row.due_date}</p><Button type="button" size="sm" variant="outline" onClick={() => selectSingle(row.id)}>{tab === "patients" ? "Receber" : "Pagar"}</Button></article>)}</div>
+        <div className="grid gap-3 p-3 xl:hidden">{rows.map((row) => <article key={row.id} className="grid min-w-0 gap-2 rounded-md border p-3"><div className="flex min-w-0 items-start justify-between gap-3"><label className="flex min-w-0 items-center gap-2 text-sm font-semibold"><SelectionCell id={row.id} selectedIds={selectedIds} onToggle={toggleSelection} /><span className="min-w-0 break-words">{tab === "patients" ? row.patient_name : row.employee_name}</span></label><span className="shrink-0 text-xs">{getStatusLabel(row.derived_status)}</span></div><Metric label="Pendente" value={formatCurrency(getOpenAmount(row))} /><p className="break-words text-xs text-muted-foreground">{row.clinic_name} · {row.service_name || getStaffType(row)} · vencimento {row.due_date}</p><Button type="button" size="sm" variant="outline" className="w-full sm:w-auto" onClick={() => selectSingle(row.id)}>{tab === "patients" ? "Receber" : "Pagar"}</Button></article>)}</div>
         {rows.length === 0 ? <div className="p-8 text-center text-sm text-slate-500 dark:text-slate-400">Nenhum lançamento em aberto encontrado para os filtros selecionados.</div> : null}
       </Card>
     </div>
@@ -454,11 +454,11 @@ function SelectField({ label, value, onChange, options }: { label: string; value
 }
 
 function SelectionHeader({ rows, selectedIds, onToggleAll }: { rows: FinancialTransaction[]; selectedIds: string[]; onToggleAll: () => void }) {
-  return <input type="checkbox" aria-label="Selecionar todos" checked={rows.length > 0 && selectedIds.length === rows.length} onChange={onToggleAll} className="h-4 w-4 rounded border-slate-300" />;
+  return <input type="checkbox" aria-label="Selecionar todos" checked={rows.length > 0 && selectedIds.length === rows.length} onChange={onToggleAll} className="h-5 w-5 rounded border-slate-300 accent-primary" />;
 }
 
 function SelectionCell({ id, selectedIds, onToggle }: { id: string; selectedIds: string[]; onToggle: (id: string) => void }) {
-  return <input type="checkbox" aria-label="Selecionar lançamento" checked={selectedIds.includes(id)} onChange={() => onToggle(id)} className="h-4 w-4 rounded border-slate-300" />;
+  return <input type="checkbox" aria-label="Selecionar lançamento" checked={selectedIds.includes(id)} onChange={() => onToggle(id)} className="h-5 w-5 rounded border-slate-300 accent-primary" />;
 }
 
 function PatientTable({ rows, selectedIds, onToggle, onToggleAll, onSingle }: { rows: FinancialTransaction[]; selectedIds: string[]; onToggle: (id: string) => void; onToggleAll: () => void; onSingle: (id: string) => void }) {
