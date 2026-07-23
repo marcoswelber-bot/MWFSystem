@@ -53,6 +53,7 @@ export type AssistantTemporalScope =
   | null;
 
 export type AssistantContext = MwfAiContext & {
+  conversationId?: string;
   patientName?: string | null;
   professionalName?: string | null;
   serviceName?: string | null;

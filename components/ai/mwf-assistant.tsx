@@ -22,7 +22,12 @@ export function MwfAssistant({ contextKey, userName, suppressed = false }: MwfAs
   const [expanded, setExpanded] = React.useState(false);
   const [interfaceBlocked, setInterfaceBlocked] = React.useState(false);
   const [prompt, setPrompt] = React.useState("");
-  const [context, setContext] = React.useState<AssistantContext>({});
+  const newConversation = React.useCallback((): AssistantContext => ({
+    conversationId: typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  }), []);
+  const [context, setContext] = React.useState<AssistantContext>(() => newConversation());
   const [messages, setMessages] = React.useState<Message[]>([]);
   const [pending, startTransition] = React.useTransition();
   const launcherRef = React.useRef<HTMLButtonElement>(null);
@@ -34,7 +39,7 @@ export function MwfAssistant({ contextKey, userName, suppressed = false }: MwfAs
 
   function clearConversation() {
     setMessages([]);
-    setContext({});
+    setContext(newConversation());
     setPrompt("");
     messageId.current = 0;
     window.requestAnimationFrame(() => inputRef.current?.focus());
@@ -70,12 +75,12 @@ export function MwfAssistant({ contextKey, userName, suppressed = false }: MwfAs
     };
   }, []);
   React.useEffect(() => {
-    setContext({});
+    setContext(newConversation());
     setMessages([]);
     setPrompt("");
     setOpen(false);
     setExpanded(false);
-  }, [contextKey]);
+  }, [contextKey, newConversation]);
   React.useEffect(() => {
     setOpen(false);
     setExpanded(false);
