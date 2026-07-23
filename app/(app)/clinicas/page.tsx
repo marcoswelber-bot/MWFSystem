@@ -1,4 +1,3 @@
-import { ClinicSettingsManager } from "@/components/clinics/clinic-settings-manager";
 import { EntityCrudManager, type EntityRecord } from "@/components/entity-crud-manager";
 import { PageHeader } from "@/components/page-header";
 import { createClient } from "@/lib/supabase/server";
@@ -99,6 +98,7 @@ export default async function ClinicasPage({ searchParams }: ClinicasPageProps) 
         initialSearch={search}
         loadError={loadError}
         permissions={permissions.clinicas}
+        clinicSettings={{ clinics, openingHours }}
         fields={[
           { name: "name", label: "Nome", required: true },
           { name: "cnpj", label: "CNPJ" },
@@ -115,7 +115,6 @@ export default async function ClinicasPage({ searchParams }: ClinicasPageProps) 
           { key: "status_label", label: "Status" }
         ]}
       />
-      <ClinicSettingsManager clinics={clinics} openingHours={openingHours} canEdit={permissions.clinicas.edit} />
     </div>
   );
 }
