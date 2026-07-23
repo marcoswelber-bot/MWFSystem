@@ -8,6 +8,7 @@ import { ArrowUp, Maximize2, Minimize2, Trash2, X } from "lucide-react";
 import { askMwfAssistant, type AssistantReply } from "@/app/(app)/dashboard/assistant-actions";
 import type { AssistantContext } from "@/lib/assistant/interpreter";
 import { MwfAiIcon } from "@/components/ai/mwf-ai-icon";
+import { AssistantResponseCard } from "@/components/ai/assistant-response-components";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -207,16 +208,7 @@ export function MwfAssistant({ contextKey, userName }: MwfAssistantProps) {
                         {message.reply?.cards.length ? (
                           <div className="mt-3 grid gap-2">
                             {message.reply.cards.map((card, cardIndex) => (
-                              <div key={`${card.title}-${cardIndex}`} className={cn(
-                                "rounded-xl border bg-background/80 p-3",
-                                card.tone === "warning" && "border-amber-500/40 bg-amber-500/5",
-                                card.tone === "success" && "border-emerald-500/40 bg-emerald-500/5"
-                              )}>
-                                <strong className="text-xs uppercase tracking-wide">{card.title}</strong>
-                                <ul className="mt-2 grid gap-1.5 text-xs">
-                                  {card.lines.map((line, lineIndex) => <li key={`${line}-${lineIndex}`} className="break-words">{line}</li>)}
-                                </ul>
-                              </div>
+                              <AssistantResponseCard key={`${card.title}-${cardIndex}`} title={card.title} lines={card.lines} tone={card.tone} />
                             ))}
                           </div>
                         ) : null}
@@ -238,7 +230,6 @@ export function MwfAssistant({ contextKey, userName }: MwfAssistantProps) {
                           ))}
                         </div>
                       ) : null}
-                      {message.role === "assistant" && !message.reply?.actions.length && !message.reply?.context.pendingOperation && !message.reply?.context.pendingOptions?.length ? <p className="mt-2 text-xs text-muted-foreground">Posso ajudar com mais alguma coisa?</p> : null}
                     </article>
                   ))}
                 </div>
